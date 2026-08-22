@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YouTube 영상 분석 & AI 리포트 스튜디오</title>
+  <!-- Google Fonts & FontAwesome -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="dark-theme">
+  <div class="app-container">
+    <!-- 헤더 -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="logo-icon">
+          <i class="fa-brands fa-youtube"></i>
+        </div>
+        <div class="brand-text">
+          <h1>YouTube 영상 분석 스튜디오</h1>
+          <span class="badge-version">yt-dlp Engine • LM Studio Gemma 4 AI</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button id="btnOpenFolder" class="btn btn-outline" title="Finder에서 data 폴더 열기">
+          <i class="fa-regular fa-folder-open"></i> 저장 폴더 열기
+        </button>
+        <button id="btnExportCsv" class="btn btn-outline" title="전체 수집 메타데이터 CSV 다운로드">
+          <i class="fa-solid fa-file-csv"></i> 전체 CSV 내보내기
+        </button>
+        <button id="btnThemeToggle" class="btn btn-icon" title="테마 변경">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- 메인 컨텐츠 영역 -->
+    <main class="main-content">
+      <!-- 검색 및 분석 입력 섹션 -->
+      <section class="card input-section">
+        <div class="section-title">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          <h2>유튜브 링크 하나로 완전 분석</h2>
+          <span class="sub-text">메타데이터 + 한국어 자막(SRT) + 여론 상위 댓글 + <strong>LM Studio 로컬 AI(Gemma 4)</strong> 종합 분석</span>
+        </div>
+
+        <form id="analyzeForm" class="analyze-form">
+          <div class="input-group">
+            <div class="input-icon">
+              <i class="fa-brands fa-youtube"></i>
+            </div>
+            <input 
+              type="text" 
+              id="videoUrl" 
+              class="form-control" 
+              placeholder="YouTube 영상, 쇼츠, 재생목록 URL을 입력하세요 (예: https://www.youtube.com/watch?v=...)" 
+              required
+            >
+            <button type="submit" id="btnAnalyze" class="btn btn-primary">
+              <span class="btn-text"><i class="fa-solid fa-magnifying-glass-chart"></i> 메타데이터 & 댓글 수집</span>
+              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 분석 중...</span>
+            </button>
+          </div>
+
+          <div class="options-row">
+            <div class="options-left">
+              <label class="checkbox-label">
+                <input type="checkbox" id="chkSubtitles" checked>
+                <span class="custom-checkbox"></span>
+                자막(한국어 CC) 수집
+              </label>
+              <label class="checkbox-label">
+                <input type="checkbox" id="chkComments" checked>
+                <span class="custom-checkbox"></span>
+                댓글(Comments) 수집 & 여론 분석
+              </label>
+              <label class="checkbox-label" style="color: #a78bfa; font-weight:600;">
+                <input type="checkbox" id="chkAutoAiReport">
+                <span class="custom-checkbox"></span>
+                <i class="fa-solid fa-robot"></i> 수집 즉시 AI 심층 리포트 생성 (Gemma 4)
+              </label>
+            </div>
+
+            <div class="options-right">
+              <div class="form-group-inline">
+                <label for="commentLimit">최대 댓글 수:</label>
+                <select id="commentLimit" class="form-select">
+                  <option value="50">50개 (초고속)</option>
+                  <option value="100" selected>100개 (권장)</option>
+                  <option value="200">200개 (상세)</option>
+                </select>
+              </div>
+              <div class="form-group-inline">
+                <label for="playlistLimit">재생목록 영상 수:</label>
+                <select id="playlistLimit" class="form-select">
+                  <option value="5">5개</option>
+                  <option value="10" selected>10개</option>
+                  <option value="20">20개</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </form>
+
+        <!-- 알림 메시지 영역 -->
+        <div id="alertBox" class="alert-box" style="display: none;"></div>
+      </section>
+
+      <!-- 방금 분석된 결과 카드 영역 -->
+      <section id="recentResultSection" class="recent-result-section" style="display: none;">
+        <div class="section-header">
+          <h3><i class="fa-solid fa-circle-check text-success"></i> 방금 수집된 분석 결과</h3>
+          <span id="resultCountBadge" class="badge">1건 완료</span>
+        </div>
+        <div id="recentResultsContainer" class="results-grid"></div>
+      </section>
+
+      <!-- 저장된 메타데이터 히스토리 테이블 -->
+      <section class="card history-section">
+        <div class="history-header">
+          <div class="title-with-count">
+            <h3><i class="fa-solid fa-database"></i> 저장된 영상 메타데이터 목록</h3>
+            <span id="totalHistoryCount" class="badge badge-accent">0개 영상</span>
+          </div>
+          <div class="history-controls">
+            <div class="search-input-wrapper">
+              <i class="fa-solid fa-search"></i>
+              <input type="text" id="historySearch" placeholder="제목, 채널명 검색...">
+            </div>
+            <button id="btnRefreshHistory" class="btn btn-sm btn-outline">
+              <i class="fa-solid fa-rotate-right"></i> 새로고침
+            </button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th width="70">썸네일</th>
+                <th>영상 제목 & 채널 (구독자수)</th>
+                <th width="85">재생시간</th>
+                <th width="105">조회수</th>
+                <th width="90">좋아요</th>
+                <th width="95">댓글 (수집)</th>
+                <th width="95">AI 리포트</th>
+                <th width="95">업로드일</th>
+                <th width="140">상세 확인 & 작업</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr>
+                <td colspan="9" class="text-center py-4 text-muted">
+                  수집된 데이터가 없습니다. 상단에서 URL을 입력해 분석을 시작하세요.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <!-- 상세 모달창 (메타데이터 탭을 기본으로 배치) -->
+    <div id="detailModal" class="modal-overlay" style="display: none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3 id="modalTitle">영상 상세 분석 데이터</h3>
+          <button class="modal-close" id="btnCloseModal"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        
+        <!-- 모달 탭 메뉴 (메타데이터를 첫 번째 탭으로) -->
+        <div class="modal-tabs">
+          <button class="tab-btn active" data-tab="tabOverview"><i class="fa-solid fa-chart-pie"></i> 기본 메타데이터 요약</button>
+          <button class="tab-btn" data-tab="tabComments"><i class="fa-solid fa-comments"></i> 댓글 여론 분석 (<span id="modalCommentCount">0</span>)</button>
+          <button class="tab-btn" data-tab="tabTranscript"><i class="fa-solid fa-closed-captioning"></i> 자막 전문 (Transcript)</button>
+          <button class="tab-btn" data-tab="tabAiReport"><i class="fa-solid fa-robot" style="color:#a78bfa;"></i> AI 심층 분석 리포트</button>
+          <button class="tab-btn" data-tab="tabChapters"><i class="fa-solid fa-list-ol"></i> 챕터 (<span id="modalChapterCount">0</span>)</button>
+          <button class="tab-btn" data-tab="tabRawJson"><i class="fa-solid fa-code"></i> 원본 JSON</button>
+        </div>
+
+        <div class="modal-body" id="modalBody">
+          <!-- 탭 1: 기본 메타데이터 요약 -->
+          <div id="tabOverview" class="tab-pane active"></div>
+          <!-- 탭 2: 댓글 여론 분석 -->
+          <div id="tabComments" class="tab-pane"></div>
+          <!-- 탭 3: 자막 전문 -->
+          <div id="tabTranscript" class="tab-pane"></div>
+          <!-- 탭 4: AI 분석 리포트 -->
+          <div id="tabAiReport" class="tab-pane"></div>
+          <!-- 탭 5: 챕터 목록 -->
+          <div id="tabChapters" class="tab-pane"></div>
+          <!-- 탭 6: 원본 JSON -->
+          <div id="tabRawJson" class="tab-pane"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 하단 상태 바 -->
+    <footer class="app-footer">
+      <span><i class="fa-solid fa-bolt"></i> yt-dlp 메타데이터 & LM Studio Gemma 4 AI 분석기</span>
+      <span>저장 위치: <code>./data/</code> (JSON, CSV, _리포트.txt)</span>
+    </footer>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
