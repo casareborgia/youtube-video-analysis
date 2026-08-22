@@ -657,6 +657,12 @@ class PromptExportRequest(BaseModel):
     format: str = "autoflow_txt"  # autoflow_txt | csv | json
     video_title: Optional[str] = "prompt_batch"
 
+@app.get("/api/prompt/topics")
+async def get_prompt_topics():
+    """이미 분석 완료된 영상들의 주제 및 리포트 요약 목록 제공"""
+    topics = PromptGenerator.get_analyzed_topics_list(DATA_DIR)
+    return {"status": "success", "data": topics}
+
 @app.get("/api/prompt/options")
 async def get_prompt_options():
     """프롬프트 생성기에서 선택 가능한 모델, 앵글, 조명, 스타일 옵션 제공"""

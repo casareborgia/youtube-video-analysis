@@ -183,14 +183,20 @@
           <div class="card studio-controls-panel">
             <div class="panel-header">
               <i class="fa-solid fa-sliders"></i>
-              <h3>프롬프트 설정 & 모디파이어</h3>
+              <h3>주제별 프롬프트 설정 (Ollama Gemma 4)</h3>
             </div>
 
             <div class="control-group">
-              <label for="promptVideoSelect"><i class="fa-solid fa-video"></i> 분석 대상 영상 선택</label>
+              <label for="promptVideoSelect"><i class="fa-solid fa-list-check"></i> 분석된 영상 주제 (Topic) 선택</label>
               <select id="promptVideoSelect" class="form-select">
-                <option value="">-- 분석된 영상 선택 --</option>
+                <option value="">-- 분석 완료된 주제 선택 --</option>
               </select>
+            </div>
+
+            <!-- 선택된 주제 요약 프리뷰 -->
+            <div id="topicSummaryCard" class="topic-summary-preview" style="display: none;">
+              <div class="topic-summary-title"><i class="fa-solid fa-brain" style="color:var(--ai-purple)"></i> 도출된 분석 리포트 반영</div>
+              <p id="topicSummaryText" class="topic-summary-text"></p>
             </div>
 
             <div class="control-group">

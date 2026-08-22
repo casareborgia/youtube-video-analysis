@@ -708,6 +708,10 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnExportJsonPrompts = document.getElementById('btnExportJsonPrompts');
 
   let currentGeneratedBatch = null;
+  let promptTopicsData = [];
+
+  const topicSummaryCard = document.getElementById('topicSummaryCard');
+  const topicSummaryText = document.getElementById('topicSummaryText');
 
   // 메인 네비게이션 탭 전환
   function switchMainView(viewName) {
@@ -716,7 +720,7 @@ document.addEventListener('DOMContentLoaded', () => {
       navTabAnalysis.classList.remove('active');
       viewPromptStudio.style.display = 'block';
       viewAnalysis.style.display = 'none';
-      updatePromptVideoSelect();
+      loadPromptTopics();
     } else {
       navTabAnalysis.classList.add('active');
       navTabPromptStudio.classList.remove('active');
@@ -728,26 +732,59 @@ document.addEventListener('DOMContentLoaded', () => {
   navTabAnalysis.addEventListener('click', () => switchMainView('analysis'));
   navTabPromptStudio.addEventListener('click', () => switchMainView('promptStudio'));
 
-  // 프롬프트 스튜디오 영상 선택 셀렉트박스 갱신
-  function updatePromptVideoSelect() {
-    if (!promptVideoSelect) return;
-    const prevVal = promptVideoSelect.value;
-    promptVideoSelect.innerHTML = '<option value="">-- 분석된 영상 선택 --</option>';
-    
-    historyData.forEach(item => {
-      const opt = document.createElement('option');
-      opt.value = item.id;
-      opt.textContent = `[${item.id}] ${item.title || '제목 없음'}`;
-      if (item.id === prevVal) opt.selected = true;
-      promptVideoSelect.appendChild(opt);
-    });
+  // 분석된 주제(Topic) 목록 로드
+  async function loadPromptTopics() {
+    try {
+      const res = await fetch('/api/prompt/topics');
+      const resData = await res.json();
+      if (resData.status === 'success') {
+        promptTopicsData = resData.data;
+        renderPromptTopicOptions();
+      }
+    } catch (e) {
+      console.error('주제 목록 로드 실패:', e);
+    }
   }
 
+  function renderPromptTopicOptions(selectedId = null) {
+    if (!promptVideoSelect) return;
+    promptVideoSelect.innerHTML = '<option value="">-- 분석 완료된 영상 주제 (Topic) 선택 --</option>';
+    
+    promptTopicsData.forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item.video_id;
+      const reportBadge = item.has_report ? ' [AI리포트완료]' : '';
+      opt.textContent = `🎯 ${item.title || item.video_id}${reportBadge}`;
+      if (selectedId && item.video_id === selectedId) opt.selected = true;
+      promptVideoSelect.appendChild(opt);
+    });
+
+    onPromptTopicChange();
+  }
+
+  function onPromptTopicChange() {
+    const selectedId = promptVideoSelect.value;
+    const item = promptTopicsData.find(t => t.video_id === selectedId);
+    if (item && item.report_summary) {
+      topicSummaryText.textContent = item.report_summary;
+      topicSummaryCard.style.display = 'flex';
+    } else if (item && item.title) {
+      topicSummaryText.textContent = `영상 제목: ${item.title} (채널: ${item.channel})`;
+      topicSummaryCard.style.display = 'flex';
+    } else {
+      topicSummaryCard.style.display = 'none';
+    }
+  }
+
+  promptVideoSelect.addEventListener('change', onPromptTopicChange);
+
   // 외부에서 특정 영상으로 프롬프트 스튜디오 열기
-  window.openPromptStudioForVideo = function(videoId) {
+  window.openPromptStudioForVideo = async function(videoId) {
     switchMainView('promptStudio');
+    await loadPromptTopics();
     if (promptVideoSelect) {
       promptVideoSelect.value = videoId;
+      onPromptTopicChange();
       triggerPromptGeneration();
     }
   };

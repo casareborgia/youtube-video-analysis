@@ -1,8 +1,7 @@
 """
 AI Prompt Studio & AutoFlow-Pro Integration Engine with Ollama Gemma 4
-유튜브 영상 분석 데이터(자막 SRT, 메타데이터, AI 리포트)를 로컬 Ollama(gemma4:latest)에 전달하여
-Google Flow (Veo/Imagen), Midjourney, Runway, Kling AI 등에 최적화된
-고품질 시네마틱 영상/이미지 프롬프트를 자동 생성하는 엔진입니다.
+유튜브 분석 결과(AI 리포트, 메타데이터, 자막, 서사 구조)를 바탕으로
+Ollama Gemma 4가 주제(Topic) 기반의 씬별 시네마틱 프롬프트를 자동 생성하는 엔진입니다.
 """
 
 import os
@@ -117,7 +116,55 @@ SUPPORTED_MODELS = {
 }
 
 class PromptGenerator:
-    """Ollama Gemma 4 기반 유튜브 분석 데이터 -> AI 영상 생성 프롬프트 생성기"""
+    """분석 데이터(리포트/자막/메타데이터) 기반 Ollama Gemma 4 프롬프트 생성기"""
+
+    @staticmethod
+    def get_analyzed_topics_list(data_dir: Path) -> List[Dict[str, Any]]:
+        """data 폴더에 이미 분석 완료된 영상들의 주제 및 메타데이터 목록 추출"""
+        topics = []
+        if not data_dir.exists():
+            return topics
+
+        for meta_path in sorted(data_dir.glob("*_metadata.json")):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    meta = json.load(f)
+                    
+                video_id = meta.get("id", meta_path.stem.replace("_metadata", ""))
+                title = meta.get("title", video_id)
+                channel = meta.get("channel", "")
+                
+                # AI 리포트 존재 여부 및 요약 추출
+                report_path = data_dir / f"{video_id}_리포트.txt"
+                has_report = report_path.exists()
+                report_summary = ""
+                if has_report:
+                    try:
+                        with open(report_path, "r", encoding="utf-8") as rf:
+                            lines = [l.strip() for l in rf.readlines() if l.strip() and not l.startswith("#")]
+                            report_summary = " ".join(lines[:3])[:120] + "..."
+                    except Exception:
+                        pass
+                
+                # 자막 존재 여부
+                srt_path = data_dir / f"{video_id}.ko.srt"
+                has_srt = srt_path.exists()
+                
+                topics.append({
+                    "video_id": video_id,
+                    "title": title,
+                    "channel": channel,
+                    "has_report": has_report,
+                    "has_srt": has_srt,
+                    "report_summary": report_summary,
+                    "duration": meta.get("duration_string") or meta.get("duration_formatted", ""),
+                    "tags": meta.get("tags", [])[:5],
+                    "topic_label": f"[{channel}] {title}"
+                })
+            except Exception:
+                continue
+
+        return topics
 
     @staticmethod
     def query_ollama(prompt: str, system_prompt: str = "", model: str = DEFAULT_OLLAMA_MODEL) -> str:
@@ -199,11 +246,11 @@ class PromptGenerator:
         target_scene_count: int = 6,
         summary_text: str = ""
     ) -> List[Dict[str, Any]]:
-        """자막 엔트리를 타임라인 기준 N개의 씬(Scene)으로 분할"""
+        """자막 엔트리 또는 요약 리포트 서사를 바탕으로 N개의 씬(Scene) 분할"""
         if not srt_entries:
             sentences = [s.strip() for s in re.split(r'[.\n]+', summary_text) if len(s.strip()) > 10]
             if not sentences:
-                sentences = ["영상 인트로 장면", "주제 설명 및 핵심 내용 전개", "핵심 하이라이트 및 클라이맥스", "엔딩 및 마무리"]
+                sentences = ["영상 인트로 훅 장면", "주제 설명 및 심층 분석 전개", "핵심 하이라이트 및 클라이맥스", "인사이트 요약 및 엔딩"]
             
             scenes = []
             chunk_size = max(1, len(sentences) // target_scene_count)
@@ -263,41 +310,44 @@ class PromptGenerator:
         aspect_ratio: str = "16:9",
         custom_subject: str = ""
     ) -> Dict[str, Any]:
-        """Ollama Gemma 4를 호출하여 영상의 각 씬별 고품질 AI 프롬프트 일괄 생성"""
+        """분석 데이터(AI 리포트, 자막, 메타데이터)를 반영하여 Ollama Gemma 4가 시네마틱 프롬프트 생성"""
         srt_file = data_dir / f"{video_id}.ko.srt"
         meta_file = data_dir / f"{video_id}_metadata.json"
         report_file = data_dir / f"{video_id}_리포트.txt"
         
         title = video_id
         srt_content = ""
-        summary_text = ""
+        report_content = ""
+        description = ""
+        chapters = []
         
         if meta_file.exists():
             try:
                 with open(meta_file, "r", encoding="utf-8") as f:
                     meta = json.load(f)
                     title = meta.get("title", video_id)
-                    summary_text = meta.get("description", "")
+                    description = meta.get("description", "")
+                    chapters = meta.get("chapters", [])
             except Exception:
                 pass
                 
+        if report_file.exists():
+            try:
+                with open(report_file, "r", encoding="utf-8") as f:
+                    report_content = f.read()
+            except Exception:
+                pass
+
         if srt_file.exists():
             try:
                 with open(srt_file, "r", encoding="utf-8") as f:
                     srt_content = f.read()
             except Exception:
                 pass
-                
-        if report_file.exists() and not summary_text:
-            try:
-                with open(report_file, "r", encoding="utf-8") as f:
-                    summary_text = f.read()
-            except Exception:
-                pass
 
         # 1. 씬 분할
         srt_entries = cls.parse_srt(srt_content)
-        scenes = cls.segment_into_scenes(srt_entries, target_scene_count=scene_count, summary_text=summary_text)
+        scenes = cls.segment_into_scenes(srt_entries, target_scene_count=scene_count, summary_text=report_content or description)
         
         angle_info = CAMERA_ANGLES.get(angle_key, CAMERA_ANGLES["cinematic_wide"])
         lighting_info = LIGHTING_PRESETS.get(lighting_key, LIGHTING_PRESETS["golden_hour"])
@@ -305,9 +355,10 @@ class PromptGenerator:
         
         # 2. Ollama Gemma 4 프롬프트 생성 요청 구성
         system_prompt = (
-            "You are a world-class Hollywood AI Cinematographer and Visual Prompt Engineer. "
-            "Your task is to transform Korean YouTube scene narrations into breathtaking, highly detailed English visual prompts for AI video and image generators (Google Flow / Veo, Midjourney, Kling, Runway). "
-            "You must return a valid JSON array of objects without any markdown formatting or commentary."
+            "You are a master Hollywood AI Cinematographer and Visual Storyboard Director. "
+            "You are given comprehensive YouTube analysis data including AI deep report, narrative breakdown, timestamps, and scene narrations. "
+            "Your mission is to transform each scene into a stunning, photorealistic, cinematic English prompt for state-of-the-art video & image generation models (Google Flow / Veo, Midjourney, Runway Gen-3, Kling). "
+            "Return ONLY a pure valid JSON array of objects without commentary or markdown codeblocks."
         )
 
         scenes_context = []
@@ -319,21 +370,25 @@ class PromptGenerator:
             })
 
         user_prompt = f"""
-Video Title: {title}
-Target AI Model: {model} (Google Flow / AutoFlow-Pro compatible)
-Target Aspect Ratio: {aspect_ratio}
-Fixed Subject / Character Consistency: {custom_subject or "None"}
-Default Camera Direction: {angle_info['prompt']}
-Lighting & Atmosphere: {lighting_info['prompt']}
-Visual Render Style: {style_info['prompt']}
+[Video Analysis Data & Topic]
+- Video Title: {title}
+- Target AI Model: {model}
+- Target Aspect Ratio: {aspect_ratio}
+- Fixed Subject Consistency: {custom_subject or "None"}
+- Camera Direction: {angle_info['prompt']}
+- Lighting & Mood: {lighting_info['prompt']}
+- Visual Style: {style_info['prompt']}
 
-Scenes to convert:
+[Extracted AI Analysis Insights & Storyline]
+{report_content[:1500] if report_content else description[:800]}
+
+[Scene Breakdowns to Convert]
 {json.dumps(scenes_context, ensure_ascii=False, indent=2)}
 
-Instructions:
-1. For each scene, create a rich, photorealistic, cinematic English prompt describing the visual action, subject, camera movement, lighting, and environment.
-2. If Target AI Model is 'midjourney', attach '--ar {aspect_ratio} --v 6.1 --style raw' at the end of prompt.
-3. If Target AI Model is 'google_flow', structure as: 'Cinematic video scene of [Subject & Action]. Camera work: [Camera movement & angle]. Lighting & Atmosphere: [Lighting details]. Style: [Render & Lens]. Aspect ratio: {aspect_ratio}.'
+[Output Requirements]
+1. For each scene, synthesize a vivid, ultra-detailed cinematic visual prompt describing the subject action, environment, camera movement, lighting, and composition based on the analysis insights.
+2. If Target AI Model is 'midjourney', append '--ar {aspect_ratio} --v 6.1 --style raw' at the end.
+3. If Target AI Model is 'google_flow', format as: 'Cinematic video scene of [Subject & Action]. Camera work: [Camera movement & angle]. Lighting & Atmosphere: [Lighting details]. Style: [Render & Lens]. Aspect ratio: {aspect_ratio}.'
 4. Provide 3-4 visual keyword tags in Korean for each scene.
 5. Return ONLY a pure JSON array in this exact format:
 [
@@ -357,32 +412,29 @@ Instructions:
         
         generated_scenes = []
         if ollama_response:
-            # JSON 파싱 시도 (코드블록 ```json ... ``` 제거 처리)
             cleaned_resp = re.sub(r'^```json\s*', '', ollama_response.strip(), flags=re.MULTILINE)
             cleaned_resp = re.sub(r'\s*```$', '', cleaned_resp.strip(), flags=re.MULTILINE)
             try:
-                # JSON 배열 추출
                 match = re.search(r'\[\s*\{.*\}\s*\]', cleaned_resp, re.DOTALL)
                 if match:
                     parsed = json.loads(match.group(0))
                     if isinstance(parsed, list) and len(parsed) > 0:
                         generated_scenes = parsed
             except Exception as pe:
-                print(f"[JSON Parse Error] {pe}, Raw: {ollama_response[:200]}")
+                print(f"[JSON Parse Error] {pe}")
 
-        # 4. Ollama 응답 파싱 실패 또는 미응답 시 고품질 Fallback 생성
+        # 4. Fallback 생성 (Ollama 응답 파싱 실패 시에도 대본과 리포트 반영)
         if not generated_scenes:
             angle_keys = list(CAMERA_ANGLES.keys())
             for idx, sc in enumerate(scenes):
                 cur_angle_key = angle_keys[idx % len(angle_keys)] if angle_key == "auto_variety" else angle_key
                 cur_angle = CAMERA_ANGLES.get(cur_angle_key, angle_info)
                 
-                # 대본 기반 영문 시네마틱 묘사 생성
-                subject_desc = custom_subject if custom_subject else "dramatic cinematic scene capturing the core narrative"
+                subject_desc = custom_subject if custom_subject else f"cinematic scene depicting {title} narrative"
                 if model == "midjourney":
                     final_prompt = f"Cinematic shot of {subject_desc}, {cur_angle['prompt']}, {lighting_info['prompt']}, {style_info['prompt']} --ar {aspect_ratio} --v 6.1 --style raw"
                 elif model == "runway_kling":
-                    final_prompt = f"Cinematic video clip of {subject_desc}. Smooth camera movement: {cur_angle['prompt']}. Atmosphere: {lighting_info['prompt']}, {style_info['prompt']}. (Aspect ratio: {aspect_ratio}, 4k ultra-high definition)"
+                    final_prompt = f"Cinematic video clip of {subject_desc}. Smooth camera movement: {cur_angle['prompt']}. Atmosphere: {lighting_info['prompt']}, {style_info['prompt']}. (Aspect ratio: {aspect_ratio})"
                 else:
                     final_prompt = (
                         f"Cinematic video scene of {subject_desc}. "
@@ -396,7 +448,7 @@ Instructions:
                     "scene_index": sc["scene_index"],
                     "time_range": sc["time_range"],
                     "narration": sc["narration"],
-                    "keywords": ["주요장면", "시네마틱", "고화질"],
+                    "keywords": ["주제분석", "시네마틱", "스토리보드"],
                     "prompt": final_prompt,
                     "negative_prompt": "blurry, low resolution, artifacts, distorted features, bad anatomy, floating text",
                     "angle": cur_angle["name"],
@@ -413,6 +465,7 @@ Instructions:
             "model": model,
             "aspect_ratio": aspect_ratio,
             "engine": "Ollama Gemma 4 AI",
+            "has_report_applied": bool(report_content),
             "scenes": generated_scenes
         }
 
