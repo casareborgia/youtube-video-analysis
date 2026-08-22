@@ -20,16 +20,27 @@
           <i class="fa-brands fa-youtube"></i>
         </div>
         <div class="brand-text">
-          <h1>YouTube 영상 분석 스튜디오</h1>
-          <span class="badge-version">yt-dlp Engine • LM Studio Gemma 4 AI</span>
+          <h1>YouTube 영상 분석 & 프롬프트 스튜디오</h1>
+          <span class="badge-version">yt-dlp Engine • Google Flow / AutoFlow-Pro 연동</span>
         </div>
       </div>
+      
+      <!-- 네비게이션 탭 -->
+      <nav class="main-nav-tabs">
+        <button id="navTabAnalysis" class="nav-tab active">
+          <i class="fa-solid fa-chart-line"></i> 영상 분석 대시보드
+        </button>
+        <button id="navTabPromptStudio" class="nav-tab">
+          <i class="fa-solid fa-wand-magic-sparkles"></i> AI 프롬프트 스튜디오 <span class="badge-new">NEW</span>
+        </button>
+      </nav>
+
       <div class="header-actions">
         <button id="btnOpenFolder" class="btn btn-outline" title="Finder에서 data 폴더 열기">
           <i class="fa-regular fa-folder-open"></i> 저장 폴더 열기
         </button>
         <button id="btnExportCsv" class="btn btn-outline" title="전체 수집 메타데이터 CSV 다운로드">
-          <i class="fa-solid fa-file-csv"></i> 전체 CSV 내보내기
+          <i class="fa-solid fa-file-csv"></i> 전체 CSV
         </button>
         <button id="btnThemeToggle" class="btn btn-icon" title="테마 변경">
           <i class="fa-solid fa-moon"></i>
@@ -39,128 +50,268 @@
 
     <!-- 메인 컨텐츠 영역 -->
     <main class="main-content">
-      <!-- 검색 및 분석 입력 섹션 -->
-      <section class="card input-section">
-        <div class="section-title">
-          <i class="fa-solid fa-wand-magic-sparkles"></i>
-          <h2>유튜브 링크 하나로 완전 분석</h2>
-          <span class="sub-text">메타데이터 + 한국어 자막(SRT) + 여론 상위 댓글 + <strong>LM Studio 로컬 AI(Gemma 4)</strong> 종합 분석</span>
-        </div>
+      <!-- 뷰 1: 영상 분석 대시보드 뷰 -->
+      <div id="viewAnalysis" class="view-panel active">
+        <!-- 검색 및 분석 입력 섹션 -->
+        <section class="card input-section">
+          <div class="section-title">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            <h2>유튜브 링크 하나로 완전 분석</h2>
+            <span class="sub-text">메타데이터 + 한국어 자막(SRT) + 여론 상위 댓글 + <strong>LM Studio 로컬 AI(Gemma 4)</strong> 종합 분석</span>
+          </div>
 
-        <form id="analyzeForm" class="analyze-form">
-          <div class="input-group">
-            <div class="input-icon">
-              <i class="fa-brands fa-youtube"></i>
+          <form id="analyzeForm" class="analyze-form">
+            <div class="input-group">
+              <div class="input-icon">
+                <i class="fa-brands fa-youtube"></i>
+              </div>
+              <input 
+                type="text" 
+                id="videoUrl" 
+                class="form-control" 
+                placeholder="YouTube 영상, 쇼츠, 재생목록 URL을 입력하세요 (예: https://www.youtube.com/watch?v=...)" 
+                required
+              >
+              <button type="submit" id="btnAnalyze" class="btn btn-primary">
+                <span class="btn-text"><i class="fa-solid fa-magnifying-glass-chart"></i> 메타데이터 & 댓글 수집</span>
+                <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 분석 중...</span>
+              </button>
             </div>
-            <input 
-              type="text" 
-              id="videoUrl" 
-              class="form-control" 
-              placeholder="YouTube 영상, 쇼츠, 재생목록 URL을 입력하세요 (예: https://www.youtube.com/watch?v=...)" 
-              required
-            >
-            <button type="submit" id="btnAnalyze" class="btn btn-primary">
-              <span class="btn-text"><i class="fa-solid fa-magnifying-glass-chart"></i> 메타데이터 & 댓글 수집</span>
-              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 분석 중...</span>
+
+            <div class="options-row">
+              <div class="options-left">
+                <label class="checkbox-label">
+                  <input type="checkbox" id="chkSubtitles" checked>
+                  <span class="custom-checkbox"></span>
+                  자막(한국어 CC) 수집
+                </label>
+                <label class="checkbox-label">
+                  <input type="checkbox" id="chkComments" checked>
+                  <span class="custom-checkbox"></span>
+                  댓글(Comments) 수집 & 여론 분석
+                </label>
+                <label class="checkbox-label" style="color: #a78bfa; font-weight:600;">
+                  <input type="checkbox" id="chkAutoAiReport">
+                  <span class="custom-checkbox"></span>
+                  <i class="fa-solid fa-robot"></i> 수집 즉시 AI 심층 리포트 생성 (Gemma 4)
+                </label>
+              </div>
+
+              <div class="options-right">
+                <div class="form-group-inline">
+                  <label for="commentLimit">최대 댓글 수:</label>
+                  <select id="commentLimit" class="form-select">
+                    <option value="50">50개 (초고속)</option>
+                    <option value="100" selected>100개 (권장)</option>
+                    <option value="200">200개 (상세)</option>
+                  </select>
+                </div>
+                <div class="form-group-inline">
+                  <label for="playlistLimit">재생목록 영상 수:</label>
+                  <select id="playlistLimit" class="form-select">
+                    <option value="5">5개</option>
+                    <option value="10" selected>10개</option>
+                    <option value="20">20개</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </form>
+
+          <!-- 알림 메시지 영역 -->
+          <div id="alertBox" class="alert-box" style="display: none;"></div>
+        </section>
+
+        <!-- 방금 분석된 결과 카드 영역 -->
+        <section id="recentResultSection" class="recent-result-section" style="display: none;">
+          <div class="section-header">
+            <h3><i class="fa-solid fa-circle-check text-success"></i> 방금 수집된 분석 결과</h3>
+            <span id="resultCountBadge" class="badge">1건 완료</span>
+          </div>
+          <div id="recentResultsContainer" class="results-grid"></div>
+        </section>
+
+        <!-- 저장된 메타데이터 히스토리 테이블 -->
+        <section class="card history-section">
+          <div class="history-header">
+            <div class="title-with-count">
+              <h3><i class="fa-solid fa-database"></i> 저장된 영상 메타데이터 목록</h3>
+              <span id="totalHistoryCount" class="badge badge-accent">0개 영상</span>
+            </div>
+            <div class="history-controls">
+              <div class="search-input-wrapper">
+                <i class="fa-solid fa-search"></i>
+                <input type="text" id="historySearch" placeholder="제목, 채널명 검색...">
+              </div>
+              <button id="btnRefreshHistory" class="btn btn-sm btn-outline">
+                <i class="fa-solid fa-rotate-right"></i> 새로고침
+              </button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th width="70">썸네일</th>
+                  <th>영상 제목 & 채널 (구독자수)</th>
+                  <th width="85">재생시간</th>
+                  <th width="105">조회수</th>
+                  <th width="90">좋아요</th>
+                  <th width="95">댓글 (수집)</th>
+                  <th width="95">AI 리포트</th>
+                  <th width="95">업로드일</th>
+                  <th width="170">상세 확인 & 프롬프트</th>
+                </tr>
+              </thead>
+              <tbody id="historyTableBody">
+                <tr>
+                  <td colspan="9" class="text-center py-4 text-muted">
+                    수집된 데이터가 없습니다. 상단에서 URL을 입력해 분석을 시작하세요.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- 뷰 2: AI 프롬프트 스튜디오 (AutoFlow-Pro 연동 뷰) -->
+      <div id="viewPromptStudio" class="view-panel" style="display: none;">
+        <section class="prompt-studio-layout">
+          <!-- 좌측: 파라미터 및 모디파이어 설정 패널 -->
+          <div class="card studio-controls-panel">
+            <div class="panel-header">
+              <i class="fa-solid fa-sliders"></i>
+              <h3>프롬프트 설정 & 모디파이어</h3>
+            </div>
+
+            <div class="control-group">
+              <label for="promptVideoSelect"><i class="fa-solid fa-video"></i> 분석 대상 영상 선택</label>
+              <select id="promptVideoSelect" class="form-select">
+                <option value="">-- 분석된 영상 선택 --</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label for="promptTargetModel"><i class="fa-solid fa-robot"></i> 타겟 생성 AI 모델</label>
+              <select id="promptTargetModel" class="form-select">
+                <option value="google_flow" selected>Google Flow (Veo 2/3, Imagen 3/4) - AutoFlow 호환</option>
+                <option value="midjourney">Midjourney v6.1 (--ar, --v 6.1)</option>
+                <option value="runway_kling">Runway Gen-3 / Kling AI / Luma</option>
+              </select>
+            </div>
+
+            <div class="control-row">
+              <div class="control-group half">
+                <label for="promptSceneCount"><i class="fa-solid fa-film"></i> 씬(Scene) 분할 수</label>
+                <select id="promptSceneCount" class="form-select">
+                  <option value="4">4개 씬</option>
+                  <option value="6" selected>6개 씬 (표준)</option>
+                  <option value="8">8개 씬 (상세)</option>
+                  <option value="12">12개 씬 (풀스토리)</option>
+                </select>
+              </div>
+              <div class="control-group half">
+                <label for="promptAspectRatio"><i class="fa-solid fa-crop-simple"></i> 화면 비율 (Aspect)</label>
+                <select id="promptAspectRatio" class="form-select">
+                  <option value="16:9" selected>16:9 (Landscape - YouTube)</option>
+                  <option value="9:16">9:16 (Portrait - Shorts/Reels)</option>
+                  <option value="1:1">1:1 (Square - Feed)</option>
+                  <option value="21:9">21:9 (Cinemascope)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="control-group">
+              <label for="promptCameraAngle"><i class="fa-solid fa-camera"></i> 카메라 앵글 & 워크 (Angles)</label>
+              <select id="promptCameraAngle" class="form-select">
+                <option value="auto_variety" selected>✨ 씬별 자동 다양화 (Auto Variety)</option>
+                <option value="cinematic_wide">Cinematic Wide Shot (와이드 샷)</option>
+                <option value="medium_shot">Medium Shot (미디엄 샷)</option>
+                <option value="close_up">Cinematic Close-Up (클로즈업)</option>
+                <option value="drone_orbit">Drone 360 Orbit (드론 회전 샷)</option>
+                <option value="low_angle_hero">Low-Angle Hero Shot (로우 앵글)</option>
+                <option value="dolly_zoom">Dolly Zoom (버티고 샷)</option>
+                <option value="pov_action">First-Person POV (1인칭 시점)</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label for="promptLighting"><i class="fa-solid fa-sun"></i> 조명 & 분위기 (Lighting)</label>
+              <select id="promptLighting" class="form-select">
+                <option value="golden_hour" selected>Golden Hour (골든 아워)</option>
+                <option value="cyberpunk_neon">Cyberpunk Neon (네온 조명)</option>
+                <option value="volumetric_fog">Volumetric Fog & God Rays (신비로운 안개)</option>
+                <option value="dramatic_studio">Dramatic Studio Lighting (스튜디오 조명)</option>
+                <option value="dark_documentary">Dark Moody Documentary (다큐멘터리 무드)</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label for="promptStyle"><i class="fa-solid fa-palette"></i> 시각 렌더 스타일 (Visual Style)</label>
+              <select id="promptStyle" class="form-select">
+                <option value="photorealistic_8k" selected>Photorealistic 8K (실사 영화풍)</option>
+                <option value="film_35mm">35mm Vintage Film (빈티지 필름)</option>
+                <option value="unreal_engine_5">Unreal Engine 5 Render (3D 그래픽)</option>
+                <option value="anime_cinematic">Cinematic Anime (신카이 마코토 풍)</option>
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label for="promptCustomSubject"><i class="fa-solid fa-user-astronaut"></i> 피사체/캐릭터 일관성 키워드 (선택)</label>
+              <input type="text" id="promptCustomSubject" class="form-control" placeholder="예: Asian cyber detective in black trenchcoat">
+              <span class="helper-text">모든 씬에 고정 반영될 핵심 캐릭터 또는 피사체 묘사</span>
+            </div>
+
+            <button id="btnGeneratePrompts" class="btn btn-primary btn-block">
+              <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 씬별 프롬프트 자동 생성</span>
+              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 생성 중...</span>
             </button>
           </div>
 
-          <div class="options-row">
-            <div class="options-left">
-              <label class="checkbox-label">
-                <input type="checkbox" id="chkSubtitles" checked>
-                <span class="custom-checkbox"></span>
-                자막(한국어 CC) 수집
-              </label>
-              <label class="checkbox-label">
-                <input type="checkbox" id="chkComments" checked>
-                <span class="custom-checkbox"></span>
-                댓글(Comments) 수집 & 여론 분석
-              </label>
-              <label class="checkbox-label" style="color: #a78bfa; font-weight:600;">
-                <input type="checkbox" id="chkAutoAiReport">
-                <span class="custom-checkbox"></span>
-                <i class="fa-solid fa-robot"></i> 수집 즉시 AI 심층 리포트 생성 (Gemma 4)
-              </label>
-            </div>
-
-            <div class="options-right">
-              <div class="form-group-inline">
-                <label for="commentLimit">최대 댓글 수:</label>
-                <select id="commentLimit" class="form-select">
-                  <option value="50">50개 (초고속)</option>
-                  <option value="100" selected>100개 (권장)</option>
-                  <option value="200">200개 (상세)</option>
-                </select>
+          <!-- 우측: 씬별 타임라인 프롬프트 뷰어 및 내보내기 툴바 -->
+          <div class="studio-content-panel">
+            <div class="card studio-results-header">
+              <div class="header-left">
+                <h3 id="studioVideoTitle"><i class="fa-solid fa-clapperboard"></i> 씬별 스토리보드 & 프롬프트 목록</h3>
+                <span id="studioSceneBadge" class="badge badge-accent">영상 선택 대기중</span>
               </div>
-              <div class="form-group-inline">
-                <label for="playlistLimit">재생목록 영상 수:</label>
-                <select id="playlistLimit" class="form-select">
-                  <option value="5">5개</option>
-                  <option value="10" selected>10개</option>
-                  <option value="20">20개</option>
-                </select>
+              <div class="header-actions-group">
+                <button id="btnCopyAllPrompts" class="btn btn-sm btn-outline" title="전체 프롬프트 복사">
+                  <i class="fa-solid fa-copy"></i> 전체 복사
+                </button>
+                <button id="btnExportAutoFlowTxt" class="btn btn-sm btn-success" title="AutoFlow-Pro에서 Import 가능한 .txt 파일로 다운로드">
+                  <i class="fa-solid fa-file-arrow-down"></i> AutoFlow-Pro TXT
+                </button>
+                <button id="btnExportCsvPrompts" class="btn btn-sm btn-outline" title="스마트 작업 관리용 CSV 다운로드">
+                  <i class="fa-solid fa-file-csv"></i> CSV
+                </button>
+                <button id="btnExportJsonPrompts" class="btn btn-sm btn-outline" title="워크플로우 JSON 다운로드">
+                  <i class="fa-solid fa-code"></i> JSON
+                </button>
               </div>
             </div>
-          </div>
-        </form>
 
-        <!-- 알림 메시지 영역 -->
-        <div id="alertBox" class="alert-box" style="display: none;"></div>
-      </section>
-
-      <!-- 방금 분석된 결과 카드 영역 -->
-      <section id="recentResultSection" class="recent-result-section" style="display: none;">
-        <div class="section-header">
-          <h3><i class="fa-solid fa-circle-check text-success"></i> 방금 수집된 분석 결과</h3>
-          <span id="resultCountBadge" class="badge">1건 완료</span>
-        </div>
-        <div id="recentResultsContainer" class="results-grid"></div>
-      </section>
-
-      <!-- 저장된 메타데이터 히스토리 테이블 -->
-      <section class="card history-section">
-        <div class="history-header">
-          <div class="title-with-count">
-            <h3><i class="fa-solid fa-database"></i> 저장된 영상 메타데이터 목록</h3>
-            <span id="totalHistoryCount" class="badge badge-accent">0개 영상</span>
-          </div>
-          <div class="history-controls">
-            <div class="search-input-wrapper">
-              <i class="fa-solid fa-search"></i>
-              <input type="text" id="historySearch" placeholder="제목, 채널명 검색...">
+            <!-- 안내 배너 -->
+            <div class="autoflow-tip-box">
+              <i class="fa-solid fa-circle-info"></i>
+              <div>
+                <strong>AutoFlow-Pro(Google Flow) 연동 팁:</strong> 
+                생성된 <strong>[AutoFlow-Pro TXT]</strong> 파일을 다운로드한 뒤, Chrome 확장프로그램 AutoFlow-Pro의 <em>"Import from .txt"</em>를 클릭해 한 번에 수십 개의 프롬프트를 일괄 제출할 수 있습니다.
+              </div>
             </div>
-            <button id="btnRefreshHistory" class="btn btn-sm btn-outline">
-              <i class="fa-solid fa-rotate-right"></i> 새로고침
-            </button>
-          </div>
-        </div>
 
-        <div class="table-responsive">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th width="70">썸네일</th>
-                <th>영상 제목 & 채널 (구독자수)</th>
-                <th width="85">재생시간</th>
-                <th width="105">조회수</th>
-                <th width="90">좋아요</th>
-                <th width="95">댓글 (수집)</th>
-                <th width="95">AI 리포트</th>
-                <th width="95">업로드일</th>
-                <th width="140">상세 확인 & 작업</th>
-              </tr>
-            </thead>
-            <tbody id="historyTableBody">
-              <tr>
-                <td colspan="9" class="text-center py-4 text-muted">
-                  수집된 데이터가 없습니다. 상단에서 URL을 입력해 분석을 시작하세요.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
+            <!-- 씬 카드 목록 컨테이너 -->
+            <div id="studioScenesContainer" class="scenes-list-container">
+              <div class="empty-state-box">
+                <i class="fa-solid fa-film fa-3x"></i>
+                <p>좌측에서 분석된 영상을 선택하고 <strong>[씬별 프롬프트 자동 생성]</strong> 버튼을 클릭하세요.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
     </main>
 
     <!-- 상세 모달창 (메타데이터 탭을 기본으로 배치) -->
@@ -200,7 +351,7 @@
 
     <!-- 하단 상태 바 -->
     <footer class="app-footer">
-      <span><i class="fa-solid fa-bolt"></i> yt-dlp 메타데이터 & LM Studio Gemma 4 AI 분석기</span>
+      <span><i class="fa-solid fa-bolt"></i> yt-dlp 메타데이터 & Google Flow / AutoFlow-Pro AI 프롬프트 스튜디오</span>
       <span>저장 위치: <code>./data/</code> (JSON, CSV, _리포트.txt)</span>
     </footer>
   </div>
@@ -208,3 +359,4 @@
   <script src="/static/app.js"></script>
 </body>
 </html>
+

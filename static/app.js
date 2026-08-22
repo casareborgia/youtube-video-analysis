@@ -203,6 +203,9 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.status === 'success') {
         historyData = data.data;
         renderHistoryTable(historyData);
+        if (typeof updatePromptVideoSelect === 'function') {
+          updatePromptVideoSelect();
+        }
       }
     } catch (e) {
       console.error('히스토리 로드 실패:', e);
@@ -249,8 +252,8 @@ document.addEventListener('DOMContentLoaded', () => {
             <button class="btn-table-action btn-open-detail" data-id="${item.id}" data-tab="tabOverview" title="메타데이터 확인">
               <i class="fa-solid fa-chart-pie" style="color:var(--primary-color)"></i> 상세
             </button>
-            <button class="btn-table-action btn-open-detail" data-id="${item.id}" data-tab="tabAiReport" title="AI 리포트">
-              <i class="fa-solid fa-robot" style="color:var(--ai-purple)"></i>
+            <button class="btn-table-action btn-open-prompt-studio" data-id="${item.id}" title="AI 프롬프트 생성기 열기" style="color:#60a5fa; border-color:rgba(96,165,250,0.4);">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> 프롬프트
             </button>
             <button class="btn-table-action delete btn-delete" data-id="${item.id}" title="삭제">
               <i class="fa-solid fa-trash-can"></i>
@@ -677,6 +680,269 @@ document.addEventListener('DOMContentLoaded', () => {
     window.open('/api/export/csv', '_blank');
   });
 
+  // ==============================================================
+  // 11. AI 프롬프트 스튜디오 (AutoFlow-Pro 연동) 로직
+  // ==============================================================
+  const navTabAnalysis = document.getElementById('navTabAnalysis');
+  const navTabPromptStudio = document.getElementById('navTabPromptStudio');
+  const viewAnalysis = document.getElementById('viewAnalysis');
+  const viewPromptStudio = document.getElementById('viewPromptStudio');
+
+  const promptVideoSelect = document.getElementById('promptVideoSelect');
+  const promptTargetModel = document.getElementById('promptTargetModel');
+  const promptSceneCount = document.getElementById('promptSceneCount');
+  const promptAspectRatio = document.getElementById('promptAspectRatio');
+  const promptCameraAngle = document.getElementById('promptCameraAngle');
+  const promptLighting = document.getElementById('promptLighting');
+  const promptStyle = document.getElementById('promptStyle');
+  const promptCustomSubject = document.getElementById('promptCustomSubject');
+  const btnGeneratePrompts = document.getElementById('btnGeneratePrompts');
+
+  const studioVideoTitle = document.getElementById('studioVideoTitle');
+  const studioSceneBadge = document.getElementById('studioSceneBadge');
+  const studioScenesContainer = document.getElementById('studioScenesContainer');
+
+  const btnCopyAllPrompts = document.getElementById('btnCopyAllPrompts');
+  const btnExportAutoFlowTxt = document.getElementById('btnExportAutoFlowTxt');
+  const btnExportCsvPrompts = document.getElementById('btnExportCsvPrompts');
+  const btnExportJsonPrompts = document.getElementById('btnExportJsonPrompts');
+
+  let currentGeneratedBatch = null;
+
+  // 메인 네비게이션 탭 전환
+  function switchMainView(viewName) {
+    if (viewName === 'promptStudio') {
+      navTabPromptStudio.classList.add('active');
+      navTabAnalysis.classList.remove('active');
+      viewPromptStudio.style.display = 'block';
+      viewAnalysis.style.display = 'none';
+      updatePromptVideoSelect();
+    } else {
+      navTabAnalysis.classList.add('active');
+      navTabPromptStudio.classList.remove('active');
+      viewAnalysis.style.display = 'block';
+      viewPromptStudio.style.display = 'none';
+    }
+  }
+
+  navTabAnalysis.addEventListener('click', () => switchMainView('analysis'));
+  navTabPromptStudio.addEventListener('click', () => switchMainView('promptStudio'));
+
+  // 프롬프트 스튜디오 영상 선택 셀렉트박스 갱신
+  function updatePromptVideoSelect() {
+    if (!promptVideoSelect) return;
+    const prevVal = promptVideoSelect.value;
+    promptVideoSelect.innerHTML = '<option value="">-- 분석된 영상 선택 --</option>';
+    
+    historyData.forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item.id;
+      opt.textContent = `[${item.id}] ${item.title || '제목 없음'}`;
+      if (item.id === prevVal) opt.selected = true;
+      promptVideoSelect.appendChild(opt);
+    });
+  }
+
+  // 외부에서 특정 영상으로 프롬프트 스튜디오 열기
+  window.openPromptStudioForVideo = function(videoId) {
+    switchMainView('promptStudio');
+    if (promptVideoSelect) {
+      promptVideoSelect.value = videoId;
+      triggerPromptGeneration();
+    }
+  };
+
+  // 프롬프트 생성 요청 함수
+  async function triggerPromptGeneration() {
+    const videoId = promptVideoSelect.value;
+    if (!videoId) {
+      alert('분석된 영상을 선택해주세요.');
+      return;
+    }
+
+    btnGeneratePrompts.disabled = true;
+    btnGeneratePrompts.querySelector('.btn-text').style.display = 'none';
+    btnGeneratePrompts.querySelector('.spinner').style.display = 'inline-block';
+
+    try {
+      const res = await fetch('/api/prompt/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_id: videoId,
+          model: promptTargetModel.value,
+          scene_count: parseInt(promptSceneCount.value, 10),
+          angle_key: promptCameraAngle.value,
+          lighting_key: promptLighting.value,
+          style_key: promptStyle.value,
+          aspect_ratio: promptAspectRatio.value,
+          custom_subject: promptCustomSubject.value.trim()
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || '프롬프트 생성 실패');
+      }
+
+      currentGeneratedBatch = await res.json();
+      renderStudioScenes(currentGeneratedBatch);
+    } catch (err) {
+      alert('프롬프트 생성 오류: ' + err.message);
+    } finally {
+      btnGeneratePrompts.disabled = false;
+      btnGeneratePrompts.querySelector('.btn-text').style.display = 'inline-block';
+      btnGeneratePrompts.querySelector('.spinner').style.display = 'none';
+    }
+  }
+
+  btnGeneratePrompts.addEventListener('click', triggerPromptGeneration);
+
+  // 씬 카드 렌더링
+  function renderStudioScenes(batchData) {
+    if (!batchData || !batchData.scenes || batchData.scenes.length === 0) {
+      studioScenesContainer.innerHTML = `
+        <div class="empty-state-box">
+          <i class="fa-solid fa-triangle-exclamation fa-3x" style="color:var(--warning-color)"></i>
+          <p>생성된 씬 데이터가 없습니다.</p>
+        </div>
+      `;
+      return;
+    }
+
+    studioVideoTitle.innerHTML = `<i class="fa-solid fa-clapperboard"></i> ${escapeHtml(batchData.title)}`;
+    studioSceneBadge.textContent = `총 ${batchData.scenes.length}개 씬 분할 완료 (${batchData.model})`;
+
+    studioScenesContainer.innerHTML = batchData.scenes.map((scene, idx) => `
+      <div class="scene-card" data-index="${idx}">
+        <div class="scene-card-header">
+          <div class="scene-badge-group">
+            <span class="scene-num-badge">Scene #${scene.scene_index}</span>
+            <span class="scene-time-badge"><i class="fa-regular fa-clock"></i> ${scene.time_range}</span>
+          </div>
+          <div class="scene-tag-chips">
+            ${(scene.keywords || []).map(kw => `<span class="tag-chip">#${escapeHtml(kw)}</span>`).join('')}
+          </div>
+        </div>
+
+        <div class="scene-narration-box">
+          <strong><i class="fa-solid fa-quote-left"></i> 자막/대본:</strong> ${escapeHtml(scene.narration)}
+        </div>
+
+        <div class="scene-prompt-editor-area">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <label><i class="fa-solid fa-sparkles"></i> AI 생성 프롬프트 (수정 가능):</label>
+            <button class="btn btn-sm btn-outline btn-copy-single" data-index="${idx}" style="padding:2px 8px; font-size:11px;">
+              <i class="fa-solid fa-copy"></i> 복사
+            </button>
+          </div>
+          <textarea class="prompt-textarea" data-index="${idx}">${escapeHtml(scene.prompt)}</textarea>
+        </div>
+
+        <div class="scene-card-footer">
+          <div class="scene-modifiers-info">
+            <span><i class="fa-solid fa-camera"></i> ${scene.angle}</span>
+            <span><i class="fa-solid fa-sun"></i> ${scene.lighting}</span>
+            <span><i class="fa-solid fa-palette"></i> ${scene.style}</span>
+            <span><i class="fa-solid fa-crop"></i> ${scene.aspect_ratio}</span>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    // 개별 프롬프트 수정 이벤트 바인딩
+    const textareas = studioScenesContainer.querySelectorAll('.prompt-textarea');
+    textareas.forEach(ta => {
+      ta.addEventListener('input', (e) => {
+        const index = parseInt(e.target.dataset.index, 10);
+        if (currentGeneratedBatch && currentGeneratedBatch.scenes[index]) {
+          currentGeneratedBatch.scenes[index].prompt = e.target.value;
+        }
+      });
+    });
+
+    // 개별 복사 버튼
+    const copyBtns = studioScenesContainer.querySelectorAll('.btn-copy-single');
+    copyBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const index = parseInt(btn.dataset.index, 10);
+        const promptText = currentGeneratedBatch.scenes[index].prompt;
+        navigator.clipboard.writeText(promptText).then(() => {
+          const original = btn.innerHTML;
+          btn.innerHTML = '<i class="fa-solid fa-check text-success"></i> 복사됨';
+          setTimeout(() => btn.innerHTML = original, 1500);
+        });
+      });
+    });
+  }
+
+  // 전체 프롬프트 복사
+  btnCopyAllPrompts.addEventListener('click', () => {
+    if (!currentGeneratedBatch || !currentGeneratedBatch.scenes) {
+      alert('먼저 프롬프트를 생성해주세요.');
+      return;
+    }
+    const allText = currentGeneratedBatch.scenes.map(s => s.prompt).join('\n\n');
+    navigator.clipboard.writeText(allText).then(() => {
+      const original = btnCopyAllPrompts.innerHTML;
+      btnCopyAllPrompts.innerHTML = '<i class="fa-solid fa-check text-success"></i> 전체 복사됨!';
+      setTimeout(() => btnCopyAllPrompts.innerHTML = original, 1500);
+    });
+  });
+
+  // 내보내기 헬퍼 함수
+  async function exportPromptBatch(format) {
+    if (!currentGeneratedBatch || !currentGeneratedBatch.scenes) {
+      alert('먼저 프롬프트를 생성해주세요.');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/prompt/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scenes: currentGeneratedBatch.scenes,
+          format: format,
+          video_title: currentGeneratedBatch.title || 'prompt_batch'
+        })
+      });
+
+      if (!res.ok) throw new Error('내보내기 실패');
+
+      const blob = await res.blob();
+      const disposition = res.headers.get('Content-Disposition') || '';
+      let filename = `prompts_${format}_${Date.now()}`;
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      if (match && match[1]) filename = match[1];
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('내보내기 오류: ' + err.message);
+    }
+  }
+
+  btnExportAutoFlowTxt.addEventListener('click', () => exportPromptBatch('autoflow_txt'));
+  btnExportCsvPrompts.addEventListener('click', () => exportPromptBatch('csv'));
+  btnExportJsonPrompts.addEventListener('click', () => exportPromptBatch('json'));
+
+  // 테이블 내 프롬프트 생성 바로가기 이벤트 연동
+  document.addEventListener('click', (e) => {
+    const promptBtn = e.target.closest('.btn-open-prompt-studio');
+    if (promptBtn) {
+      const videoId = promptBtn.dataset.id;
+      window.openPromptStudioForVideo(videoId);
+    }
+  });
+
   // 초기 히스토리 로드
   loadHistory();
 });
+

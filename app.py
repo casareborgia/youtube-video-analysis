@@ -630,6 +630,104 @@ async def delete_metadata(video_id: str):
     save_index(index)
     return {"status": "success", "message": f"{video_id} 관련 모든 데이터가 삭제되었습니다."}
 
+# ==========================================
+# AI 프롬프트 스튜디오 & AutoFlow-Pro 연동 API
+# ==========================================
+from prompt_generator import (
+    PromptGenerator, 
+    CAMERA_ANGLES, 
+    LIGHTING_PRESETS, 
+    STYLE_PRESETS, 
+    SUPPORTED_MODELS
+)
+from fastapi.responses import PlainTextResponse
+
+class PromptGenerateRequest(BaseModel):
+    video_id: str
+    model: str = "google_flow"
+    scene_count: int = 6
+    angle_key: str = "cinematic_wide"
+    lighting_key: str = "golden_hour"
+    style_key: str = "photorealistic_8k"
+    aspect_ratio: str = "16:9"
+    custom_subject: Optional[str] = ""
+
+class PromptExportRequest(BaseModel):
+    scenes: List[Dict[str, Any]]
+    format: str = "autoflow_txt"  # autoflow_txt | csv | json
+    video_title: Optional[str] = "prompt_batch"
+
+@app.get("/api/prompt/options")
+async def get_prompt_options():
+    """프롬프트 생성기에서 선택 가능한 모델, 앵글, 조명, 스타일 옵션 제공"""
+    return {
+        "models": {k: {"name": v["name"], "description": v["description"], "default_aspect": v["default_aspect"]} for k, v in SUPPORTED_MODELS.items()},
+        "camera_angles": CAMERA_ANGLES,
+        "lighting_presets": LIGHTING_PRESETS,
+        "style_presets": STYLE_PRESETS,
+        "aspect_ratios": [
+            {"value": "16:9", "label": "16:9 (Landscape - YouTube / Cinema)"},
+            {"value": "9:16", "label": "9:16 (Portrait - Shorts / Reels / TikTok)"},
+            {"value": "1:1", "label": "1:1 (Square - Instagram Feed)"},
+            {"value": "21:9", "label": "21:9 (Cinemascope - Ultra-wide)"}
+        ]
+    }
+
+@app.post("/api/prompt/generate")
+async def generate_prompts(req: PromptGenerateRequest):
+    """지정한 영상 분석 데이터를 바탕으로 씬별 AI 프롬프트 일괄 생성"""
+    if not req.video_id:
+        raise HTTPException(status_code=400, detail="video_id가 필요합니다.")
+        
+    try:
+        result = PromptGenerator.generate_batch_from_video(
+            video_id=req.video_id,
+            data_dir=DATA_DIR,
+            model=req.model,
+            scene_count=req.scene_count,
+            angle_key=req.angle_key,
+            lighting_key=req.lighting_key,
+            style_key=req.style_key,
+            aspect_ratio=req.aspect_ratio,
+            custom_subject=req.custom_subject or ""
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"프롬프트 생성 실패: {str(e)}")
+
+@app.post("/api/prompt/export")
+async def export_prompts(req: PromptExportRequest):
+    """AutoFlow-Pro 호환 TXT, CSV, JSON 형식으로 내보내기"""
+    if not req.scenes:
+        raise HTTPException(status_code=400, detail="내보낼 씬 데이터가 없습니다.")
+        
+    title_slug = re.sub(r'[^a-zA-Z0-9가-힣_-]', '_', req.video_title or "prompt_batch")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    if req.format == "autoflow_txt":
+        txt_content = PromptGenerator.export_autoflow_txt(req.scenes)
+        filename = f"autoflow_prompts_{title_slug}_{timestamp}.txt"
+        return PlainTextResponse(
+            content=txt_content,
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    elif req.format == "csv":
+        csv_content = PromptGenerator.export_csv_data(req.scenes, req.video_title)
+        filename = f"prompts_smart_task_{title_slug}_{timestamp}.csv"
+        return PlainTextResponse(
+            content=csv_content,
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    else:  # json
+        json_content = json.dumps(req.scenes, ensure_ascii=False, indent=2)
+        filename = f"prompts_workflow_{title_slug}_{timestamp}.json"
+        return PlainTextResponse(
+            content=json_content,
+            media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+
 @app.get("/api/export/csv")
 async def export_csv():
     index = load_index()
@@ -695,3 +793,4 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="127.0.0.1", port=8765, reload=True)
+
