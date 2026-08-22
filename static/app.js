@@ -763,6 +763,15 @@ document.addEventListener('DOMContentLoaded', () => {
     btnGeneratePrompts.disabled = true;
     btnGeneratePrompts.querySelector('.btn-text').style.display = 'none';
     btnGeneratePrompts.querySelector('.spinner').style.display = 'inline-block';
+    
+    // 로딩 인디케이터 렌더링
+    studioScenesContainer.innerHTML = `
+      <div class="empty-state-box" style="border-color:#8b5cf6;">
+        <i class="fa-solid fa-brain fa-spin fa-3x" style="color:var(--ai-purple); animation-duration: 3s;"></i>
+        <div style="font-size:15px; font-weight:700; color:#c4b5fd;">로컬 AI (Ollama Gemma 4) 분석 & 프롬프트 창작 중...</div>
+        <p style="font-size:12px; color:var(--text-muted);">영상 자막의 흐름과 타임코드를 심층 분석하여 헐리우드급 시네마틱 프롬프트를 합성하고 있습니다. (약 10~20초 소요)</p>
+      </div>
+    `;
 
     try {
       const res = await fetch('/api/prompt/generate', {
