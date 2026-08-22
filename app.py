@@ -635,21 +635,17 @@ async def delete_metadata(video_id: str):
 # ==========================================
 from prompt_generator import (
     PromptGenerator, 
-    CAMERA_ANGLES, 
-    LIGHTING_PRESETS, 
     STYLE_PRESETS, 
     SUPPORTED_MODELS
 )
 from fastapi.responses import PlainTextResponse
 
-class PromptGenerateRequest(BaseModel):
-    video_id: str
-    model: str = "google_flow"
+class PromptCustomTopicRequest(BaseModel):
+    topic: str
     scene_count: int = 6
-    angle_key: str = "cinematic_wide"
-    lighting_key: str = "golden_hour"
-    style_key: str = "photorealistic_8k"
+    model: str = "google_flow"
     aspect_ratio: str = "16:9"
+    style_key: str = "photorealistic_8k"
     custom_subject: Optional[str] = ""
 
 class PromptExportRequest(BaseModel):
@@ -657,19 +653,17 @@ class PromptExportRequest(BaseModel):
     format: str = "autoflow_txt"  # autoflow_txt | csv | json
     video_title: Optional[str] = "prompt_batch"
 
-@app.get("/api/prompt/topics")
-async def get_prompt_topics():
-    """이미 분석 완료된 영상들의 주제 및 리포트 요약 목록 제공"""
-    topics = PromptGenerator.get_analyzed_topics_list(DATA_DIR)
-    return {"status": "success", "data": topics}
+@app.get("/api/prompt/strengths")
+async def get_prompt_strengths():
+    """분석 완료된 영상들에서 공통 도출된 성공 강점 및 패턴 제공"""
+    strengths = PromptGenerator.extract_common_strengths(DATA_DIR)
+    return {"status": "success", "data": strengths}
 
 @app.get("/api/prompt/options")
 async def get_prompt_options():
-    """프롬프트 생성기에서 선택 가능한 모델, 앵글, 조명, 스타일 옵션 제공"""
+    """프롬프트 생성기 옵션 제공"""
     return {
         "models": {k: {"name": v["name"], "description": v["description"], "default_aspect": v["default_aspect"]} for k, v in SUPPORTED_MODELS.items()},
-        "camera_angles": CAMERA_ANGLES,
-        "lighting_presets": LIGHTING_PRESETS,
         "style_presets": STYLE_PRESETS,
         "aspect_ratios": [
             {"value": "16:9", "label": "16:9 (Landscape - YouTube / Cinema)"},
@@ -679,23 +673,21 @@ async def get_prompt_options():
         ]
     }
 
-@app.post("/api/prompt/generate")
-async def generate_prompts(req: PromptGenerateRequest):
-    """지정한 영상 분석 데이터를 바탕으로 씬별 AI 프롬프트 일괄 생성"""
-    if not req.video_id:
-        raise HTTPException(status_code=400, detail="video_id가 필요합니다.")
+@app.post("/api/prompt/generate-custom")
+async def generate_custom_topic_prompts(req: PromptCustomTopicRequest):
+    """사용자가 새로 입력한 주제에 대해 분석 영상 공통 강점을 반영하여 씬별 AI 프롬프트 생성"""
+    if not req.topic or not req.topic.strip():
+        raise HTTPException(status_code=400, detail="새로운 영상 주제(Topic)를 입력해주세요.")
         
     try:
-        result = PromptGenerator.generate_batch_from_video(
-            video_id=req.video_id,
-            data_dir=DATA_DIR,
-            model=req.model,
+        result = PromptGenerator.generate_prompts_from_custom_topic(
+            topic=req.topic.strip(),
             scene_count=req.scene_count,
-            angle_key=req.angle_key,
-            lighting_key=req.lighting_key,
-            style_key=req.style_key,
+            model=req.model,
             aspect_ratio=req.aspect_ratio,
-            custom_subject=req.custom_subject or ""
+            style_key=req.style_key,
+            custom_subject=req.custom_subject or "",
+            data_dir=DATA_DIR
         )
         return result
     except Exception as e:

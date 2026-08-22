@@ -681,22 +681,23 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==============================================================
-  // 11. AI 프롬프트 스튜디오 (AutoFlow-Pro 연동) 로직
+  // 11. AI 프롬프트 스튜디오 (신규 주제 & 공통 강점 자동 반영) 로직
   // ==============================================================
   const navTabAnalysis = document.getElementById('navTabAnalysis');
   const navTabPromptStudio = document.getElementById('navTabPromptStudio');
   const viewAnalysis = document.getElementById('viewAnalysis');
   const viewPromptStudio = document.getElementById('viewPromptStudio');
 
-  const promptVideoSelect = document.getElementById('promptVideoSelect');
+  const promptTopicInput = document.getElementById('promptTopicInput');
   const promptTargetModel = document.getElementById('promptTargetModel');
   const promptSceneCount = document.getElementById('promptSceneCount');
   const promptAspectRatio = document.getElementById('promptAspectRatio');
-  const promptCameraAngle = document.getElementById('promptCameraAngle');
-  const promptLighting = document.getElementById('promptLighting');
   const promptStyle = document.getElementById('promptStyle');
   const promptCustomSubject = document.getElementById('promptCustomSubject');
   const btnGeneratePrompts = document.getElementById('btnGeneratePrompts');
+
+  const strengthsCountBadge = document.getElementById('strengthsCountBadge');
+  const strengthsSummaryText = document.getElementById('strengthsSummaryText');
 
   const studioVideoTitle = document.getElementById('studioVideoTitle');
   const studioSceneBadge = document.getElementById('studioSceneBadge');
@@ -708,10 +709,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnExportJsonPrompts = document.getElementById('btnExportJsonPrompts');
 
   let currentGeneratedBatch = null;
-  let promptTopicsData = [];
-
-  const topicSummaryCard = document.getElementById('topicSummaryCard');
-  const topicSummaryText = document.getElementById('topicSummaryText');
 
   // 메인 네비게이션 탭 전환
   function switchMainView(viewName) {
@@ -720,7 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
       navTabAnalysis.classList.remove('active');
       viewPromptStudio.style.display = 'block';
       viewAnalysis.style.display = 'none';
-      loadPromptTopics();
+      loadPromptStrengths();
     } else {
       navTabAnalysis.classList.add('active');
       navTabPromptStudio.classList.remove('active');
@@ -732,68 +729,47 @@ document.addEventListener('DOMContentLoaded', () => {
   navTabAnalysis.addEventListener('click', () => switchMainView('analysis'));
   navTabPromptStudio.addEventListener('click', () => switchMainView('promptStudio'));
 
-  // 분석된 주제(Topic) 목록 로드
-  async function loadPromptTopics() {
+  // 추천 주제 칩 클릭 이벤트 연동
+  document.querySelectorAll('.btn-topic-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const topic = btn.dataset.topic;
+      if (promptTopicInput) {
+        promptTopicInput.value = topic;
+        promptTopicInput.focus();
+      }
+    });
+  });
+
+  // 분석 영상 공통 강점 데이터 로드
+  async function loadPromptStrengths() {
     try {
-      const res = await fetch('/api/prompt/topics');
+      const res = await fetch('/api/prompt/strengths');
       const resData = await res.json();
-      if (resData.status === 'success') {
-        promptTopicsData = resData.data;
-        renderPromptTopicOptions();
+      if (resData.status === 'success' && resData.data) {
+        const d = resData.data;
+        if (strengthsCountBadge) strengthsCountBadge.textContent = `${d.analyzed_count}개 영상 강점 반영 중`;
+        if (strengthsSummaryText && d.summary) strengthsSummaryText.innerHTML = d.summary;
       }
     } catch (e) {
-      console.error('주제 목록 로드 실패:', e);
+      console.error('공통 강점 로드 실패:', e);
     }
   }
 
-  function renderPromptTopicOptions(selectedId = null) {
-    if (!promptVideoSelect) return;
-    promptVideoSelect.innerHTML = '<option value="">-- 분석 완료된 영상 주제 (Topic) 선택 --</option>';
-    
-    promptTopicsData.forEach(item => {
-      const opt = document.createElement('option');
-      opt.value = item.video_id;
-      const reportBadge = item.has_report ? ' [AI리포트완료]' : '';
-      opt.textContent = `🎯 ${item.title || item.video_id}${reportBadge}`;
-      if (selectedId && item.video_id === selectedId) opt.selected = true;
-      promptVideoSelect.appendChild(opt);
-    });
-
-    onPromptTopicChange();
-  }
-
-  function onPromptTopicChange() {
-    const selectedId = promptVideoSelect.value;
-    const item = promptTopicsData.find(t => t.video_id === selectedId);
-    if (item && item.report_summary) {
-      topicSummaryText.textContent = item.report_summary;
-      topicSummaryCard.style.display = 'flex';
-    } else if (item && item.title) {
-      topicSummaryText.textContent = `영상 제목: ${item.title} (채널: ${item.channel})`;
-      topicSummaryCard.style.display = 'flex';
-    } else {
-      topicSummaryCard.style.display = 'none';
-    }
-  }
-
-  promptVideoSelect.addEventListener('change', onPromptTopicChange);
-
-  // 외부에서 특정 영상으로 프롬프트 스튜디오 열기
-  window.openPromptStudioForVideo = async function(videoId) {
+  // 외부에서 특정 주제로 프롬프트 스튜디오 열기
+  window.openPromptStudioForTopic = function(topicText) {
     switchMainView('promptStudio');
-    await loadPromptTopics();
-    if (promptVideoSelect) {
-      promptVideoSelect.value = videoId;
-      onPromptTopicChange();
+    if (promptTopicInput) {
+      promptTopicInput.value = topicText;
       triggerPromptGeneration();
     }
   };
 
   // 프롬프트 생성 요청 함수
   async function triggerPromptGeneration() {
-    const videoId = promptVideoSelect.value;
-    if (!videoId) {
-      alert('분석된 영상을 선택해주세요.');
+    const topic = (promptTopicInput ? promptTopicInput.value : '').trim();
+    if (!topic) {
+      alert('새로운 영상 주제나 스토리 컨셉을 입력해주세요.');
+      if (promptTopicInput) promptTopicInput.focus();
       return;
     }
 
@@ -805,24 +781,22 @@ document.addEventListener('DOMContentLoaded', () => {
     studioScenesContainer.innerHTML = `
       <div class="empty-state-box" style="border-color:#8b5cf6;">
         <i class="fa-solid fa-brain fa-spin fa-3x" style="color:var(--ai-purple); animation-duration: 3s;"></i>
-        <div style="font-size:15px; font-weight:700; color:#c4b5fd;">로컬 AI (Ollama Gemma 4) 분석 & 프롬프트 창작 중...</div>
-        <p style="font-size:12px; color:var(--text-muted);">영상 자막의 흐름과 타임코드를 심층 분석하여 헐리우드급 시네마틱 프롬프트를 합성하고 있습니다. (약 10~20초 소요)</p>
+        <div style="font-size:15px; font-weight:700; color:#c4b5fd;">Ollama Gemma 4가 주제를 분석하여 최적 앵글·조명 추론 및 프롬프트 생성 중...</div>
+        <p style="font-size:12px; color:var(--text-muted);">분석 영상들의 훅·서사 강점을 결합하여 씬별 시네마틱 프롬프트를 창작하고 있습니다. (약 10~25초 소요)</p>
       </div>
     `;
 
     try {
-      const res = await fetch('/api/prompt/generate', {
+      const res = await fetch('/api/prompt/generate-custom', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          video_id: videoId,
+          topic: topic,
           model: promptTargetModel.value,
           scene_count: parseInt(promptSceneCount.value, 10),
-          angle_key: promptCameraAngle.value,
-          lighting_key: promptLighting.value,
-          style_key: promptStyle.value,
           aspect_ratio: promptAspectRatio.value,
-          custom_subject: promptCustomSubject.value.trim()
+          style_key: promptStyle.value,
+          custom_subject: promptCustomSubject ? promptCustomSubject.value.trim() : ''
         })
       });
 
@@ -856,7 +830,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    studioVideoTitle.innerHTML = `<i class="fa-solid fa-clapperboard"></i> ${escapeHtml(batchData.title)}`;
+    studioVideoTitle.innerHTML = `<i class="fa-solid fa-clapperboard"></i> 주제: ${escapeHtml(batchData.topic)}`;
     studioSceneBadge.textContent = `총 ${batchData.scenes.length}개 씬 분할 완료 (${batchData.model})`;
 
     studioScenesContainer.innerHTML = batchData.scenes.map((scene, idx) => `
@@ -864,7 +838,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="scene-card-header">
           <div class="scene-badge-group">
             <span class="scene-num-badge">Scene #${scene.scene_index}</span>
-            <span class="scene-time-badge"><i class="fa-regular fa-clock"></i> ${scene.time_range}</span>
+            <span class="scene-time-badge"><i class="fa-solid fa-layer-group"></i> ${escapeHtml(scene.stage || '스토리 단계')}</span>
           </div>
           <div class="scene-tag-chips">
             ${(scene.keywords || []).map(kw => `<span class="tag-chip">#${escapeHtml(kw)}</span>`).join('')}
@@ -872,12 +846,12 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
 
         <div class="scene-narration-box">
-          <strong><i class="fa-solid fa-quote-left"></i> 자막/대본:</strong> ${escapeHtml(scene.narration)}
+          <strong><i class="fa-solid fa-quote-left"></i> 기획 대본/내레이션:</strong> ${escapeHtml(scene.narration)}
         </div>
 
         <div class="scene-prompt-editor-area">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <label><i class="fa-solid fa-sparkles"></i> AI 생성 프롬프트 (수정 가능):</label>
+            <label><i class="fa-solid fa-sparkles"></i> AI 시네마틱 프롬프트 (수정 가능):</label>
             <button class="btn btn-sm btn-outline btn-copy-single" data-index="${idx}" style="padding:2px 8px; font-size:11px;">
               <i class="fa-solid fa-copy"></i> 복사
             </button>
@@ -887,10 +861,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <div class="scene-card-footer">
           <div class="scene-modifiers-info">
-            <span><i class="fa-solid fa-camera"></i> ${scene.angle}</span>
-            <span><i class="fa-solid fa-sun"></i> ${scene.lighting}</span>
-            <span><i class="fa-solid fa-palette"></i> ${scene.style}</span>
-            <span><i class="fa-solid fa-crop"></i> ${scene.aspect_ratio}</span>
+            <span><i class="fa-solid fa-camera" style="color:#60a5fa;"></i> 추론 앵글: ${escapeHtml(scene.inferred_angle || 'Auto')}</span>
+            <span><i class="fa-solid fa-sun" style="color:#f59e0b;"></i> 추론 조명: ${escapeHtml(scene.inferred_lighting || 'Auto')}</span>
+            <span><i class="fa-solid fa-crop"></i> ${scene.aspect_ratio || '16:9'}</span>
           </div>
         </div>
       </div>
@@ -950,7 +923,7 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({
           scenes: currentGeneratedBatch.scenes,
           format: format,
-          video_title: currentGeneratedBatch.title || 'prompt_batch'
+          video_title: currentGeneratedBatch.topic || 'custom_topic_prompts'
         })
       });
 
@@ -979,12 +952,14 @@ document.addEventListener('DOMContentLoaded', () => {
   btnExportCsvPrompts.addEventListener('click', () => exportPromptBatch('csv'));
   btnExportJsonPrompts.addEventListener('click', () => exportPromptBatch('json'));
 
-  // 테이블 내 프롬프트 생성 바로가기 이벤트 연동
+  // 테이블 내 프롬프트 바로가기 연동 (영상 제목을 신규 주제로 채워서 스튜디오 오픈)
   document.addEventListener('click', (e) => {
     const promptBtn = e.target.closest('.btn-open-prompt-studio');
     if (promptBtn) {
       const videoId = promptBtn.dataset.id;
-      window.openPromptStudioForVideo(videoId);
+      const targetItem = historyData.find(h => h.id === videoId);
+      const topicText = targetItem ? targetItem.title : videoId;
+      window.openPromptStudioForTopic(topicText);
     }
   });
 

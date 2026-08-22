@@ -176,27 +176,46 @@
         </section>
       </div>
 
-      <!-- 뷰 2: AI 프롬프트 스튜디오 (AutoFlow-Pro 연동 뷰) -->
+      <!-- 뷰 2: AI 프롬프트 스튜디오 (신규 주제 & 공통 강점 반영) -->
       <div id="viewPromptStudio" class="view-panel" style="display: none;">
+        <!-- 분석 영상 공통 강점 안내 배너 -->
+        <div class="strengths-banner card">
+          <div class="strengths-header">
+            <i class="fa-solid fa-chart-line-up" style="color:var(--success-color)"></i>
+            <span class="strengths-title">분석 영상들에서 도출된 공통 성공 공식 (프롬프트 엔진 자동 주입)</span>
+            <span id="strengthsCountBadge" class="badge badge-accent">분석 데이터 반영 중</span>
+          </div>
+          <p id="strengthsSummaryText" class="strengths-desc">
+            기존 분석된 영상들(SCP 미스터리, 건축 다큐, 탐사물 등)의 공통 강점인 <strong>'초반 5초 오프닝 훅'</strong>, <strong>'4단계 서사 빌드업'</strong>, <strong>'스케일 대비 앵글'</strong>, <strong>'시네마틱 조명'</strong> 공식이 새로 생성될 모든 씬 프롬프트에 자동으로 적용됩니다.
+          </p>
+        </div>
+
         <section class="prompt-studio-layout">
-          <!-- 좌측: 파라미터 및 모디파이어 설정 패널 -->
+          <!-- 좌측: 새로운 주제 입력 및 생성 파라미터 패널 -->
           <div class="card studio-controls-panel">
             <div class="panel-header">
-              <i class="fa-solid fa-sliders"></i>
-              <h3>주제별 프롬프트 설정 (Ollama Gemma 4)</h3>
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <h3>새로운 영상 주제 기획 & 프롬프트 생성</h3>
             </div>
 
+            <!-- 사용자 신규 주제 입력창 -->
             <div class="control-group">
-              <label for="promptVideoSelect"><i class="fa-solid fa-list-check"></i> 분석된 영상 주제 (Topic) 선택</label>
-              <select id="promptVideoSelect" class="form-select">
-                <option value="">-- 분석 완료된 주제 선택 --</option>
-              </select>
-            </div>
-
-            <!-- 선택된 주제 요약 프리뷰 -->
-            <div id="topicSummaryCard" class="topic-summary-preview" style="display: none;">
-              <div class="topic-summary-title"><i class="fa-solid fa-brain" style="color:var(--ai-purple)"></i> 도출된 분석 리포트 반영</div>
-              <p id="topicSummaryText" class="topic-summary-text"></p>
+              <label for="promptTopicInput"><i class="fa-solid fa-pen-nib"></i> 새로운 영상 주제 / 스토리 컨셉 입력 <span class="text-danger">*</span></label>
+              <textarea 
+                id="promptTopicInput" 
+                class="form-control" 
+                rows="3" 
+                placeholder="만들고자 하는 영상/쇼츠의 주제나 시놉시스를 자유롭게 입력하세요.&#10;(예: 2050년 네오 서울, 인공지능 통제에 맞서는 마지막 인간 해커의 심야 침투 작전)"
+                required
+              ></textarea>
+              <!-- 추천 주제 칩 -->
+              <div class="topic-chip-container">
+                <span class="topic-chip-label">추천 예시:</span>
+                <button type="button" class="btn-topic-chip" data-topic="심해 1만 미터 마리아나 해구에서 발견된 미지의 발광 생명체와 거대 유적">🌊 심해 미지의 유적</button>
+                <button type="button" class="btn-topic-chip" data-topic="2050년 사이버펑크 도시의 마지막 인간 해커와 거대 AI의 대결">🤖 AI 사이버펑크</button>
+                <button type="button" class="btn-topic-chip" data-topic="극지방 빙하 속에 수만 년간 갇혀 있던 미지의 고대 우주선 발굴 탐사">❄️ 극지방 우주선 탐사</button>
+                <button type="button" class="btn-topic-chip" data-topic="조선 시대로 타임슬립한 현대 수석 엔지니어의 첨단 무기 개발기">⚔️ 조선 타임슬립 테크</button>
+              </div>
             </div>
 
             <div class="control-group">
@@ -213,9 +232,8 @@
                 <label for="promptSceneCount"><i class="fa-solid fa-film"></i> 씬(Scene) 분할 수</label>
                 <select id="promptSceneCount" class="form-select">
                   <option value="4">4개 씬</option>
-                  <option value="6" selected>6개 씬 (표준)</option>
+                  <option value="6" selected>6개 씬 (권장)</option>
                   <option value="8">8개 씬 (상세)</option>
-                  <option value="12">12개 씬 (풀스토리)</option>
                 </select>
               </div>
               <div class="control-group half">
@@ -229,29 +247,10 @@
               </div>
             </div>
 
-            <div class="control-group">
-              <label for="promptCameraAngle"><i class="fa-solid fa-camera"></i> 카메라 앵글 & 워크 (Angles)</label>
-              <select id="promptCameraAngle" class="form-select">
-                <option value="auto_variety" selected>✨ 씬별 자동 다양화 (Auto Variety)</option>
-                <option value="cinematic_wide">Cinematic Wide Shot (와이드 샷)</option>
-                <option value="medium_shot">Medium Shot (미디엄 샷)</option>
-                <option value="close_up">Cinematic Close-Up (클로즈업)</option>
-                <option value="drone_orbit">Drone 360 Orbit (드론 회전 샷)</option>
-                <option value="low_angle_hero">Low-Angle Hero Shot (로우 앵글)</option>
-                <option value="dolly_zoom">Dolly Zoom (버티고 샷)</option>
-                <option value="pov_action">First-Person POV (1인칭 시점)</option>
-              </select>
-            </div>
-
-            <div class="control-group">
-              <label for="promptLighting"><i class="fa-solid fa-sun"></i> 조명 & 분위기 (Lighting)</label>
-              <select id="promptLighting" class="form-select">
-                <option value="golden_hour" selected>Golden Hour (골든 아워)</option>
-                <option value="cyberpunk_neon">Cyberpunk Neon (네온 조명)</option>
-                <option value="volumetric_fog">Volumetric Fog & God Rays (신비로운 안개)</option>
-                <option value="dramatic_studio">Dramatic Studio Lighting (스튜디오 조명)</option>
-                <option value="dark_documentary">Dark Moody Documentary (다큐멘터리 무드)</option>
-              </select>
+            <!-- 카메라 및 조명 자동 추론 배너 -->
+            <div class="auto-inference-info-card">
+              <div class="info-title"><i class="fa-solid fa-camera-movie" style="color:#60a5fa;"></i> 카메라 앵글 & 조명 연출: <strong>AI 자동 추론</strong></div>
+              <p class="info-desc">Ollama Gemma 4가 입력된 주제의 극적 분위기에 맞춰 씬마다 최적의 <strong>카메라 무빙(와이드/클로즈업/드론)</strong>과 <strong>조명(네온/안개/골든아워)</strong>을 스스로 판단하여 합성합니다.</p>
             </div>
 
             <div class="control-group">
@@ -265,14 +264,14 @@
             </div>
 
             <div class="control-group">
-              <label for="promptCustomSubject"><i class="fa-solid fa-user-astronaut"></i> 피사체/캐릭터 일관성 키워드 (선택)</label>
-              <input type="text" id="promptCustomSubject" class="form-control" placeholder="예: Asian cyber detective in black trenchcoat">
+              <label for="promptCustomSubject"><i class="fa-solid fa-user-astronaut"></i> 고정 피사체/캐릭터 일관성 키워드 (선택)</label>
+              <input type="text" id="promptCustomSubject" class="form-control" placeholder="예: Korean male researcher in yellow biohazard suit">
               <span class="helper-text">모든 씬에 고정 반영될 핵심 캐릭터 또는 피사체 묘사</span>
             </div>
 
             <button id="btnGeneratePrompts" class="btn btn-primary btn-block">
-              <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 씬별 프롬프트 자동 생성</span>
-              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 생성 중...</span>
+              <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> AI 씬별 프롬프트 자동 생성</span>
+              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> Ollama Gemma 4 생성 중...</span>
             </button>
           </div>
 
@@ -280,8 +279,8 @@
           <div class="studio-content-panel">
             <div class="card studio-results-header">
               <div class="header-left">
-                <h3 id="studioVideoTitle"><i class="fa-solid fa-clapperboard"></i> 씬별 스토리보드 & 프롬프트 목록</h3>
-                <span id="studioSceneBadge" class="badge badge-accent">영상 선택 대기중</span>
+                <h3 id="studioVideoTitle"><i class="fa-solid fa-clapperboard"></i> 씬별 스토리보드 & 시네마틱 프롬프트</h3>
+                <span id="studioSceneBadge" class="badge badge-accent">새 주제 생성 대기</span>
               </div>
               <div class="header-actions-group">
                 <button id="btnCopyAllPrompts" class="btn btn-sm btn-outline" title="전체 프롬프트 복사">

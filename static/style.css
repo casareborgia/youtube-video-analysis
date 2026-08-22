@@ -1048,6 +1048,92 @@ body {
   line-height: 1.4;
 }
 
+/* 분석 영상 공통 강점 배너 */
+.strengths-banner {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.1));
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.strengths-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.strengths-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #6ee7b7;
+}
+
+.strengths-desc {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+/* 추천 주제 칩 */
+.topic-chip-container {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.topic-chip-label {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.btn-topic-chip {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-topic-chip:hover {
+  background: rgba(96, 165, 250, 0.2);
+  color: #93c5fd;
+  border-color: #3b82f6;
+}
+
+/* 카메라 & 조명 자동 추론 안내 카드 */
+.auto-inference-info-card {
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auto-inference-info-card .info-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #93c5fd;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.auto-inference-info-card .info-desc {
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
 .control-group label {
   font-size: 12px;
   font-weight: 600;
