@@ -1067,7 +1067,8 @@ document.addEventListener('DOMContentLoaded', () => {
           if (audioElem) {
             audioElem.src = result.audio_url + `?t=${Date.now()}`;
             audioElem.style.display = 'block';
-            audioElem.play().catch(() => {});
+            audioElem.load();
+            audioElem.play().catch(e => console.log('Auto-play note:', e));
           }
         } catch (err) {
           alert('음성 생성 오류: ' + err.message);
@@ -1116,6 +1117,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (audioElem && item.audio_url) {
           audioElem.src = item.audio_url + `?t=${Date.now()}`;
           audioElem.style.display = 'block';
+          audioElem.load();
         }
       });
     } catch (err) {

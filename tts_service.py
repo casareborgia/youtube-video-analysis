@@ -23,7 +23,7 @@ VOICES_DIR = BASE_DIR / "data" / "voices"
 AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 VOICES_DIR.mkdir(parents=True, exist_ok=True)
 
-# 기본 내장 보이스 프리셋 정의
+# 기본 내장 보이스 프리셋 정의 (Qwen3-TTS 공식 화자 매핑)
 PRESET_VOICES = [
     {
         "id": "my_voice",
@@ -33,43 +33,43 @@ PRESET_VOICES = [
         "is_custom": True
     },
     {
-        "id": "voice_design",
-        "name": "🎨 AI 보이스 디자인 (Voice Design)",
-        "type": "design",
-        "description": "원하는 목소리 특징을 자연어 프롬프트로 직접 설계",
-        "instruct": "50대 중후반의 깊고 묵직한 다큐멘터리 남성 해설가 톤"
-    },
-    {
         "id": "docu_male",
-        "name": "🎙️ 진중한 다큐멘터리 남성 성우",
+        "name": "🎙️ 진중한 다큐멘터리 남성 성우 (Ryan)",
         "type": "preset",
-        "speaker": "male_deep",
+        "speaker": "ryan",
         "description": "차분하고 신뢰감 넘치는 묵직한 내레이션",
         "instruct": "차분하고 진중하며 긴장감 있는 다큐멘터리 톤으로 말해줘"
     },
     {
         "id": "docu_female",
-        "name": "🎙️ 명확하고 차분한 여성 성우",
+        "name": "🎙️ 명확하고 차분한 여성 성우 (Sohee)",
         "type": "preset",
-        "speaker": "female_calm",
-        "description": "지식 전달 및 호기심을 유발하는 지적인 톤",
+        "speaker": "sohee",
+        "description": "지식 전달 및 호기심을 유발하는 맑고 지적인 톤",
         "instruct": "또박또박하고 차분하며 전달력 높은 톤으로 말해줘"
     },
     {
         "id": "mystery_narrator",
-        "name": "🎙️ 미스터리 / 스릴러 성우",
+        "name": "🎙️ 미스터리 / 스릴러 성우 (Uncle Fu)",
         "type": "preset",
-        "speaker": "male_suspense",
+        "speaker": "uncle_fu",
         "description": "어둡고 숨막히는 미스터리/괴담/SF 분위기 연출",
         "instruct": "어둡고 낮은 톤으로 긴장감을 조성하며 속삭이듯 말해줘"
     },
     {
         "id": "shorts_energetic",
-        "name": "🎙️ 트렌디 쇼츠 / 릴스 성우",
+        "name": "🎙️ 트렌디 쇼츠 / 릴스 성우 (Vivian)",
         "type": "preset",
-        "speaker": "energetic",
+        "speaker": "vivian",
         "description": "빠르고 귀에 꽂히는 에너지 넘치는 톤",
         "instruct": "빠른 속도로 활기차고 귀에 꽂히게 말해줘"
+    },
+    {
+        "id": "voice_design",
+        "name": "🎨 AI 보이스 디자인 (Voice Design)",
+        "type": "design",
+        "description": "원하는 목소리 특징을 자연어 프롬프트로 직접 설계",
+        "instruct": "50대 중후반의 깊고 묵직한 다큐멘터리 남성 해설가 톤"
     }
 ]
 
@@ -92,9 +92,9 @@ def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--ref_audio", default="")
     parser.add_argument("--ref_text", default="")
-    parser.add_argument("--speaker", default="default")
+    parser.add_argument("--speaker", default="sohee")
     parser.add_argument("--instruct", default="")
-    parser.add_argument("--language", default="Korean")
+    parser.add_argument("--language", default="korean")
     args = parser.parse_args()
 
     text = args.text.strip()
@@ -105,8 +105,9 @@ def main():
         import torch
         from qwen_tts import Qwen3TTSModel
         
-        device = "mps" if torch.backends.mps.is_available() else ("cuda:0" if torch.cuda.is_available() else "cpu")
-        dtype = torch.float16 if device != "cpu" else torch.float32
+        # Mac CPU 환경에서 안정적 구동
+        device = "cpu"
+        dtype = torch.float32
 
         if args.mode == "clone" and args.ref_audio and os.path.exists(args.ref_audio):
             # 1. Voice Clone 모드 (내 목소리 복제 - Base 모델)
@@ -150,10 +151,11 @@ def main():
                 device_map=device,
                 dtype=dtype
             )
+            speaker_name = args.speaker if args.speaker in model.get_supported_speakers() else "sohee"
             wavs, sr = model.generate_custom_voice(
                 text=text,
                 language=args.language,
-                speaker=args.speaker if args.speaker != "default" else "male",
+                speaker=speaker_name,
                 instruct=args.instruct
             )
             sf.write(output_path, wavs[0], sr)
@@ -165,7 +167,7 @@ def main():
         
         try:
             aiff_tmp = output_path + ".aiff"
-            subprocess_voice = "Yuna" if "female" in args.speaker else "Yuna"
+            subprocess_voice = "Yuna"
             os.system(f'say -v "{subprocess_voice}" "{text}" -o "{aiff_tmp}"')
             if os.path.exists(aiff_tmp):
                 os.system(f'ffmpeg -y -i "{aiff_tmp}" "{output_path}" >/dev/null 2>&1')
@@ -274,7 +276,7 @@ class TTSService:
             str(RUNNER_SCRIPT),
             "--text", text,
             "--output", str(output_path),
-            "--language", "Korean"
+            "--language", "korean"
         ]
 
         if voice_id == "my_voice":
@@ -291,8 +293,8 @@ class TTSService:
             if ref_audio.exists():
                 cmd.extend(["--mode", "clone", "--ref_audio", str(ref_audio), "--ref_text", ref_text])
             else:
-                # 등록된 음성이 없으면 일반 다큐 톤으로 생성
-                cmd.extend(["--mode", "preset", "--speaker", "male", "--instruct", "진중한 내레이션"])
+                # 등록된 음성이 없으면 기본 성우(ryan)로 생성
+                cmd.extend(["--mode", "preset", "--speaker", "ryan", "--instruct", "진중한 내레이션"])
         elif voice_id == "voice_design":
             cmd.extend([
                 "--mode", "design",
@@ -301,7 +303,7 @@ class TTSService:
         else:
             cmd.extend([
                 "--mode", "preset",
-                "--speaker", voice_config.get("speaker", "male"),
+                "--speaker", voice_config.get("speaker", "sohee"),
                 "--instruct", voice_config.get("instruct", "")
             ])
 
