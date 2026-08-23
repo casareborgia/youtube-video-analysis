@@ -2,7 +2,7 @@
 AI Prompt Studio - Custom Topic & Analyzed Strengths Engine with Ollama Gemma 4
 1. 기존 분석된 유튜브 영상들의 공통 강점(흥행 서사, 훅 설계, 시각적 몰입도)을 종합 도출
 2. 사용자가 새로 입력한 주제(New Topic)에 대해 기승전결 씬을 자동 기획
-3. 카메라 앵글 및 조명을 주제 맥락에 맞추어 AI가 스스로 추론(Auto-Inference)하여 최적의 시네마틱 프롬프트 생성
+3. 카메라 앵글 및 조명을 주제 맥락에 맞추어 AI가 스스로 추론(Auto-Inference)하여 최적의 시네마틱 프롬프트 고속 생성
 """
 
 import os
@@ -99,7 +99,7 @@ class PromptGenerator:
 
     @staticmethod
     def query_ollama(prompt: str, system_prompt: str = "", model: str = DEFAULT_OLLAMA_MODEL) -> str:
-        """로컬 Ollama Gemma 4 모델 호출"""
+        """로컬 Ollama Gemma 4 모델 초고속 경량 호출"""
         try:
             payload = {
                 "model": model,
@@ -107,10 +107,11 @@ class PromptGenerator:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ],
+                "format": "json",
                 "options": {
-                    "num_ctx": 16384,
-                    "num_predict": 4096,
-                    "temperature": 0.6
+                    "num_ctx": 4096,
+                    "num_predict": 2048,
+                    "temperature": 0.2
                 },
                 "stream": False
             }
@@ -120,7 +121,7 @@ class PromptGenerator:
                 data=data,
                 headers={"Content-Type": "application/json"}
             )
-            with urllib.request.urlopen(req, timeout=120) as response:
+            with urllib.request.urlopen(req, timeout=60) as response:
                 res_json = json.loads(response.read().decode("utf-8"))
                 if "message" in res_json and "content" in res_json["message"]:
                     return res_json["message"]["content"]
@@ -139,60 +140,40 @@ class PromptGenerator:
         custom_subject: str = "",
         data_dir: Path = Path("data")
     ) -> Dict[str, Any]:
-        """사용자가 새로 입력한 주제(Topic)에 대해 분석 영상 공통 강점을 반영하여 최적 프롬프트 세트 생성"""
+        """사용자가 새로 입력한 주제(Topic)에 대해 분석 영상 공통 강점을 반영하여 최적 프롬프트 세트 고속 생성"""
         
         strengths_data = cls.extract_common_strengths(data_dir)
-        strengths_bullet = "\n".join([f"- {s}" for s in strengths_data["common_strengths"]])
+        strengths_bullet = "\n".join([f"- {s}" for s in strengths_data["common_strengths"][:3]])
         style_info = STYLE_PRESETS.get(style_key, STYLE_PRESETS["photorealistic_8k"])
 
-        # Ollama Gemma 4 프롬프트 생성 요청 구성
+        # 초경량 고속 프롬프트 구성 (1문장 간결성 지시로 토큰 대폭 절약)
         system_prompt = (
-            "You are a master Hollywood Director, Visual Storyboard Artist, and AI Cinematographer. "
-            "The user will give you a NEW creative video topic/concept. "
-            "You must apply the PROVEN SUCCESS FORMULA derived from top-performing YouTube videos (powerful opening hook, progressive tension build-up, dramatic scale contrast, dynamic camera and lighting) to craft a complete scene-by-scene storyboard and photorealistic English prompts. "
-            "IMPORTANT: You must AUTOMATICALLY INFER the optimal camera angle and lighting for each scene according to its dramatic atmosphere without needing manual input. "
-            "Return ONLY a pure valid JSON array of objects without commentary or markdown codeblocks."
+            "You are a Hollywood AI Visual Director. "
+            "Break down the topic into concise progressive scenes. "
+            "Keep each narration and visual description strictly to 1 short punchy sentence. "
+            "Return ONLY a pure JSON object containing a 'scenes' array."
         )
 
-        user_prompt = f"""
-[User's New Video Topic & Story Concept]
-"{topic}"
+        user_prompt = f"""Topic: "{topic}"
+Scenes Needed: {scene_count}
+Target AI: {model}, Aspect Ratio: {aspect_ratio}
+Proven Strengths: {strengths_bullet}
 
-[Key Parameters]
-- Target AI Model: {model} (Google Flow / Veo / AutoFlow-Pro compatible)
-- Target Aspect Ratio: {aspect_ratio}
-- Number of Scenes: {scene_count}
-- Base Render Style: {style_info['prompt']}
-- Specific Subject/Character Consistency (if any): {custom_subject or "Auto-inferred from topic"}
-
-[Proven Success Strengths from Analyzed YouTube Videos to Apply]
-{strengths_bullet}
-
-[Your Mission]
-1. Break down the user's topic into {scene_count} progressive story scenes (Scene 1: Intense Hook/Introduction -> Middle Scenes: Exploration & Rising Stakes -> Climax: Epic Visual Shock/Peak -> Ending: Memorable Resolution).
-2. For each scene, AUTOMATICALLY DETERMINE the best Camera Angle & Movement (e.g. Extreme Wide Establishing, Dolly Zoom, Drone 360, Low Angle Hero, Close-Up Bokeh) and Lighting/Atmosphere (e.g. Volumetric Fog, Cyberpunk Neon, Golden Hour, Chiaroscuro, Dramatic Spotlight) suited to the story beat.
-3. Synthesize a vivid, ultra-detailed, photorealistic cinematic English prompt for each scene.
-   - If Target AI Model is 'midjourney': Append '--ar {aspect_ratio} --v 6.1 --style raw' at the end.
-   - If Target AI Model is 'google_flow': Format as: 'Cinematic video scene of [Subject & Action]. Camera work: [Inferred Camera angle & motion]. Lighting & Atmosphere: [Inferred Lighting & Mood]. Style: [Render details]. Aspect ratio: {aspect_ratio}.'
-4. Provide a Korean narration/script line and 3 Korean keyword tags for each scene.
-
-Return ONLY a pure JSON array in this exact format:
-[
-  {{
-    "scene_index": 1,
-    "stage": "도입 (강렬한 오프닝 훅)",
-    "narration": "한국어 내레이션/대본 한 문장...",
-    "keywords": ["키워드1", "키워드2", "키워드3"],
-    "inferred_angle": "Cinematic Wide Establishing Shot",
-    "inferred_lighting": "Volumetric Fog & Dramatic Rim Light",
-    "prompt": "Cinematic visual description in English...",
-    "negative_prompt": "blurry, low quality, distorted, bad anatomy, text, watermark",
-    "aspect_ratio": "{aspect_ratio}",
-    "model": "{model}"
-  }}
-]
-"""
-        # Ollama Gemma 4 호출
+Return JSON with exact schema (keep each value concise to 1 sentence):
+{{
+  "scenes": [
+    {{
+      "scene_index": 1,
+      "stage": "도입 (오프닝 훅)",
+      "narration": "한국어 내레이션 1문장",
+      "keywords": ["키워드1", "키워드2"],
+      "inferred_angle": "Extreme Wide Establishing Shot",
+      "inferred_lighting": "Volumetric Fog & Neon Glow",
+      "visual_description": "A lone cyberpunk hacker looking over the rainy neon skyline of Neo Seoul 2050"
+    }}
+  ]
+}}"""
+        # Ollama Gemma 4 고속 호출
         ollama_response = cls.query_ollama(user_prompt, system_prompt=system_prompt)
         
         generated_scenes = []
@@ -200,17 +181,50 @@ Return ONLY a pure JSON array in this exact format:
             cleaned_resp = re.sub(r'^```json\s*', '', ollama_response.strip(), flags=re.MULTILINE)
             cleaned_resp = re.sub(r'\s*```$', '', cleaned_resp.strip(), flags=re.MULTILINE)
             try:
-                match = re.search(r'\[\s*\{.*\}\s*\]', cleaned_resp, re.DOTALL)
-                if match:
-                    parsed = json.loads(match.group(0))
-                    if isinstance(parsed, list) and len(parsed) > 0:
-                        generated_scenes = parsed
+                parsed_json = json.loads(cleaned_resp)
+                raw_list = parsed_json.get("scenes", []) if isinstance(parsed_json, dict) else parsed_json
+                if isinstance(raw_list, list) and len(raw_list) > 0:
+                    for item in raw_list:
+                        s_idx = item.get("scene_index", len(generated_scenes) + 1)
+                        stage = item.get("stage", f"Scene #{s_idx}")
+                        narr = item.get("narration", "")
+                        kws = item.get("keywords", ["시네마틱", "스토리보드"])
+                        angle = item.get("inferred_angle", "Cinematic Wide Shot")
+                        lighting = item.get("inferred_lighting", "Volumetric Atmosphere")
+                        visual = item.get("visual_description") or item.get("prompt") or topic
+                        
+                        # 시네마틱 프롬프트 최종 고속 조립 (Python 측에서 즉시 합성)
+                        if model == "midjourney":
+                            final_prompt = f"Cinematic film still of {visual}, {angle}, {lighting}, {style_info['prompt']} --ar {aspect_ratio} --v 6.1 --style raw"
+                        elif model == "runway_kling":
+                            final_prompt = f"Cinematic video clip of {visual}. Smooth camera movement: {angle}. Atmosphere: {lighting}, {style_info['prompt']}. (Aspect ratio: {aspect_ratio})"
+                        else:
+                            final_prompt = (
+                                f"Cinematic video scene of {visual}. "
+                                f"Camera work: {angle}. "
+                                f"Lighting & Atmosphere: {lighting}. "
+                                f"Style: {style_info['prompt']}. "
+                                f"Aspect ratio: {aspect_ratio}."
+                            )
+
+                        generated_scenes.append({
+                            "scene_index": s_idx,
+                            "stage": stage,
+                            "narration": narr,
+                            "keywords": kws,
+                            "inferred_angle": angle,
+                            "inferred_lighting": lighting,
+                            "prompt": final_prompt,
+                            "negative_prompt": "blurry, low quality, distorted, bad anatomy, text, watermark",
+                            "aspect_ratio": aspect_ratio,
+                            "model": model
+                        })
             except Exception as pe:
                 print(f"[JSON Parse Error] {pe}")
 
-        # Fallback 생성 (Ollama 응답 파싱 실패 시 기본 씬 구성)
+        # Fallback 생성 (Ollama 응답 파싱 실패 시 대비)
         if not generated_scenes:
-            stages = ["도입 (오프닝 훅)", "전개 (배경 및 문제 탐색)", "심화 (위기 및 긴장감 고조)", "클라이맥스 (시각적 절정)", "결말 (해결 및 여운)"]
+            stages = ["도입 (오프닝 훅)", "전개 (배경 및 탐색)", "심화 (위기 및 긴장감 고조)", "절정 (시각적 충격)", "결말 (해결 및 여운)"]
             angles = ["Extreme Wide Establishing Shot", "Eye-Level Medium Tracking Shot", "Tight Cinematic Close-Up", "Dynamic Drone Orbit 360", "Low-Angle Hero Shot"]
             lightings = ["Dramatic Low-Key Fog & Rim Light", "Atmospheric Cyberpunk Neon", "High-Contrast Chiaroscuro", "Golden Hour Radiant Glow", "Cold Cinematic Desaturated Tone"]
             
