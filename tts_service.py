@@ -88,7 +88,10 @@ SUPPORTED_LANGUAGES = [
 RUNNER_SCRIPT = BASE_DIR / "qwen_tts_runner.py"
 
 def ensure_runner_script():
-    """Qwen-TTS 가상환경에서 실행될 격리 스크립트 생성"""
+    """Qwen-TTS 가상환경에서 실행될 격리 스크립트 생성 (최초 1회만 생성)"""
+    if RUNNER_SCRIPT.exists():
+        return
+
     code = '''import os
 import sys
 import json
@@ -196,8 +199,6 @@ if __name__ == "__main__":
 '''
     with open(RUNNER_SCRIPT, "w", encoding="utf-8") as f:
         f.write(code)
-
-ensure_runner_script()
 
 class TTSService:
     """Qwen-TTS 실행 관리자"""
@@ -321,7 +322,7 @@ class TTSService:
             ])
 
         try:
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
             stdout = proc.stdout.strip()
             
             # JSON 응답 파싱
