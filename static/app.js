@@ -33,6 +33,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let historyData = [];
 
+  // XSS 방어 헬퍼 (Zero-Trust Contextual Escaping)
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   // 1. 테마 토글
   btnThemeToggle.addEventListener('click', () => {
     document.body.classList.toggle('light-theme');
@@ -52,8 +63,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function showAlert(message, type = 'error') {
     alertBox.className = `alert-box alert-${type}`;
     alertBox.innerHTML = type === 'error' 
-      ? `<i class="fa-solid fa-triangle-exclamation"></i> <span>${message}</span>`
-      : `<i class="fa-solid fa-circle-check"></i> <span>${message}</span>`;
+      ? `<i class="fa-solid fa-triangle-exclamation"></i> <span>${escapeHtml(message)}</span>`
+      : `<i class="fa-solid fa-circle-check"></i> <span>${escapeHtml(message)}</span>`;
     alertBox.style.display = 'flex';
     setTimeout(() => {
       alertBox.style.display = 'none';
@@ -651,16 +662,23 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === detailModal) detailModal.style.display = 'none';
   });
 
-  // 8. 삭제
+  // 8. 삭제 (영상 및 연관 데이터/리포트/오디오 전체 완전 삭제)
   async function deleteVideo(videoId) {
+    if (!confirm('이 영상과 관련된 모든 메타데이터, 자막, AI 분석 리포트, 생성된 오디오 파일이 함께 영구 삭제됩니다. 삭제하시겠습니까?')) {
+      return;
+    }
     try {
       const res = await fetch(`/api/metadata/${videoId}`, { method: 'DELETE' });
+      const data = await res.json();
       if (res.ok) {
-        showAlert('관련 모든 데이터가 삭제되었습니다.', 'success');
+        showAlert(data.message || '영상 및 연관된 모든 데이터가 삭제되었습니다.', 'success');
         loadHistory();
+        loadPromptStrengths();
+      } else {
+        showAlert(data.detail || '삭제 중 오류가 발생했습니다.', 'error');
       }
     } catch (e) {
-      showAlert('삭제 중 오류 발생', 'error');
+      showAlert('삭제 요청 실패: ' + e.message, 'error');
     }
   }
 
@@ -681,37 +699,50 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ==============================================================
-  // 11. AI 프롬프트 스튜디오 (AutoFlow-Pro 연동) 로직
+  // 11. AI 프롬프트 스튜디오 & Qwen-TTS (Voice Clone) 로직
   // ==============================================================
   const navTabAnalysis = document.getElementById('navTabAnalysis');
   const navTabPromptStudio = document.getElementById('navTabPromptStudio');
   const viewAnalysis = document.getElementById('viewAnalysis');
   const viewPromptStudio = document.getElementById('viewPromptStudio');
 
-  const promptVideoSelect = document.getElementById('promptVideoSelect');
+  const promptTopicInput = document.getElementById('promptTopicInput');
   const promptTargetModel = document.getElementById('promptTargetModel');
   const promptSceneCount = document.getElementById('promptSceneCount');
   const promptAspectRatio = document.getElementById('promptAspectRatio');
-  const promptCameraAngle = document.getElementById('promptCameraAngle');
-  const promptLighting = document.getElementById('promptLighting');
   const promptStyle = document.getElementById('promptStyle');
   const promptCustomSubject = document.getElementById('promptCustomSubject');
+  const promptLanguageSelect = document.getElementById('promptLanguageSelect');
+  const promptVoiceSelect = document.getElementById('promptVoiceSelect');
+  const voiceDescText = document.getElementById('voiceDescText');
   const btnGeneratePrompts = document.getElementById('btnGeneratePrompts');
+
+  const strengthsCountBadge = document.getElementById('strengthsCountBadge');
+  const strengthsSummaryText = document.getElementById('strengthsSummaryText');
 
   const studioVideoTitle = document.getElementById('studioVideoTitle');
   const studioSceneBadge = document.getElementById('studioSceneBadge');
   const studioScenesContainer = document.getElementById('studioScenesContainer');
 
+  const btnBatchTTS = document.getElementById('btnBatchTTS');
   const btnCopyAllPrompts = document.getElementById('btnCopyAllPrompts');
   const btnExportAutoFlowTxt = document.getElementById('btnExportAutoFlowTxt');
   const btnExportCsvPrompts = document.getElementById('btnExportCsvPrompts');
   const btnExportJsonPrompts = document.getElementById('btnExportJsonPrompts');
 
-  let currentGeneratedBatch = null;
-  let promptTopicsData = [];
+  // 보이스 클론 모달 엘리먼트
+  const voiceCloneModal = document.getElementById('voiceCloneModal');
+  const btnOpenVoiceModal = document.getElementById('btnOpenVoiceModal');
+  const btnCloseVoiceModal = document.getElementById('btnCloseVoiceModal');
+  const btnCancelVoiceModal = document.getElementById('btnCancelVoiceModal');
+  const voiceCloneForm = document.getElementById('voiceCloneForm');
+  const voiceNameInput = document.getElementById('voiceNameInput');
+  const voiceFileInput = document.getElementById('voiceFileInput');
+  const voiceRefTextInput = document.getElementById('voiceRefTextInput');
+  const btnSubmitVoiceClone = document.getElementById('btnSubmitVoiceClone');
 
-  const topicSummaryCard = document.getElementById('topicSummaryCard');
-  const topicSummaryText = document.getElementById('topicSummaryText');
+  let currentGeneratedBatch = null;
+  let availableVoices = [];
 
   // 메인 네비게이션 탭 전환
   function switchMainView(viewName) {
@@ -720,7 +751,8 @@ document.addEventListener('DOMContentLoaded', () => {
       navTabAnalysis.classList.remove('active');
       viewPromptStudio.style.display = 'block';
       viewAnalysis.style.display = 'none';
-      loadPromptTopics();
+      loadPromptStrengths();
+      loadTTSVoices();
     } else {
       navTabAnalysis.classList.add('active');
       navTabPromptStudio.classList.remove('active');
@@ -732,68 +764,142 @@ document.addEventListener('DOMContentLoaded', () => {
   navTabAnalysis.addEventListener('click', () => switchMainView('analysis'));
   navTabPromptStudio.addEventListener('click', () => switchMainView('promptStudio'));
 
-  // 분석된 주제(Topic) 목록 로드
-  async function loadPromptTopics() {
+  // 추천 주제 칩 클릭 이벤트 연동
+  document.querySelectorAll('.btn-topic-chip').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const topic = btn.dataset.topic;
+      if (promptTopicInput) {
+        promptTopicInput.value = topic;
+        promptTopicInput.focus();
+      }
+    });
+  });
+
+  // 분석 영상 공통 강점 데이터 로드
+  async function loadPromptStrengths() {
     try {
-      const res = await fetch('/api/prompt/topics');
+      const res = await fetch('/api/prompt/strengths');
       const resData = await res.json();
-      if (resData.status === 'success') {
-        promptTopicsData = resData.data;
-        renderPromptTopicOptions();
+      if (resData.status === 'success' && resData.data) {
+        const d = resData.data;
+        if (strengthsCountBadge) strengthsCountBadge.textContent = `${d.analyzed_count}개 영상 강점 반영 중`;
+        if (strengthsSummaryText && d.summary) strengthsSummaryText.innerHTML = d.summary;
       }
     } catch (e) {
-      console.error('주제 목록 로드 실패:', e);
+      console.error('공통 강점 로드 실패:', e);
     }
   }
 
-  function renderPromptTopicOptions(selectedId = null) {
-    if (!promptVideoSelect) return;
-    promptVideoSelect.innerHTML = '<option value="">-- 분석 완료된 영상 주제 (Topic) 선택 --</option>';
-    
-    promptTopicsData.forEach(item => {
+  // Qwen-TTS 보이스 목록 로드
+  async function loadTTSVoices() {
+    try {
+      const res = await fetch('/api/tts/voices');
+      const resData = await res.json();
+      if (resData.status === 'success' && resData.data) {
+        availableVoices = resData.data;
+        renderVoiceOptions();
+      }
+    } catch (e) {
+      console.error('보이스 목록 로드 실패:', e);
+    }
+  }
+
+  function renderVoiceOptions() {
+    if (!promptVoiceSelect) return;
+    const prev = promptVoiceSelect.value;
+    promptVoiceSelect.innerHTML = '';
+
+    availableVoices.forEach(v => {
       const opt = document.createElement('option');
-      opt.value = item.video_id;
-      const reportBadge = item.has_report ? ' [AI리포트완료]' : '';
-      opt.textContent = `🎯 ${item.title || item.video_id}${reportBadge}`;
-      if (selectedId && item.video_id === selectedId) opt.selected = true;
-      promptVideoSelect.appendChild(opt);
+      opt.value = v.id;
+      opt.textContent = v.name;
+      if (v.id === 'my_voice' && !v.is_registered) {
+        opt.textContent += ' [미등록]';
+      }
+      if (v.id === prev) opt.selected = true;
+      promptVoiceSelect.appendChild(opt);
     });
 
-    onPromptTopicChange();
+    onVoiceSelectChange();
   }
 
-  function onPromptTopicChange() {
-    const selectedId = promptVideoSelect.value;
-    const item = promptTopicsData.find(t => t.video_id === selectedId);
-    if (item && item.report_summary) {
-      topicSummaryText.textContent = item.report_summary;
-      topicSummaryCard.style.display = 'flex';
-    } else if (item && item.title) {
-      topicSummaryText.textContent = `영상 제목: ${item.title} (채널: ${item.channel})`;
-      topicSummaryCard.style.display = 'flex';
-    } else {
-      topicSummaryCard.style.display = 'none';
+  function onVoiceSelectChange() {
+    const selectedId = promptVoiceSelect.value;
+    const voice = availableVoices.find(v => v.id === selectedId);
+    if (voice && voiceDescText) {
+      voiceDescText.textContent = voice.description || '';
     }
   }
 
-  promptVideoSelect.addEventListener('change', onPromptTopicChange);
+  promptVoiceSelect.addEventListener('change', onVoiceSelectChange);
 
-  // 외부에서 특정 영상으로 프롬프트 스튜디오 열기
-  window.openPromptStudioForVideo = async function(videoId) {
+  // 보이스 클론 모달 열기/닫기
+  btnOpenVoiceModal.addEventListener('click', () => {
+    voiceCloneModal.style.display = 'flex';
+  });
+
+  const closeVoiceModal = () => {
+    voiceCloneModal.style.display = 'none';
+  };
+  btnCloseVoiceModal.addEventListener('click', closeVoiceModal);
+  btnCancelVoiceModal.addEventListener('click', closeVoiceModal);
+
+  // 내 목소리 업로드 폼 제출
+  voiceCloneForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!voiceFileInput.files || voiceFileInput.files.length === 0) {
+      alert('음성 파일(.wav 또는 .mp3)을 선택해주세요.');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('voice_file', voiceFileInput.files[0]);
+    formData.append('voice_name', voiceNameInput.value.trim() || '내 목소리');
+    formData.append('ref_text', voiceRefTextInput.value.trim());
+
+    btnSubmitVoiceClone.disabled = true;
+    btnSubmitVoiceClone.querySelector('.btn-text').style.display = 'none';
+    btnSubmitVoiceClone.querySelector('.spinner').style.display = 'inline-block';
+
+    try {
+      const res = await fetch('/api/tts/upload-voice', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('🎉 내 목소리가 성공적으로 등록되었습니다! Voice Clone 모드를 사용할 수 있습니다.');
+        closeVoiceModal();
+        await loadTTSVoices();
+        promptVoiceSelect.value = 'my_voice';
+        onVoiceSelectChange();
+      } else {
+        throw new Error(data.detail || '등록 실패');
+      }
+    } catch (err) {
+      alert('목소리 등록 오류: ' + err.message);
+    } finally {
+      btnSubmitVoiceClone.disabled = false;
+      btnSubmitVoiceClone.querySelector('.btn-text').style.display = 'inline-block';
+      btnSubmitVoiceClone.querySelector('.spinner').style.display = 'none';
+    }
+  });
+
+  // 외부에서 특정 주제로 프롬프트 스튜디오 열기
+  window.openPromptStudioForTopic = function(topicText) {
     switchMainView('promptStudio');
-    await loadPromptTopics();
-    if (promptVideoSelect) {
-      promptVideoSelect.value = videoId;
-      onPromptTopicChange();
+    if (promptTopicInput) {
+      promptTopicInput.value = topicText;
       triggerPromptGeneration();
     }
   };
 
   // 프롬프트 생성 요청 함수
   async function triggerPromptGeneration() {
-    const videoId = promptVideoSelect.value;
-    if (!videoId) {
-      alert('분석된 영상을 선택해주세요.');
+    const topic = (promptTopicInput ? promptTopicInput.value : '').trim();
+    if (!topic) {
+      alert('새로운 영상 주제나 스토리 컨셉을 입력해주세요.');
+      if (promptTopicInput) promptTopicInput.focus();
       return;
     }
 
@@ -801,28 +907,26 @@ document.addEventListener('DOMContentLoaded', () => {
     btnGeneratePrompts.querySelector('.btn-text').style.display = 'none';
     btnGeneratePrompts.querySelector('.spinner').style.display = 'inline-block';
     
-    // 로딩 인디케이터 렌더링
     studioScenesContainer.innerHTML = `
       <div class="empty-state-box" style="border-color:#8b5cf6;">
         <i class="fa-solid fa-brain fa-spin fa-3x" style="color:var(--ai-purple); animation-duration: 3s;"></i>
-        <div style="font-size:15px; font-weight:700; color:#c4b5fd;">로컬 AI (Ollama Gemma 4) 분석 & 프롬프트 창작 중...</div>
-        <p style="font-size:12px; color:var(--text-muted);">영상 자막의 흐름과 타임코드를 심층 분석하여 헐리우드급 시네마틱 프롬프트를 합성하고 있습니다. (약 10~20초 소요)</p>
+        <div style="font-size:15px; font-weight:700; color:#c4b5fd;">Ollama Gemma 4가 주제를 분석하여 최적 앵글·조명 추론 및 프롬프트 생성 중...</div>
+        <p style="font-size:12px; color:var(--text-muted);">분석 영상들의 훅·서사 강점을 결합하여 씬별 시네마틱 프롬프트와 나레이션 대본을 창작하고 있습니다. (약 10~25초 소요)</p>
       </div>
     `;
 
     try {
-      const res = await fetch('/api/prompt/generate', {
+      const res = await fetch('/api/prompt/generate-custom', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          video_id: videoId,
+          topic: topic,
           model: promptTargetModel.value,
           scene_count: parseInt(promptSceneCount.value, 10),
-          angle_key: promptCameraAngle.value,
-          lighting_key: promptLighting.value,
-          style_key: promptStyle.value,
           aspect_ratio: promptAspectRatio.value,
-          custom_subject: promptCustomSubject.value.trim()
+          style_key: promptStyle.value,
+          custom_subject: promptCustomSubject ? promptCustomSubject.value.trim() : '',
+          language: promptLanguageSelect ? promptLanguageSelect.value : 'korean'
         })
       });
 
@@ -856,28 +960,48 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    studioVideoTitle.innerHTML = `<i class="fa-solid fa-clapperboard"></i> ${escapeHtml(batchData.title)}`;
+    studioVideoTitle.innerHTML = `<i class="fa-solid fa-clapperboard"></i> 주제: ${escapeHtml(batchData.topic)}`;
     studioSceneBadge.textContent = `총 ${batchData.scenes.length}개 씬 분할 완료 (${batchData.model})`;
 
     studioScenesContainer.innerHTML = batchData.scenes.map((scene, idx) => `
-      <div class="scene-card" data-index="${idx}">
+      <div class="scene-card" data-index="${idx}" id="sceneCard_${idx}">
         <div class="scene-card-header">
           <div class="scene-badge-group">
             <span class="scene-num-badge">Scene #${scene.scene_index}</span>
-            <span class="scene-time-badge"><i class="fa-regular fa-clock"></i> ${scene.time_range}</span>
+            <span class="scene-time-badge"><i class="fa-solid fa-layer-group"></i> ${escapeHtml(scene.stage || '스토리 단계')}</span>
           </div>
           <div class="scene-tag-chips">
             ${(scene.keywords || []).map(kw => `<span class="tag-chip">#${escapeHtml(kw)}</span>`).join('')}
           </div>
         </div>
 
+        <!-- 기획 대본 및 Qwen-TTS 오디오 플레이어 영역 -->
         <div class="scene-narration-box">
-          <strong><i class="fa-solid fa-quote-left"></i> 자막/대본:</strong> ${escapeHtml(scene.narration)}
+          <div style="margin-bottom:6px;">
+            <strong><i class="fa-solid fa-quote-left"></i> 기획 대본/내레이션:</strong> 
+            <span id="narrationText_${idx}">${escapeHtml(scene.narration)}</span>
+          </div>
+          
+          <div class="scene-audio-section">
+            <div class="audio-info-label">
+              <i class="fa-solid fa-waveform-lines"></i> 성우 오디오:
+            </div>
+            
+            <audio id="sceneAudio_${idx}" class="scene-audio-player" controls style="${scene.audio_url ? '' : 'display:none;'}">
+              <source src="${scene.audio_url || ''}" type="audio/wav">
+              브라우저가 오디오 태그를 지원하지 않습니다.
+            </audio>
+
+            <button class="btn-tts-single" data-index="${idx}">
+              <span class="tts-btn-text"><i class="fa-solid fa-microphone"></i> 음성 생성</span>
+              <span class="tts-spinner" style="display:none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 합성 중...</span>
+            </button>
+          </div>
         </div>
 
         <div class="scene-prompt-editor-area">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <label><i class="fa-solid fa-sparkles"></i> AI 생성 프롬프트 (수정 가능):</label>
+            <label><i class="fa-solid fa-sparkles"></i> AI 시네마틱 프롬프트 (수정 가능):</label>
             <button class="btn btn-sm btn-outline btn-copy-single" data-index="${idx}" style="padding:2px 8px; font-size:11px;">
               <i class="fa-solid fa-copy"></i> 복사
             </button>
@@ -887,10 +1011,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         <div class="scene-card-footer">
           <div class="scene-modifiers-info">
-            <span><i class="fa-solid fa-camera"></i> ${scene.angle}</span>
-            <span><i class="fa-solid fa-sun"></i> ${scene.lighting}</span>
-            <span><i class="fa-solid fa-palette"></i> ${scene.style}</span>
-            <span><i class="fa-solid fa-crop"></i> ${scene.aspect_ratio}</span>
+            <span><i class="fa-solid fa-camera" style="color:#60a5fa;"></i> 추론 앵글: ${escapeHtml(scene.inferred_angle || 'Auto')}</span>
+            <span><i class="fa-solid fa-sun" style="color:#f59e0b;"></i> 추론 조명: ${escapeHtml(scene.inferred_lighting || 'Auto')}</span>
+            <span><i class="fa-solid fa-crop"></i> ${scene.aspect_ratio || '16:9'}</span>
           </div>
         </div>
       </div>
@@ -920,7 +1043,105 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       });
     });
+
+    // 개별 씬 음성 합성 버튼 이벤트 바인딩
+    const ttsBtns = studioScenesContainer.querySelectorAll('.btn-tts-single');
+    ttsBtns.forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const index = parseInt(btn.dataset.index, 10);
+        const scene = currentGeneratedBatch.scenes[index];
+        const narration = scene.narration;
+
+        btn.disabled = true;
+        btn.querySelector('.tts-btn-text').style.display = 'none';
+        btn.querySelector('.tts-spinner').style.display = 'inline-block';
+
+        try {
+          const res = await fetch('/api/tts/generate-scene', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: narration,
+              voice_id: promptVoiceSelect.value,
+              scene_index: scene.scene_index || (index + 1),
+              topic_slug: currentGeneratedBatch.topic || 'scene',
+              language: promptLanguageSelect ? promptLanguageSelect.value : 'korean'
+            })
+          });
+
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || '음성 합성 실패');
+          }
+
+          const result = await res.json();
+          scene.audio_url = result.audio_url;
+          
+          const audioElem = document.getElementById(`sceneAudio_${index}`);
+          if (audioElem) {
+            audioElem.src = result.audio_url + `?t=${Date.now()}`;
+            audioElem.style.display = 'block';
+            audioElem.load();
+            audioElem.play().catch(e => console.log('Auto-play note:', e));
+          }
+        } catch (err) {
+          alert('음성 생성 오류: ' + err.message);
+        } finally {
+          btn.disabled = false;
+          btn.querySelector('.tts-btn-text').style.display = 'inline-block';
+          btn.querySelector('.tts-spinner').style.display = 'none';
+        }
+      });
+    });
   }
+
+  // 전체 씬 일괄 음성 합성 (Batch TTS)
+  btnBatchTTS.addEventListener('click', async () => {
+    if (!currentGeneratedBatch || !currentGeneratedBatch.scenes || currentGeneratedBatch.scenes.length === 0) {
+      alert('먼저 프롬프트를 생성해주세요.');
+      return;
+    }
+
+    btnBatchTTS.disabled = true;
+    const originalText = btnBatchTTS.innerHTML;
+    btnBatchTTS.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 전체 음성 합성 중...';
+
+    try {
+      const res = await fetch('/api/tts/generate-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scenes: currentGeneratedBatch.scenes,
+          voice_id: promptVoiceSelect.value,
+          topic: currentGeneratedBatch.topic || 'topic',
+          language: promptLanguageSelect ? promptLanguageSelect.value : 'korean'
+        })
+      });
+
+      if (!res.ok) throw new Error('일괄 음성 합성 실패');
+
+      const data = await res.json();
+      alert(`🎉 전체 ${data.total}개 씬의 음성 합성이 완료되었습니다!`);
+      
+      // 씬 카드별 플레이어 갱신
+      (data.data || []).forEach((item, idx) => {
+        if (currentGeneratedBatch.scenes[idx]) {
+          currentGeneratedBatch.scenes[idx].audio_url = item.audio_url;
+        }
+        const audioElem = document.getElementById(`sceneAudio_${idx}`);
+        if (audioElem && item.audio_url) {
+          audioElem.src = item.audio_url + `?t=${Date.now()}`;
+          audioElem.style.display = 'block';
+          audioElem.load();
+        }
+      });
+    } catch (err) {
+      alert('일괄 음성 생성 오류: ' + err.message);
+    } finally {
+      btnBatchTTS.disabled = false;
+      btnBatchTTS.innerHTML = originalText;
+    }
+  });
 
   // 전체 프롬프트 복사
   btnCopyAllPrompts.addEventListener('click', () => {
@@ -950,7 +1171,7 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({
           scenes: currentGeneratedBatch.scenes,
           format: format,
-          video_title: currentGeneratedBatch.title || 'prompt_batch'
+          video_title: currentGeneratedBatch.topic || 'custom_topic_prompts'
         })
       });
 
@@ -979,12 +1200,14 @@ document.addEventListener('DOMContentLoaded', () => {
   btnExportCsvPrompts.addEventListener('click', () => exportPromptBatch('csv'));
   btnExportJsonPrompts.addEventListener('click', () => exportPromptBatch('json'));
 
-  // 테이블 내 프롬프트 생성 바로가기 이벤트 연동
+  // 테이블 내 프롬프트 바로가기 연동 (영상 제목을 신규 주제로 채워서 스튜디오 오픈)
   document.addEventListener('click', (e) => {
     const promptBtn = e.target.closest('.btn-open-prompt-studio');
     if (promptBtn) {
       const videoId = promptBtn.dataset.id;
-      window.openPromptStudioForVideo(videoId);
+      const targetItem = historyData.find(h => h.id === videoId);
+      const topicText = targetItem ? targetItem.title : videoId;
+      window.openPromptStudioForTopic(topicText);
     }
   });
 

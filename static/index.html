@@ -176,27 +176,46 @@
         </section>
       </div>
 
-      <!-- 뷰 2: AI 프롬프트 스튜디오 (AutoFlow-Pro 연동 뷰) -->
+      <!-- 뷰 2: AI 프롬프트 스튜디오 (신규 주제 & 공통 강점 반영) -->
       <div id="viewPromptStudio" class="view-panel" style="display: none;">
+        <!-- 분석 영상 공통 강점 안내 배너 -->
+        <div class="strengths-banner card">
+          <div class="strengths-header">
+            <i class="fa-solid fa-chart-line-up" style="color:var(--success-color)"></i>
+            <span class="strengths-title">분석 영상들에서 도출된 공통 성공 공식 (프롬프트 엔진 자동 주입)</span>
+            <span id="strengthsCountBadge" class="badge badge-accent">분석 데이터 반영 중</span>
+          </div>
+          <p id="strengthsSummaryText" class="strengths-desc">
+            기존 분석된 영상들(SCP 미스터리, 건축 다큐, 탐사물 등)의 공통 강점인 <strong>'초반 5초 오프닝 훅'</strong>, <strong>'4단계 서사 빌드업'</strong>, <strong>'스케일 대비 앵글'</strong>, <strong>'시네마틱 조명'</strong> 공식이 새로 생성될 모든 씬 프롬프트에 자동으로 적용됩니다.
+          </p>
+        </div>
+
         <section class="prompt-studio-layout">
-          <!-- 좌측: 파라미터 및 모디파이어 설정 패널 -->
+          <!-- 좌측: 새로운 주제 입력 및 생성 파라미터 패널 -->
           <div class="card studio-controls-panel">
             <div class="panel-header">
-              <i class="fa-solid fa-sliders"></i>
-              <h3>주제별 프롬프트 설정 (Ollama Gemma 4)</h3>
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <h3>새로운 영상 주제 기획 & 프롬프트 생성</h3>
             </div>
 
+            <!-- 사용자 신규 주제 입력창 -->
             <div class="control-group">
-              <label for="promptVideoSelect"><i class="fa-solid fa-list-check"></i> 분석된 영상 주제 (Topic) 선택</label>
-              <select id="promptVideoSelect" class="form-select">
-                <option value="">-- 분석 완료된 주제 선택 --</option>
-              </select>
-            </div>
-
-            <!-- 선택된 주제 요약 프리뷰 -->
-            <div id="topicSummaryCard" class="topic-summary-preview" style="display: none;">
-              <div class="topic-summary-title"><i class="fa-solid fa-brain" style="color:var(--ai-purple)"></i> 도출된 분석 리포트 반영</div>
-              <p id="topicSummaryText" class="topic-summary-text"></p>
+              <label for="promptTopicInput"><i class="fa-solid fa-pen-nib"></i> 새로운 영상 주제 / 스토리 컨셉 입력 <span class="text-danger">*</span></label>
+              <textarea 
+                id="promptTopicInput" 
+                class="form-control" 
+                rows="3" 
+                placeholder="만들고자 하는 영상/쇼츠의 주제나 시놉시스를 자유롭게 입력하세요.&#10;(예: 2050년 네오 서울, 인공지능 통제에 맞서는 마지막 인간 해커의 심야 침투 작전)"
+                required
+              ></textarea>
+              <!-- 추천 주제 칩 -->
+              <div class="topic-chip-container">
+                <span class="topic-chip-label">추천 예시:</span>
+                <button type="button" class="btn-topic-chip" data-topic="심해 1만 미터 마리아나 해구에서 발견된 미지의 발광 생명체와 거대 유적">🌊 심해 미지의 유적</button>
+                <button type="button" class="btn-topic-chip" data-topic="2050년 사이버펑크 도시의 마지막 인간 해커와 거대 AI의 대결">🤖 AI 사이버펑크</button>
+                <button type="button" class="btn-topic-chip" data-topic="극지방 빙하 속에 수만 년간 갇혀 있던 미지의 고대 우주선 발굴 탐사">❄️ 극지방 우주선 탐사</button>
+                <button type="button" class="btn-topic-chip" data-topic="조선 시대로 타임슬립한 현대 수석 엔지니어의 첨단 무기 개발기">⚔️ 조선 타임슬립 테크</button>
+              </div>
             </div>
 
             <div class="control-group">
@@ -213,9 +232,8 @@
                 <label for="promptSceneCount"><i class="fa-solid fa-film"></i> 씬(Scene) 분할 수</label>
                 <select id="promptSceneCount" class="form-select">
                   <option value="4">4개 씬</option>
-                  <option value="6" selected>6개 씬 (표준)</option>
+                  <option value="6" selected>6개 씬 (권장)</option>
                   <option value="8">8개 씬 (상세)</option>
-                  <option value="12">12개 씬 (풀스토리)</option>
                 </select>
               </div>
               <div class="control-group half">
@@ -229,29 +247,10 @@
               </div>
             </div>
 
-            <div class="control-group">
-              <label for="promptCameraAngle"><i class="fa-solid fa-camera"></i> 카메라 앵글 & 워크 (Angles)</label>
-              <select id="promptCameraAngle" class="form-select">
-                <option value="auto_variety" selected>✨ 씬별 자동 다양화 (Auto Variety)</option>
-                <option value="cinematic_wide">Cinematic Wide Shot (와이드 샷)</option>
-                <option value="medium_shot">Medium Shot (미디엄 샷)</option>
-                <option value="close_up">Cinematic Close-Up (클로즈업)</option>
-                <option value="drone_orbit">Drone 360 Orbit (드론 회전 샷)</option>
-                <option value="low_angle_hero">Low-Angle Hero Shot (로우 앵글)</option>
-                <option value="dolly_zoom">Dolly Zoom (버티고 샷)</option>
-                <option value="pov_action">First-Person POV (1인칭 시점)</option>
-              </select>
-            </div>
-
-            <div class="control-group">
-              <label for="promptLighting"><i class="fa-solid fa-sun"></i> 조명 & 분위기 (Lighting)</label>
-              <select id="promptLighting" class="form-select">
-                <option value="golden_hour" selected>Golden Hour (골든 아워)</option>
-                <option value="cyberpunk_neon">Cyberpunk Neon (네온 조명)</option>
-                <option value="volumetric_fog">Volumetric Fog & God Rays (신비로운 안개)</option>
-                <option value="dramatic_studio">Dramatic Studio Lighting (스튜디오 조명)</option>
-                <option value="dark_documentary">Dark Moody Documentary (다큐멘터리 무드)</option>
-              </select>
+            <!-- 카메라 및 조명 자동 추론 배너 -->
+            <div class="auto-inference-info-card">
+              <div class="info-title"><i class="fa-solid fa-camera-movie" style="color:#60a5fa;"></i> 카메라 앵글 & 조명 연출: <strong>AI 자동 추론</strong></div>
+              <p class="info-desc">Ollama Gemma 4가 입력된 주제의 극적 분위기에 맞춰 씬마다 최적의 <strong>카메라 무빙(와이드/클로즈업/드론)</strong>과 <strong>조명(네온/안개/골든아워)</strong>을 스스로 판단하여 합성합니다.</p>
             </div>
 
             <div class="control-group">
@@ -264,15 +263,49 @@
               </select>
             </div>
 
+            <!-- 대본 및 음성 생성 언어 선택 (Multilingual) -->
             <div class="control-group">
-              <label for="promptCustomSubject"><i class="fa-solid fa-user-astronaut"></i> 피사체/캐릭터 일관성 키워드 (선택)</label>
-              <input type="text" id="promptCustomSubject" class="form-control" placeholder="예: Asian cyber detective in black trenchcoat">
+              <label for="promptLanguageSelect"><i class="fa-solid fa-globe"></i> 대본 및 음성 생성 언어 (Language)</label>
+              <select id="promptLanguageSelect" class="form-select">
+                <option value="korean" selected>🇰🇷 한국어 (Korean)</option>
+                <option value="english">🇺🇸 English (영어)</option>
+                <option value="japanese">🇯🇵 日本語 (일본어)</option>
+                <option value="chinese">🇨🇳 中文 (중국어)</option>
+                <option value="french">🇫🇷 Français (프랑스어)</option>
+                <option value="german">🇩🇪 Deutsch (독일어)</option>
+                <option value="spanish">🇪🇸 Español (스페인어)</option>
+              </select>
+              <span class="helper-text">선택한 언어로 기획 대본 및 Qwen-TTS 다국어 음성이 합성됩니다.</span>
+            </div>
+
+            <!-- AI 성우 보이스 선택 (Qwen-TTS & Voice Clone) -->
+            <div class="control-group">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <label for="promptVoiceSelect"><i class="fa-solid fa-microphone-lines"></i> AI 내레이션 보이스 (Qwen-TTS)</label>
+                <button type="button" id="btnOpenVoiceModal" class="btn btn-sm btn-outline" style="font-size:11px; padding:2px 8px; color:#c4b5fd; border-color:rgba(167,139,250,0.4);">
+                  <i class="fa-solid fa-user-plus"></i> 내 목소리 등록
+                </button>
+              </div>
+              <select id="promptVoiceSelect" class="form-select">
+                <option value="my_voice">👤 내 목소리 (Voice Clone)</option>
+                <option value="docu_male" selected>🎙️ 진중한 다큐멘터리 남성 성우 (Ryan)</option>
+                <option value="docu_female">🎙️ 명확하고 차분한 여성 성우 (Sohee)</option>
+                <option value="mystery_narrator">🎙️ 미스터리 / 스릴러 성우 (Uncle Fu)</option>
+                <option value="shorts_energetic">🎙️ 트렌디 쇼츠 / 릴스 성우 (Vivian)</option>
+                <option value="voice_design">🎨 AI 보이스 디자인 (Voice Design)</option>
+              </select>
+              <span id="voiceDescText" class="helper-text">차분하고 신뢰감 넘치는 묵직한 내레이션</span>
+            </div>
+
+            <div class="control-group">
+              <label for="promptCustomSubject"><i class="fa-solid fa-user-astronaut"></i> 고정 피사체/캐릭터 일관성 키워드 (선택)</label>
+              <input type="text" id="promptCustomSubject" class="form-control" placeholder="예: Korean male researcher in yellow biohazard suit">
               <span class="helper-text">모든 씬에 고정 반영될 핵심 캐릭터 또는 피사체 묘사</span>
             </div>
 
             <button id="btnGeneratePrompts" class="btn btn-primary btn-block">
-              <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 씬별 프롬프트 자동 생성</span>
-              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 생성 중...</span>
+              <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> AI 씬별 프롬프트 자동 생성</span>
+              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> Ollama Gemma 4 생성 중...</span>
             </button>
           </div>
 
@@ -280,10 +313,13 @@
           <div class="studio-content-panel">
             <div class="card studio-results-header">
               <div class="header-left">
-                <h3 id="studioVideoTitle"><i class="fa-solid fa-clapperboard"></i> 씬별 스토리보드 & 프롬프트 목록</h3>
-                <span id="studioSceneBadge" class="badge badge-accent">영상 선택 대기중</span>
+                <h3 id="studioVideoTitle"><i class="fa-solid fa-clapperboard"></i> 씬별 스토리보드 & 시네마틱 프롬프트</h3>
+                <span id="studioSceneBadge" class="badge badge-accent">새 주제 생성 대기</span>
               </div>
               <div class="header-actions-group">
+                <button id="btnBatchTTS" class="btn btn-sm btn-outline" style="color:#a78bfa; border-color:#8b5cf6;" title="전체 씬의 나레이션을 Qwen-TTS 음성으로 일괄 생성">
+                  <i class="fa-solid fa-microphone-lines"></i> 전체 음성 생성
+                </button>
                 <button id="btnCopyAllPrompts" class="btn btn-sm btn-outline" title="전체 프롬프트 복사">
                   <i class="fa-solid fa-copy"></i> 전체 복사
                 </button>
@@ -303,8 +339,8 @@
             <div class="autoflow-tip-box">
               <i class="fa-solid fa-circle-info"></i>
               <div>
-                <strong>AutoFlow-Pro(Google Flow) 연동 팁:</strong> 
-                생성된 <strong>[AutoFlow-Pro TXT]</strong> 파일을 다운로드한 뒤, Chrome 확장프로그램 AutoFlow-Pro의 <em>"Import from .txt"</em>를 클릭해 한 번에 수십 개의 프롬프트를 일괄 제출할 수 있습니다.
+                <strong>AutoFlow-Pro & Qwen-TTS 연동 팁:</strong> 
+                생성된 <strong>[AutoFlow-Pro TXT]</strong>로 영상/이미지를 일괄 생성하고, 각 씬 카드의 <strong>[🎙️ 음성 생성]</strong> 버튼으로 내레이션 음성 파일(.wav)을 받아 결합하면 완전한 영상이 완성됩니다.
               </div>
             </div>
 
@@ -312,13 +348,53 @@
             <div id="studioScenesContainer" class="scenes-list-container">
               <div class="empty-state-box">
                 <i class="fa-solid fa-film fa-3x"></i>
-                <p>좌측에서 분석된 영상을 선택하고 <strong>[씬별 프롬프트 자동 생성]</strong> 버튼을 클릭하세요.</p>
+                <p>좌측에서 새로운 영상 주제를 입력하고 <strong>[AI 씬별 프롬프트 자동 생성]</strong> 버튼을 클릭하세요.</p>
               </div>
             </div>
           </div>
         </section>
       </div>
     </main>
+
+    <!-- 내 목소리 등록 모달창 (Voice Clone Modal) -->
+    <div id="voiceCloneModal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="max-width: 540px;">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-user-astronaut" style="color:var(--ai-purple)"></i> 내 목소리 학습 & 등록 (Voice Clone)</h3>
+          <button class="modal-close" id="btnCloseVoiceModal"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+          <form id="voiceCloneForm" class="voice-clone-form">
+            <p style="font-size:13px; color:var(--text-secondary); margin-bottom:14px; line-height:1.5;">
+              자신의 목소리가 녹음된 <strong>10초~1분 내외의 깨끗한 음성 파일(.wav 또는 .mp3)</strong>을 업로드하세요. Qwen-TTS가 목소리 특성을 즉시 복제하여 내 목소리로 씬별 나레이션을 생성합니다.
+            </p>
+            
+            <div class="control-group" style="margin-bottom:12px;">
+              <label for="voiceNameInput"><i class="fa-solid fa-tag"></i> 보이스 이름</label>
+              <input type="text" id="voiceNameInput" class="form-control" placeholder="예: 승준님의 목소리" value="내 목소리" required>
+            </div>
+
+            <div class="control-group" style="margin-bottom:12px;">
+              <label for="voiceFileInput"><i class="fa-solid fa-file-audio"></i> 음성 파일 (.wav, .mp3)</label>
+              <input type="file" id="voiceFileInput" class="form-control" accept="audio/wav, audio/mp3, audio/mpeg, audio/x-m4a, .wav, .mp3" required>
+            </div>
+
+            <div class="control-group" style="margin-bottom:16px;">
+              <label for="voiceRefTextInput"><i class="fa-solid fa-align-left"></i> 음성 파일의 대본/텍스트 (선택 - 품질 향상)</label>
+              <textarea id="voiceRefTextInput" class="form-control" rows="2" placeholder="녹음된 파일에서 말한 내용을 적어주시면 복제 정확도가 대폭 향상됩니다."></textarea>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:8px;">
+              <button type="button" class="btn btn-outline" id="btnCancelVoiceModal">취소</button>
+              <button type="submit" class="btn btn-primary" id="btnSubmitVoiceClone">
+                <span class="btn-text"><i class="fa-solid fa-upload"></i> 목소리 등록 및 적용</span>
+                <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 등록 중...</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
 
     <!-- 상세 모달창 (메타데이터 탭을 기본으로 배치) -->
     <div id="detailModal" class="modal-overlay" style="display: none;">

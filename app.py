@@ -9,14 +9,54 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, UploadFile, File, Form, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from pydantic import BaseModel, validator
 import pandas as pd
 import yt_dlp
 
 app = FastAPI(title="YouTube Video Analyzer & Metadata Extractor with Local AI")
+
+# ==========================================
+# 제로트러스트 보안 헤더 미들웨어
+# ==========================================
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+# ==========================================
+# 제로트러스트 입력 검증 헬퍼 (Never Trust, Always Verify)
+# ==========================================
+VIDEO_ID_REGEX = re.compile(r'^[a-zA-Z0-9_-]{5,30}$')
+SAFE_FILENAME_REGEX = re.compile(r'^[a-zA-Z0-9_.-]+$')
+
+def verify_video_id(video_id: str) -> str:
+    """video_id 파라미터가 안전한 유튜브 ID 형식인지 엄격 검증"""
+    if not video_id or not VIDEO_ID_REGEX.match(video_id):
+        raise HTTPException(status_code=400, detail="유효하지 않거나 안전하지 않은 영상 ID 형식입니다.")
+    return video_id
+
+def verify_youtube_url(url: str) -> str:
+    """SSRF 방지를 위해 신뢰할 수 있는 공식 유튜브 도메인만 허용"""
+    if not url or not isinstance(url, str):
+        raise HTTPException(status_code=400, detail="URL이 입력되지 않았습니다.")
+    
+    url_clean = url.strip()
+    allowed_domains = ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"]
+    match = re.match(r'^https?://([^/]+)', url_clean)
+    if not match:
+        raise HTTPException(status_code=400, detail="유효한 HTTP/HTTPS URL 형식이 아닙니다.")
+    
+    domain = match.group(1).lower()
+    if not any(domain == d or domain.endswith("." + d) for d in allowed_domains):
+        raise HTTPException(status_code=400, detail="공식 유튜브(youtube.com, youtu.be) URL만 분석할 수 있습니다.")
+    return url_clean
 
 # 기본 저장 경로 설정
 BASE_DIR = Path(__file__).resolve().parent
@@ -29,11 +69,34 @@ STATIC_DIR.mkdir(exist_ok=True)
 INDEX_FILE = DATA_DIR / "metadata_index.json"
 
 def load_index() -> List[Dict[str, Any]]:
+    """메타데이터 인덱스를 로드하고, 실제 파일이 삭제된 고아 데이터는 자동 동기화/정리"""
     if not INDEX_FILE.exists():
         return []
     try:
         with open(INDEX_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            raw_index = json.load(f)
+            
+        # 실제 메타데이터 파일이 존재하는 항목만 유효 항목으로 유지
+        valid_index = []
+        is_changed = False
+        for item in raw_index:
+            v_id = item.get("id")
+            if not v_id:
+                is_changed = True
+                continue
+            meta_file = DATA_DIR / f"{v_id}_metadata.json"
+            if meta_file.exists():
+                # 리포트 파일 존재 여부 실시간 최신화
+                report_file = DATA_DIR / f"{v_id}_리포트.txt"
+                item["has_report"] = report_file.exists()
+                valid_index.append(item)
+            else:
+                is_changed = True
+                
+        if is_changed:
+            save_index(valid_index)
+            
+        return valid_index
     except Exception:
         return []
 
@@ -532,13 +595,15 @@ def extract_metadata_from_ytdlp(
     return results
 
 @app.post("/api/analyze")
-async def analyze_video(req: AnalyzeRequest):
+async def analyze_youtube(req: AnalyzeRequest):
+    """유튜브 단일 영상 또는 재생목록의 메타데이터 및 댓글 심층 분석"""
     try:
+        safe_url = verify_youtube_url(req.url)
         loop = asyncio.get_event_loop()
         results = await loop.run_in_executor(
             None, 
             extract_metadata_from_ytdlp, 
-            req.url, 
+            safe_url, 
             req.extract_subtitles,
             req.extract_comments,
             req.max_comments,
@@ -546,27 +611,31 @@ async def analyze_video(req: AnalyzeRequest):
             req.max_playlist_items or 10
         )
         return {"status": "success", "count": len(results), "data": results}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/ai-analyze/{video_id}")
 async def run_ai_analysis(video_id: str):
     """LM Studio google/gemma-4-e4b 모델로 AI 리포트 비동기 생성"""
+    safe_id = verify_video_id(video_id)
     try:
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, generate_video_ai_report, video_id)
+        result = await loop.run_in_executor(None, generate_video_ai_report, safe_id)
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/ai-report/{video_id}/download")
 async def download_ai_report(video_id: str):
-    report_file = DATA_DIR / f"{video_id}_리포트.txt"
+    safe_id = verify_video_id(video_id)
+    report_file = DATA_DIR / f"{safe_id}_리포트.txt"
     if not report_file.exists():
         raise HTTPException(status_code=404, detail="생성된 AI 리포트가 없습니다.")
     return FileResponse(
         report_file,
-        filename=f"{video_id}_리포트.txt",
+        filename=f"{safe_id}_리포트.txt",
         media_type="text/plain; charset=utf-8"
     )
 
@@ -577,7 +646,8 @@ async def get_history():
 
 @app.get("/api/metadata/{video_id}")
 async def get_metadata_detail(video_id: str):
-    file_path = DATA_DIR / f"{video_id}_metadata.json"
+    safe_id = verify_video_id(video_id)
+    file_path = DATA_DIR / f"{safe_id}_metadata.json"
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="해당 영상의 메타데이터를 찾을 수 없습니다.")
     with open(file_path, "r", encoding="utf-8") as f:
@@ -618,59 +688,91 @@ async def export_video_comments_csv(video_id: str):
 
 @app.delete("/api/metadata/{video_id}")
 async def delete_metadata(video_id: str):
-    for fname in [f"{video_id}_metadata.json", f"{video_id}_c.info.json", f"{video_id}_comments.csv", f"{video_id}_comments_export.csv", f"{video_id}_리포트.txt", f"{video_id}.ko.srt"]:
-        f_p = DATA_DIR / fname
-        if f_p.exists():
+    """영상 및 그에 연관된 모든 정보, 자막, AI 리포트, 오디오 파일 등을 완전 삭제"""
+    deleted_files = []
+    
+    # 1. data/ 디렉토리 내 video_id가 포함된 모든 파일 검색 및 삭제
+    for p in DATA_DIR.glob(f"*{video_id}*"):
+        if p.is_file():
             try:
-                os.remove(f_p)
-            except Exception:
-                pass
+                p.unlink()
+                deleted_files.append(p.name)
+            except Exception as e:
+                print(f"[Delete Error] {p.name}: {e}")
+                
+    # 2. data/audio/ 디렉토리 내 video_id가 포함된 오디오 파일 삭제
+    audio_dir = DATA_DIR / "audio"
+    if audio_dir.exists():
+        for ap in audio_dir.glob(f"*{video_id}*"):
+            if ap.is_file():
+                try:
+                    ap.unlink()
+                    deleted_files.append(f"audio/{ap.name}")
+                except Exception:
+                    pass
+
+    # 3. 메타데이터 인덱스 파일에서 제거
     index = load_index()
     index = [item for item in index if item.get('id') != video_id]
     save_index(index)
-    return {"status": "success", "message": f"{video_id} 관련 모든 데이터가 삭제되었습니다."}
+    
+    return {
+        "status": "success", 
+        "message": f"영상({video_id}) 및 연관된 메타데이터, 자막, AI 리포트 등 총 {len(deleted_files)}개 파일이 완전히 삭제되었습니다.",
+        "deleted_files": deleted_files
+    }
 
 # ==========================================
 # AI 프롬프트 스튜디오 & AutoFlow-Pro 연동 API
 # ==========================================
 from prompt_generator import (
     PromptGenerator, 
-    CAMERA_ANGLES, 
-    LIGHTING_PRESETS, 
     STYLE_PRESETS, 
-    SUPPORTED_MODELS
+    SUPPORTED_MODELS,
+    SUPPORTED_LANGUAGES
 )
-from fastapi.responses import PlainTextResponse
+from tts_service import TTSService, AUDIO_DIR
 
-class PromptGenerateRequest(BaseModel):
-    video_id: str
-    model: str = "google_flow"
+class PromptCustomTopicRequest(BaseModel):
+    topic: str
     scene_count: int = 6
-    angle_key: str = "cinematic_wide"
-    lighting_key: str = "golden_hour"
-    style_key: str = "photorealistic_8k"
+    model: str = "google_flow"
     aspect_ratio: str = "16:9"
+    style_key: str = "photorealistic_8k"
     custom_subject: Optional[str] = ""
+    language: Optional[str] = "korean"
 
 class PromptExportRequest(BaseModel):
     scenes: List[Dict[str, Any]]
     format: str = "autoflow_txt"  # autoflow_txt | csv | json
     video_title: Optional[str] = "prompt_batch"
 
-@app.get("/api/prompt/topics")
-async def get_prompt_topics():
-    """이미 분석 완료된 영상들의 주제 및 리포트 요약 목록 제공"""
-    topics = PromptGenerator.get_analyzed_topics_list(DATA_DIR)
-    return {"status": "success", "data": topics}
+class TTSSceneRequest(BaseModel):
+    text: str
+    voice_id: str = "docu_male"
+    scene_index: int = 1
+    topic_slug: Optional[str] = "scene"
+    language: Optional[str] = "korean"
+
+class TTSBatchRequest(BaseModel):
+    scenes: List[Dict[str, Any]]
+    voice_id: str = "docu_male"
+    topic: Optional[str] = "custom_topic"
+    language: Optional[str] = "korean"
+
+@app.get("/api/prompt/strengths")
+async def get_prompt_strengths():
+    """분석 완료된 영상들에서 공통 도출된 성공 강점 및 패턴 제공"""
+    strengths = PromptGenerator.extract_common_strengths(DATA_DIR)
+    return {"status": "success", "data": strengths}
 
 @app.get("/api/prompt/options")
 async def get_prompt_options():
-    """프롬프트 생성기에서 선택 가능한 모델, 앵글, 조명, 스타일 옵션 제공"""
+    """프롬프트 생성기 옵션 제공"""
     return {
         "models": {k: {"name": v["name"], "description": v["description"], "default_aspect": v["default_aspect"]} for k, v in SUPPORTED_MODELS.items()},
-        "camera_angles": CAMERA_ANGLES,
-        "lighting_presets": LIGHTING_PRESETS,
         "style_presets": STYLE_PRESETS,
+        "languages": SUPPORTED_LANGUAGES,
         "aspect_ratios": [
             {"value": "16:9", "label": "16:9 (Landscape - YouTube / Cinema)"},
             {"value": "9:16", "label": "9:16 (Portrait - Shorts / Reels / TikTok)"},
@@ -679,27 +781,132 @@ async def get_prompt_options():
         ]
     }
 
-@app.post("/api/prompt/generate")
-async def generate_prompts(req: PromptGenerateRequest):
-    """지정한 영상 분석 데이터를 바탕으로 씬별 AI 프롬프트 일괄 생성"""
-    if not req.video_id:
-        raise HTTPException(status_code=400, detail="video_id가 필요합니다.")
+@app.post("/api/prompt/generate-custom")
+async def generate_custom_topic_prompts(req: PromptCustomTopicRequest):
+    """사용자가 새로 입력한 주제에 대해 분석 영상 공통 강점을 반영하여 씬별 AI 프롬프트 생성"""
+    if not req.topic or not req.topic.strip():
+        raise HTTPException(status_code=400, detail="새로운 영상 주제(Topic)를 입력해주세요.")
         
     try:
-        result = PromptGenerator.generate_batch_from_video(
-            video_id=req.video_id,
-            data_dir=DATA_DIR,
-            model=req.model,
+        result = PromptGenerator.generate_prompts_from_custom_topic(
+            topic=req.topic.strip(),
             scene_count=req.scene_count,
-            angle_key=req.angle_key,
-            lighting_key=req.lighting_key,
-            style_key=req.style_key,
+            model=req.model,
             aspect_ratio=req.aspect_ratio,
-            custom_subject=req.custom_subject or ""
+            style_key=req.style_key,
+            custom_subject=req.custom_subject or "",
+            language=req.language or "korean",
+            data_dir=DATA_DIR
         )
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"프롬프트 생성 실패: {str(e)}")
+
+# ==========================================
+# Qwen-TTS & Voice Clone 음성 합성 API
+# ==========================================
+@app.get("/api/tts/voices")
+async def get_tts_voices():
+    """사용 가능한 모든 보이스 목록 (내 목소리 Voice Clone 포함) 반환"""
+    voices = TTSService.get_registered_voices()
+    return {"status": "success", "data": voices}
+
+@app.post("/api/tts/upload-voice")
+async def upload_voice_clone(
+    voice_file: UploadFile = File(...),
+    voice_name: str = Form("내 목소리"),
+    ref_text: str = Form("")
+):
+    """내 목소리 오디오 파일 업로드 및 Voice Clone 프로필 등록"""
+    # 1. 파일 확장자 검증
+    allowed_exts = {".wav", ".mp3", ".m4a", ".ogg"}
+    orig_name = Path(voice_file.filename or "voice.wav").name
+    file_ext = Path(orig_name).suffix.lower()
+    if file_ext not in allowed_exts:
+        raise HTTPException(status_code=400, detail="오디오 파일(.wav, .mp3, .m4a)만 업로드할 수 있습니다.")
+    
+    # 2. 안전한 임시 파일 생성
+    safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', orig_name)
+    temp_path = DATA_DIR / f"temp_{safe_name}"
+    try:
+        content = await voice_file.read()
+        if len(content) > 30 * 1024 * 1024:  # 30MB 제한
+            raise HTTPException(status_code=400, detail="음성 파일 크기는 최대 30MB를 초과할 수 없습니다.")
+            
+        with open(temp_path, "wb") as f:
+            f.write(content)
+            
+        res = TTSService.register_my_voice(temp_path, voice_name=voice_name[:30], ref_text=ref_text[:300])
+        if temp_path.exists():
+            temp_path.unlink()
+        return res
+    except HTTPException:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise
+    except Exception as e:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise HTTPException(status_code=500, detail=f"보이스 등록 실패: {str(e)}")
+
+@app.post("/api/tts/generate-scene")
+async def generate_scene_tts(req: TTSSceneRequest):
+    """단일 씬 대본 텍스트에 대한 음성 합성"""
+    if not req.text or not req.text.strip():
+        raise HTTPException(status_code=400, detail="합성할 텍스트가 없습니다.")
+        
+    slug = re.sub(r'[^a-zA-Z0-9가-힣_-]', '_', req.topic_slug or "scene")[:20]
+    res = TTSService.synthesize_speech(
+        text=req.text.strip(),
+        voice_id=req.voice_id,
+        scene_index=req.scene_index,
+        topic_slug=slug,
+        language=req.language or "korean"
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message", "음성 합성 실패"))
+    return res
+
+@app.post("/api/tts/generate-batch")
+async def generate_batch_tts(req: TTSBatchRequest):
+    """전체 씬 일괄 음성 합성"""
+    if not req.scenes:
+        raise HTTPException(status_code=400, detail="합성할 씬 목록이 없습니다.")
+        
+    slug = re.sub(r'[^a-zA-Z0-9가-힣_-]', '_', req.topic or "topic")[:20]
+    results = []
+    
+    for idx, sc in enumerate(req.scenes):
+        narration = sc.get("narration", "").strip()
+        if not narration:
+            continue
+        scene_idx = sc.get("scene_index", idx + 1)
+        res = TTSService.synthesize_speech(
+            text=narration,
+            voice_id=req.voice_id,
+            scene_index=scene_idx,
+            topic_slug=slug,
+            language=req.language or "korean"
+        )
+        results.append(res)
+        
+    return {
+        "status": "success",
+        "total": len(results),
+        "data": results
+    }
+
+@app.get("/api/audio/{filename}")
+async def get_audio_file(filename: str):
+    """합성된 오디오 파일 스트리밍 서빙 (경로 순회 공격 방어)"""
+    safe_name = Path(filename).name
+    if not SAFE_FILENAME_REGEX.match(safe_name) or not safe_name.endswith(".wav"):
+        raise HTTPException(status_code=400, detail="잘못된 오디오 파일명 형식입니다.")
+        
+    file_path = (AUDIO_DIR / safe_name).resolve()
+    if not file_path.is_relative_to(AUDIO_DIR.resolve()) or not file_path.exists():
+        raise HTTPException(status_code=404, detail="오디오 파일을 찾을 수 없습니다.")
+    return FileResponse(file_path, media_type="audio/wav")
 
 @app.post("/api/prompt/export")
 async def export_prompts(req: PromptExportRequest):
