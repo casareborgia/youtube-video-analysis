@@ -681,7 +681,8 @@ async def delete_metadata(video_id: str):
 from prompt_generator import (
     PromptGenerator, 
     STYLE_PRESETS, 
-    SUPPORTED_MODELS
+    SUPPORTED_MODELS,
+    SUPPORTED_LANGUAGES
 )
 from tts_service import TTSService, AUDIO_DIR
 
@@ -692,6 +693,7 @@ class PromptCustomTopicRequest(BaseModel):
     aspect_ratio: str = "16:9"
     style_key: str = "photorealistic_8k"
     custom_subject: Optional[str] = ""
+    language: Optional[str] = "korean"
 
 class PromptExportRequest(BaseModel):
     scenes: List[Dict[str, Any]]
@@ -703,11 +705,13 @@ class TTSSceneRequest(BaseModel):
     voice_id: str = "docu_male"
     scene_index: int = 1
     topic_slug: Optional[str] = "scene"
+    language: Optional[str] = "korean"
 
 class TTSBatchRequest(BaseModel):
     scenes: List[Dict[str, Any]]
     voice_id: str = "docu_male"
     topic: Optional[str] = "custom_topic"
+    language: Optional[str] = "korean"
 
 @app.get("/api/prompt/strengths")
 async def get_prompt_strengths():
@@ -721,6 +725,7 @@ async def get_prompt_options():
     return {
         "models": {k: {"name": v["name"], "description": v["description"], "default_aspect": v["default_aspect"]} for k, v in SUPPORTED_MODELS.items()},
         "style_presets": STYLE_PRESETS,
+        "languages": SUPPORTED_LANGUAGES,
         "aspect_ratios": [
             {"value": "16:9", "label": "16:9 (Landscape - YouTube / Cinema)"},
             {"value": "9:16", "label": "9:16 (Portrait - Shorts / Reels / TikTok)"},
@@ -743,6 +748,7 @@ async def generate_custom_topic_prompts(req: PromptCustomTopicRequest):
             aspect_ratio=req.aspect_ratio,
             style_key=req.style_key,
             custom_subject=req.custom_subject or "",
+            language=req.language or "korean",
             data_dir=DATA_DIR
         )
         return result
@@ -790,7 +796,8 @@ async def generate_scene_tts(req: TTSSceneRequest):
         text=req.text.strip(),
         voice_id=req.voice_id,
         scene_index=req.scene_index,
-        topic_slug=slug
+        topic_slug=slug,
+        language=req.language or "korean"
     )
     if res.get("status") == "error":
         raise HTTPException(status_code=500, detail=res.get("message", "음성 합성 실패"))
@@ -814,7 +821,8 @@ async def generate_batch_tts(req: TTSBatchRequest):
             text=narration,
             voice_id=req.voice_id,
             scene_index=scene_idx,
-            topic_slug=slug
+            topic_slug=slug,
+            language=req.language or "korean"
         )
         results.append(res)
         

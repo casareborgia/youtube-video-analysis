@@ -263,6 +263,21 @@
               </select>
             </div>
 
+            <!-- 대본 및 음성 생성 언어 선택 (Multilingual) -->
+            <div class="control-group">
+              <label for="promptLanguageSelect"><i class="fa-solid fa-globe"></i> 대본 및 음성 생성 언어 (Language)</label>
+              <select id="promptLanguageSelect" class="form-select">
+                <option value="korean" selected>🇰🇷 한국어 (Korean)</option>
+                <option value="english">🇺🇸 English (영어)</option>
+                <option value="japanese">🇯🇵 日本語 (일본어)</option>
+                <option value="chinese">🇨🇳 中文 (중국어)</option>
+                <option value="french">🇫🇷 Français (프랑스어)</option>
+                <option value="german">🇩🇪 Deutsch (독일어)</option>
+                <option value="spanish">🇪🇸 Español (스페인어)</option>
+              </select>
+              <span class="helper-text">선택한 언어로 기획 대본 및 Qwen-TTS 다국어 음성이 합성됩니다.</span>
+            </div>
+
             <!-- AI 성우 보이스 선택 (Qwen-TTS & Voice Clone) -->
             <div class="control-group">
               <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -273,11 +288,11 @@
               </div>
               <select id="promptVoiceSelect" class="form-select">
                 <option value="my_voice">👤 내 목소리 (Voice Clone)</option>
+                <option value="docu_male" selected>🎙️ 진중한 다큐멘터리 남성 성우 (Ryan)</option>
+                <option value="docu_female">🎙️ 명확하고 차분한 여성 성우 (Sohee)</option>
+                <option value="mystery_narrator">🎙️ 미스터리 / 스릴러 성우 (Uncle Fu)</option>
+                <option value="shorts_energetic">🎙️ 트렌디 쇼츠 / 릴스 성우 (Vivian)</option>
                 <option value="voice_design">🎨 AI 보이스 디자인 (Voice Design)</option>
-                <option value="docu_male" selected>🎙️ 진중한 다큐멘터리 남성 성우</option>
-                <option value="docu_female">🎙️ 명확하고 차분한 여성 성우</option>
-                <option value="mystery_narrator">🎙️ 미스터리 / 스릴러 성우</option>
-                <option value="shorts_energetic">🎙️ 트렌디 쇼츠 / 릴스 성우</option>
               </select>
               <span id="voiceDescText" class="helper-text">차분하고 신뢰감 넘치는 묵직한 내레이션</span>
             </div>

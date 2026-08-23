@@ -701,6 +701,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const promptAspectRatio = document.getElementById('promptAspectRatio');
   const promptStyle = document.getElementById('promptStyle');
   const promptCustomSubject = document.getElementById('promptCustomSubject');
+  const promptLanguageSelect = document.getElementById('promptLanguageSelect');
   const promptVoiceSelect = document.getElementById('promptVoiceSelect');
   const voiceDescText = document.getElementById('voiceDescText');
   const btnGeneratePrompts = document.getElementById('btnGeneratePrompts');
@@ -913,7 +914,8 @@ document.addEventListener('DOMContentLoaded', () => {
           scene_count: parseInt(promptSceneCount.value, 10),
           aspect_ratio: promptAspectRatio.value,
           style_key: promptStyle.value,
-          custom_subject: promptCustomSubject ? promptCustomSubject.value.trim() : ''
+          custom_subject: promptCustomSubject ? promptCustomSubject.value.trim() : '',
+          language: promptLanguageSelect ? promptLanguageSelect.value : 'korean'
         })
       });
 
@@ -1051,7 +1053,8 @@ document.addEventListener('DOMContentLoaded', () => {
               text: narration,
               voice_id: promptVoiceSelect.value,
               scene_index: scene.scene_index || (index + 1),
-              topic_slug: currentGeneratedBatch.topic || 'scene'
+              topic_slug: currentGeneratedBatch.topic || 'scene',
+              language: promptLanguageSelect ? promptLanguageSelect.value : 'korean'
             })
           });
 
@@ -1099,7 +1102,8 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({
           scenes: currentGeneratedBatch.scenes,
           voice_id: promptVoiceSelect.value,
-          topic: currentGeneratedBatch.topic || 'topic'
+          topic: currentGeneratedBatch.topic || 'topic',
+          language: promptLanguageSelect ? promptLanguageSelect.value : 'korean'
         })
       });
 

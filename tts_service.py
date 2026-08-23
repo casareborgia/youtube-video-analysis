@@ -73,6 +73,17 @@ PRESET_VOICES = [
     }
 ]
 
+# 지원 언어 정의
+SUPPORTED_LANGUAGES = [
+    {"id": "korean", "name": "🇰🇷 한국어 (Korean)"},
+    {"id": "english", "name": "🇺🇸 English (영어)"},
+    {"id": "japanese", "name": "🇯🇵 日本語 (일본어)"},
+    {"id": "chinese", "name": "🇨🇳 中文 (중국어)"},
+    {"id": "french", "name": "🇫🇷 Français (프랑스어)"},
+    {"id": "german", "name": "🇩🇪 Deutsch (독일어)"},
+    {"id": "spanish", "name": "🇪🇸 Español (스페인어)"}
+]
+
 # Qwen-TTS 실행을 위한 독립 파이썬 스크립트 템플릿
 RUNNER_SCRIPT = BASE_DIR / "qwen_tts_runner.py"
 
@@ -259,7 +270,8 @@ class TTSService:
         text: str,
         voice_id: str = "docu_male",
         scene_index: int = 1,
-        topic_slug: str = "scene"
+        topic_slug: str = "scene",
+        language: str = "korean"
     ) -> Dict[str, Any]:
         """대본 텍스트를 Qwen-TTS(또는 Voice Clone)로 음성 합성"""
         ensure_runner_script()
@@ -270,13 +282,14 @@ class TTSService:
         # 보이스 설정 찾기
         voices = {v["id"]: v for v in PRESET_VOICES}
         voice_config = voices.get(voice_id, PRESET_VOICES[1])
+        lang_code = language.lower() if language else "korean"
         
         cmd = [
             str(QWEN_PYTHON) if QWEN_PYTHON.exists() else sys.executable,
             str(RUNNER_SCRIPT),
             "--text", text,
             "--output", str(output_path),
-            "--language", "korean"
+            "--language", lang_code
         ]
 
         if voice_id == "my_voice":

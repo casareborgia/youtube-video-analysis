@@ -35,6 +35,16 @@ STYLE_PRESETS = {
     }
 }
 
+SUPPORTED_LANGUAGES = {
+    "korean": {"name": "한국어 (Korean)", "label": "Korean", "qwen_code": "korean"},
+    "english": {"name": "English (영어)", "label": "English", "qwen_code": "english"},
+    "japanese": {"name": "日本語 (일본어)", "label": "Japanese", "qwen_code": "japanese"},
+    "chinese": {"name": "中文 (중국어)", "label": "Chinese", "qwen_code": "chinese"},
+    "french": {"name": "Français (프랑스어)", "label": "French", "qwen_code": "french"},
+    "german": {"name": "Deutsch (독일어)", "label": "German", "qwen_code": "german"},
+    "spanish": {"name": "Español (스페인어)", "label": "Spanish", "qwen_code": "spanish"}
+}
+
 SUPPORTED_MODELS = {
     "google_flow": {
         "name": "Google Flow (Veo 2/3, Imagen 3/4)",
@@ -138,35 +148,40 @@ class PromptGenerator:
         aspect_ratio: str = "16:9",
         style_key: str = "photorealistic_8k",
         custom_subject: str = "",
+        language: str = "korean",
         data_dir: Path = Path("data")
     ) -> Dict[str, Any]:
-        """사용자가 새로 입력한 주제(Topic)에 대해 분석 영상 공통 강점을 반영하여 최적 프롬프트 세트 고속 생성"""
+        """사용자가 새로 입력한 주제(Topic)에 대해 분석 영상 공통 강점 및 선택 언어를 반영하여 최적 프롬프트 세트 고속 생성"""
         
         strengths_data = cls.extract_common_strengths(data_dir)
         strengths_bullet = "\n".join([f"- {s}" for s in strengths_data["common_strengths"][:3]])
         style_info = STYLE_PRESETS.get(style_key, STYLE_PRESETS["photorealistic_8k"])
+        lang_info = SUPPORTED_LANGUAGES.get(language.lower(), SUPPORTED_LANGUAGES["korean"])
+        lang_label = lang_info["label"]
 
-        # 초경량 고속 프롬프트 구성 (1문장 간결성 지시로 토큰 대폭 절약)
+        # 초경량 고속 프롬프트 구성 (지정 언어 대본 작성 지시)
         system_prompt = (
-            "You are a Hollywood AI Visual Director. "
-            "Break down the topic into concise progressive scenes. "
-            "Keep each narration and visual description strictly to 1 short punchy sentence. "
-            "Return ONLY a pure JSON object containing a 'scenes' array."
+            f"You are a Hollywood AI Visual Director. "
+            f"Break down the topic into concise progressive scenes. "
+            f"Write the narration/script strictly in {lang_label} (1 short punchy sentence). "
+            f"Write the visual description strictly in English (1 short visual sentence). "
+            f"Return ONLY a pure JSON object containing a 'scenes' array."
         )
 
         user_prompt = f"""Topic: "{topic}"
 Scenes Needed: {scene_count}
 Target AI: {model}, Aspect Ratio: {aspect_ratio}
+Narration Language: {lang_label}
 Proven Strengths: {strengths_bullet}
 
-Return JSON with exact schema (keep each value concise to 1 sentence):
+Return JSON with exact schema (narration in {lang_label}, visual_description in English):
 {{
   "scenes": [
     {{
       "scene_index": 1,
       "stage": "도입 (오프닝 훅)",
-      "narration": "한국어 내레이션 1문장",
-      "keywords": ["키워드1", "키워드2"],
+      "narration": "Narration script line in {lang_label}",
+      "keywords": ["tag1", "tag2"],
       "inferred_angle": "Extreme Wide Establishing Shot",
       "inferred_lighting": "Volumetric Fog & Neon Glow",
       "visual_description": "A lone cyberpunk hacker looking over the rainy neon skyline of Neo Seoul 2050"
@@ -265,6 +280,7 @@ Return JSON with exact schema (keep each value concise to 1 sentence):
             "total_scenes": len(generated_scenes),
             "model": model,
             "aspect_ratio": aspect_ratio,
+            "language": language,
             "engine": "Ollama Gemma 4 AI",
             "applied_strengths": strengths_data["common_strengths"],
             "scenes": generated_scenes
