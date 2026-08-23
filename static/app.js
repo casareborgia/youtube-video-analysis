@@ -33,6 +33,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let historyData = [];
 
+  // XSS 방어 헬퍼 (Zero-Trust Contextual Escaping)
+  function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
   // 1. 테마 토글
   btnThemeToggle.addEventListener('click', () => {
     document.body.classList.toggle('light-theme');
@@ -52,8 +63,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function showAlert(message, type = 'error') {
     alertBox.className = `alert-box alert-${type}`;
     alertBox.innerHTML = type === 'error' 
-      ? `<i class="fa-solid fa-triangle-exclamation"></i> <span>${message}</span>`
-      : `<i class="fa-solid fa-circle-check"></i> <span>${message}</span>`;
+      ? `<i class="fa-solid fa-triangle-exclamation"></i> <span>${escapeHtml(message)}</span>`
+      : `<i class="fa-solid fa-circle-check"></i> <span>${escapeHtml(message)}</span>`;
     alertBox.style.display = 'flex';
     setTimeout(() => {
       alertBox.style.display = 'none';

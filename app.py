@@ -9,14 +9,54 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, UploadFile, File, Form, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 import pandas as pd
 import yt_dlp
 
 app = FastAPI(title="YouTube Video Analyzer & Metadata Extractor with Local AI")
+
+# ==========================================
+# 제로트러스트 보안 헤더 미들웨어
+# ==========================================
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+# ==========================================
+# 제로트러스트 입력 검증 헬퍼 (Never Trust, Always Verify)
+# ==========================================
+VIDEO_ID_REGEX = re.compile(r'^[a-zA-Z0-9_-]{5,30}$')
+SAFE_FILENAME_REGEX = re.compile(r'^[a-zA-Z0-9_.-]+$')
+
+def verify_video_id(video_id: str) -> str:
+    """video_id 파라미터가 안전한 유튜브 ID 형식인지 엄격 검증"""
+    if not video_id or not VIDEO_ID_REGEX.match(video_id):
+        raise HTTPException(status_code=400, detail="유효하지 않거나 안전하지 않은 영상 ID 형식입니다.")
+    return video_id
+
+def verify_youtube_url(url: str) -> str:
+    """SSRF 방지를 위해 신뢰할 수 있는 공식 유튜브 도메인만 허용"""
+    if not url or not isinstance(url, str):
+        raise HTTPException(status_code=400, detail="URL이 입력되지 않았습니다.")
+    
+    url_clean = url.strip()
+    allowed_domains = ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"]
+    match = re.match(r'^https?://([^/]+)', url_clean)
+    if not match:
+        raise HTTPException(status_code=400, detail="유효한 HTTP/HTTPS URL 형식이 아닙니다.")
+    
+    domain = match.group(1).lower()
+    if not any(domain == d or domain.endswith("." + d) for d in allowed_domains):
+        raise HTTPException(status_code=400, detail="공식 유튜브(youtube.com, youtu.be) URL만 분석할 수 있습니다.")
+    return url_clean
 
 # 기본 저장 경로 설정
 BASE_DIR = Path(__file__).resolve().parent
@@ -555,13 +595,15 @@ def extract_metadata_from_ytdlp(
     return results
 
 @app.post("/api/analyze")
-async def analyze_video(req: AnalyzeRequest):
+async def analyze_youtube(req: AnalyzeRequest):
+    """유튜브 단일 영상 또는 재생목록의 메타데이터 및 댓글 심층 분석"""
     try:
+        safe_url = verify_youtube_url(req.url)
         loop = asyncio.get_event_loop()
         results = await loop.run_in_executor(
             None, 
             extract_metadata_from_ytdlp, 
-            req.url, 
+            safe_url, 
             req.extract_subtitles,
             req.extract_comments,
             req.max_comments,
@@ -569,27 +611,31 @@ async def analyze_video(req: AnalyzeRequest):
             req.max_playlist_items or 10
         )
         return {"status": "success", "count": len(results), "data": results}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/ai-analyze/{video_id}")
 async def run_ai_analysis(video_id: str):
     """LM Studio google/gemma-4-e4b 모델로 AI 리포트 비동기 생성"""
+    safe_id = verify_video_id(video_id)
     try:
         loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, generate_video_ai_report, video_id)
+        result = await loop.run_in_executor(None, generate_video_ai_report, safe_id)
         return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.get("/api/ai-report/{video_id}/download")
 async def download_ai_report(video_id: str):
-    report_file = DATA_DIR / f"{video_id}_리포트.txt"
+    safe_id = verify_video_id(video_id)
+    report_file = DATA_DIR / f"{safe_id}_리포트.txt"
     if not report_file.exists():
         raise HTTPException(status_code=404, detail="생성된 AI 리포트가 없습니다.")
     return FileResponse(
         report_file,
-        filename=f"{video_id}_리포트.txt",
+        filename=f"{safe_id}_리포트.txt",
         media_type="text/plain; charset=utf-8"
     )
 
@@ -600,7 +646,8 @@ async def get_history():
 
 @app.get("/api/metadata/{video_id}")
 async def get_metadata_detail(video_id: str):
-    file_path = DATA_DIR / f"{video_id}_metadata.json"
+    safe_id = verify_video_id(video_id)
+    file_path = DATA_DIR / f"{safe_id}_metadata.json"
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="해당 영상의 메타데이터를 찾을 수 없습니다.")
     with open(file_path, "r", encoding="utf-8") as f:
@@ -771,15 +818,32 @@ async def upload_voice_clone(
     ref_text: str = Form("")
 ):
     """내 목소리 오디오 파일 업로드 및 Voice Clone 프로필 등록"""
-    temp_path = DATA_DIR / f"temp_{voice_file.filename}"
+    # 1. 파일 확장자 검증
+    allowed_exts = {".wav", ".mp3", ".m4a", ".ogg"}
+    orig_name = Path(voice_file.filename or "voice.wav").name
+    file_ext = Path(orig_name).suffix.lower()
+    if file_ext not in allowed_exts:
+        raise HTTPException(status_code=400, detail="오디오 파일(.wav, .mp3, .m4a)만 업로드할 수 있습니다.")
+    
+    # 2. 안전한 임시 파일 생성
+    safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', orig_name)
+    temp_path = DATA_DIR / f"temp_{safe_name}"
     try:
-        with open(temp_path, "wb") as f:
-            f.write(await voice_file.read())
+        content = await voice_file.read()
+        if len(content) > 30 * 1024 * 1024:  # 30MB 제한
+            raise HTTPException(status_code=400, detail="음성 파일 크기는 최대 30MB를 초과할 수 없습니다.")
             
-        res = TTSService.register_my_voice(temp_path, voice_name=voice_name, ref_text=ref_text)
+        with open(temp_path, "wb") as f:
+            f.write(content)
+            
+        res = TTSService.register_my_voice(temp_path, voice_name=voice_name[:30], ref_text=ref_text[:300])
         if temp_path.exists():
             temp_path.unlink()
         return res
+    except HTTPException:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise
     except Exception as e:
         if temp_path.exists():
             temp_path.unlink()
@@ -834,9 +898,13 @@ async def generate_batch_tts(req: TTSBatchRequest):
 
 @app.get("/api/audio/{filename}")
 async def get_audio_file(filename: str):
-    """합성된 오디오 파일 스트리밍 서빙"""
-    file_path = AUDIO_DIR / filename
-    if not file_path.exists():
+    """합성된 오디오 파일 스트리밍 서빙 (경로 순회 공격 방어)"""
+    safe_name = Path(filename).name
+    if not SAFE_FILENAME_REGEX.match(safe_name) or not safe_name.endswith(".wav"):
+        raise HTTPException(status_code=400, detail="잘못된 오디오 파일명 형식입니다.")
+        
+    file_path = (AUDIO_DIR / safe_name).resolve()
+    if not file_path.is_relative_to(AUDIO_DIR.resolve()) or not file_path.exists():
         raise HTTPException(status_code=404, detail="오디오 파일을 찾을 수 없습니다.")
     return FileResponse(file_path, media_type="audio/wav")
 
