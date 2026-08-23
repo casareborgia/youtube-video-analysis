@@ -9,9 +9,9 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 import pandas as pd
 import yt_dlp
@@ -638,7 +638,7 @@ from prompt_generator import (
     STYLE_PRESETS, 
     SUPPORTED_MODELS
 )
-from fastapi.responses import PlainTextResponse
+from tts_service import TTSService, AUDIO_DIR
 
 class PromptCustomTopicRequest(BaseModel):
     topic: str
@@ -652,6 +652,17 @@ class PromptExportRequest(BaseModel):
     scenes: List[Dict[str, Any]]
     format: str = "autoflow_txt"  # autoflow_txt | csv | json
     video_title: Optional[str] = "prompt_batch"
+
+class TTSSceneRequest(BaseModel):
+    text: str
+    voice_id: str = "docu_male"
+    scene_index: int = 1
+    topic_slug: Optional[str] = "scene"
+
+class TTSBatchRequest(BaseModel):
+    scenes: List[Dict[str, Any]]
+    voice_id: str = "docu_male"
+    topic: Optional[str] = "custom_topic"
 
 @app.get("/api/prompt/strengths")
 async def get_prompt_strengths():
@@ -692,6 +703,89 @@ async def generate_custom_topic_prompts(req: PromptCustomTopicRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"프롬프트 생성 실패: {str(e)}")
+
+# ==========================================
+# Qwen-TTS & Voice Clone 음성 합성 API
+# ==========================================
+@app.get("/api/tts/voices")
+async def get_tts_voices():
+    """사용 가능한 모든 보이스 목록 (내 목소리 Voice Clone 포함) 반환"""
+    voices = TTSService.get_registered_voices()
+    return {"status": "success", "data": voices}
+
+@app.post("/api/tts/upload-voice")
+async def upload_voice_clone(
+    voice_file: UploadFile = File(...),
+    voice_name: str = Form("내 목소리"),
+    ref_text: str = Form("")
+):
+    """내 목소리 오디오 파일 업로드 및 Voice Clone 프로필 등록"""
+    temp_path = DATA_DIR / f"temp_{voice_file.filename}"
+    try:
+        with open(temp_path, "wb") as f:
+            f.write(await voice_file.read())
+            
+        res = TTSService.register_my_voice(temp_path, voice_name=voice_name, ref_text=ref_text)
+        if temp_path.exists():
+            temp_path.unlink()
+        return res
+    except Exception as e:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise HTTPException(status_code=500, detail=f"보이스 등록 실패: {str(e)}")
+
+@app.post("/api/tts/generate-scene")
+async def generate_scene_tts(req: TTSSceneRequest):
+    """단일 씬 대본 텍스트에 대한 음성 합성"""
+    if not req.text or not req.text.strip():
+        raise HTTPException(status_code=400, detail="합성할 텍스트가 없습니다.")
+        
+    slug = re.sub(r'[^a-zA-Z0-9가-힣_-]', '_', req.topic_slug or "scene")[:20]
+    res = TTSService.synthesize_speech(
+        text=req.text.strip(),
+        voice_id=req.voice_id,
+        scene_index=req.scene_index,
+        topic_slug=slug
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message", "음성 합성 실패"))
+    return res
+
+@app.post("/api/tts/generate-batch")
+async def generate_batch_tts(req: TTSBatchRequest):
+    """전체 씬 일괄 음성 합성"""
+    if not req.scenes:
+        raise HTTPException(status_code=400, detail="합성할 씬 목록이 없습니다.")
+        
+    slug = re.sub(r'[^a-zA-Z0-9가-힣_-]', '_', req.topic or "topic")[:20]
+    results = []
+    
+    for idx, sc in enumerate(req.scenes):
+        narration = sc.get("narration", "").strip()
+        if not narration:
+            continue
+        scene_idx = sc.get("scene_index", idx + 1)
+        res = TTSService.synthesize_speech(
+            text=narration,
+            voice_id=req.voice_id,
+            scene_index=scene_idx,
+            topic_slug=slug
+        )
+        results.append(res)
+        
+    return {
+        "status": "success",
+        "total": len(results),
+        "data": results
+    }
+
+@app.get("/api/audio/{filename}")
+async def get_audio_file(filename: str):
+    """합성된 오디오 파일 스트리밍 서빙"""
+    file_path = AUDIO_DIR / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="오디오 파일을 찾을 수 없습니다.")
+    return FileResponse(file_path, media_type="audio/wav")
 
 @app.post("/api/prompt/export")
 async def export_prompts(req: PromptExportRequest):

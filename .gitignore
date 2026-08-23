@@ -47,3 +47,9 @@ Thumbs.db
 .env
 .env.local
 *.log
+
+# Generated Audio & Voices
+data/audio/*
+!data/audio/.gitkeep
+data/voices/*
+!data/voices/.gitkeep

@@ -263,6 +263,24 @@
               </select>
             </div>
 
+            <!-- AI 성우 보이스 선택 (Qwen-TTS & Voice Clone) -->
+            <div class="control-group">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <label for="promptVoiceSelect"><i class="fa-solid fa-microphone-lines"></i> AI 내레이션 보이스 (Qwen-TTS)</label>
+                <button type="button" id="btnOpenVoiceModal" class="btn btn-sm btn-outline" style="font-size:11px; padding:2px 8px; color:#c4b5fd; border-color:rgba(167,139,250,0.4);">
+                  <i class="fa-solid fa-user-plus"></i> 내 목소리 등록
+                </button>
+              </div>
+              <select id="promptVoiceSelect" class="form-select">
+                <option value="my_voice">👤 내 목소리 (Voice Clone)</option>
+                <option value="docu_male" selected>🎙️ 진중한 다큐멘터리 남성 성우</option>
+                <option value="docu_female">🎙️ 명확하고 차분한 여성 성우</option>
+                <option value="mystery_narrator">🎙️ 미스터리 / 스릴러 성우</option>
+                <option value="shorts_energetic">🎙️ 트렌디 쇼츠 / 릴스 성우</option>
+              </select>
+              <span id="voiceDescText" class="helper-text">차분하고 신뢰감 넘치는 묵직한 내레이션</span>
+            </div>
+
             <div class="control-group">
               <label for="promptCustomSubject"><i class="fa-solid fa-user-astronaut"></i> 고정 피사체/캐릭터 일관성 키워드 (선택)</label>
               <input type="text" id="promptCustomSubject" class="form-control" placeholder="예: Korean male researcher in yellow biohazard suit">
@@ -283,6 +301,9 @@
                 <span id="studioSceneBadge" class="badge badge-accent">새 주제 생성 대기</span>
               </div>
               <div class="header-actions-group">
+                <button id="btnBatchTTS" class="btn btn-sm btn-outline" style="color:#a78bfa; border-color:#8b5cf6;" title="전체 씬의 나레이션을 Qwen-TTS 음성으로 일괄 생성">
+                  <i class="fa-solid fa-microphone-lines"></i> 전체 음성 생성
+                </button>
                 <button id="btnCopyAllPrompts" class="btn btn-sm btn-outline" title="전체 프롬프트 복사">
                   <i class="fa-solid fa-copy"></i> 전체 복사
                 </button>
@@ -302,8 +323,8 @@
             <div class="autoflow-tip-box">
               <i class="fa-solid fa-circle-info"></i>
               <div>
-                <strong>AutoFlow-Pro(Google Flow) 연동 팁:</strong> 
-                생성된 <strong>[AutoFlow-Pro TXT]</strong> 파일을 다운로드한 뒤, Chrome 확장프로그램 AutoFlow-Pro의 <em>"Import from .txt"</em>를 클릭해 한 번에 수십 개의 프롬프트를 일괄 제출할 수 있습니다.
+                <strong>AutoFlow-Pro & Qwen-TTS 연동 팁:</strong> 
+                생성된 <strong>[AutoFlow-Pro TXT]</strong>로 영상/이미지를 일괄 생성하고, 각 씬 카드의 <strong>[🎙️ 음성 생성]</strong> 버튼으로 내레이션 음성 파일(.wav)을 받아 결합하면 완전한 영상이 완성됩니다.
               </div>
             </div>
 
@@ -311,13 +332,53 @@
             <div id="studioScenesContainer" class="scenes-list-container">
               <div class="empty-state-box">
                 <i class="fa-solid fa-film fa-3x"></i>
-                <p>좌측에서 분석된 영상을 선택하고 <strong>[씬별 프롬프트 자동 생성]</strong> 버튼을 클릭하세요.</p>
+                <p>좌측에서 새로운 영상 주제를 입력하고 <strong>[AI 씬별 프롬프트 자동 생성]</strong> 버튼을 클릭하세요.</p>
               </div>
             </div>
           </div>
         </section>
       </div>
     </main>
+
+    <!-- 내 목소리 등록 모달창 (Voice Clone Modal) -->
+    <div id="voiceCloneModal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="max-width: 540px;">
+        <div class="modal-header">
+          <h3><i class="fa-solid fa-user-astronaut" style="color:var(--ai-purple)"></i> 내 목소리 학습 & 등록 (Voice Clone)</h3>
+          <button class="modal-close" id="btnCloseVoiceModal"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body">
+          <form id="voiceCloneForm" class="voice-clone-form">
+            <p style="font-size:13px; color:var(--text-secondary); margin-bottom:14px; line-height:1.5;">
+              자신의 목소리가 녹음된 <strong>10초~1분 내외의 깨끗한 음성 파일(.wav 또는 .mp3)</strong>을 업로드하세요. Qwen-TTS가 목소리 특성을 즉시 복제하여 내 목소리로 씬별 나레이션을 생성합니다.
+            </p>
+            
+            <div class="control-group" style="margin-bottom:12px;">
+              <label for="voiceNameInput"><i class="fa-solid fa-tag"></i> 보이스 이름</label>
+              <input type="text" id="voiceNameInput" class="form-control" placeholder="예: 승준님의 목소리" value="내 목소리" required>
+            </div>
+
+            <div class="control-group" style="margin-bottom:12px;">
+              <label for="voiceFileInput"><i class="fa-solid fa-file-audio"></i> 음성 파일 (.wav, .mp3)</label>
+              <input type="file" id="voiceFileInput" class="form-control" accept="audio/wav, audio/mp3, audio/mpeg, audio/x-m4a, .wav, .mp3" required>
+            </div>
+
+            <div class="control-group" style="margin-bottom:16px;">
+              <label for="voiceRefTextInput"><i class="fa-solid fa-align-left"></i> 음성 파일의 대본/텍스트 (선택 - 품질 향상)</label>
+              <textarea id="voiceRefTextInput" class="form-control" rows="2" placeholder="녹음된 파일에서 말한 내용을 적어주시면 복제 정확도가 대폭 향상됩니다."></textarea>
+            </div>
+
+            <div style="display:flex; justify-content:flex-end; gap:8px;">
+              <button type="button" class="btn btn-outline" id="btnCancelVoiceModal">취소</button>
+              <button type="submit" class="btn btn-primary" id="btnSubmitVoiceClone">
+                <span class="btn-text"><i class="fa-solid fa-upload"></i> 목소리 등록 및 적용</span>
+                <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 등록 중...</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
 
     <!-- 상세 모달창 (메타데이터 탭을 기본으로 배치) -->
     <div id="detailModal" class="modal-overlay" style="display: none;">
