@@ -86,11 +86,12 @@ def main():
         print(f"[Qwen-TTS Fallback/Log] {str(e)}", file=sys.stderr)
         
         try:
+            import subprocess
             aiff_tmp = output_path + ".aiff"
             subprocess_voice = "Yuna"
-            os.system(f'say -v "{subprocess_voice}" "{text}" -o "{aiff_tmp}"')
+            subprocess.run(["say", "-v", subprocess_voice, text, "-o", aiff_tmp], check=False)
             if os.path.exists(aiff_tmp):
-                os.system(f'ffmpeg -y -i "{aiff_tmp}" "{output_path}" >/dev/null 2>&1')
+                subprocess.run(["ffmpeg", "-y", "-i", aiff_tmp, output_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
                 if os.path.exists(aiff_tmp):
                     os.remove(aiff_tmp)
                 print(json.dumps({"status": "success", "output": output_path, "note": "fallback_system_tts"}))

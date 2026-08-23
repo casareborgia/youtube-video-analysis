@@ -1,5 +1,6 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+*.pyc
 *.py[cod]
 *$py.class
 
@@ -46,10 +47,36 @@ Thumbs.db
 # Local Environment Variables & Secrets
 .env
 .env.local
+.env.*
 *.log
 
-# Generated Audio & Voices
+# Node / Web dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Generated Audio & Personal Voices
 data/audio/*
 !data/audio/.gitkeep
 data/voices/*
 !data/voices/.gitkeep
+
+# User Downloaded YouTube Raw Data & Transcripts
+data/*.json
+!data/metadata_index.json
+data/*.csv
+data/*.srt
+data/*.txt
+data/*.vtt
+data/*.mp4
+data/*.webm
+data/*.m4a
+data/*.part
+data/*.temp*
+
+# Local Media & Practice Materials
+실습영상/
+샘플자료/
+temp/
+tmp/

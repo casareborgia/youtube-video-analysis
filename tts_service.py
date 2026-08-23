@@ -1,6 +1,6 @@
 """
 Qwen-TTS Integration Service
-로컬 Qwen3-TTS 엔진(/Users/leeseungjun/coding/QWEN-tts)과 연동하여
+로컬 Qwen3-TTS 엔진과 연동하여
 1. 기본 프리셋 고품질 음성 합성
 2. 사용자 목소리 복제(Zero-shot Voice Clone / 내 목소리 학습) 음성 합성
 을 수행하는 백엔드 브릿지 서비스입니다.
@@ -14,8 +14,21 @@ import subprocess
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-QWEN_TTS_DIR = Path("/Users/leeseungjun/coding/QWEN-tts")
-QWEN_PYTHON = QWEN_TTS_DIR / ".venv" / "bin" / "python"
+# Qwen-TTS 가상환경 경로 (환경변수 QWEN_PYTHON 또는 QWEN_TTS_DIR 우선 탐색)
+QWEN_TTS_ENV_DIR = os.getenv("QWEN_TTS_DIR")
+if QWEN_TTS_ENV_DIR:
+    QWEN_TTS_DIR = Path(QWEN_TTS_ENV_DIR)
+else:
+    # 기본 상대 탐색 경로
+    QWEN_TTS_DIR = Path(__file__).resolve().parent.parent / "QWEN-tts"
+    if not QWEN_TTS_DIR.exists():
+        QWEN_TTS_DIR = Path.home() / "coding" / "QWEN-tts"
+
+QWEN_PYTHON_ENV = os.getenv("QWEN_PYTHON")
+if QWEN_PYTHON_ENV:
+    QWEN_PYTHON = Path(QWEN_PYTHON_ENV)
+else:
+    QWEN_PYTHON = QWEN_TTS_DIR / ".venv" / "bin" / "python"
 
 BASE_DIR = Path(__file__).resolve().parent
 AUDIO_DIR = BASE_DIR / "data" / "audio"
@@ -180,11 +193,12 @@ def main():
         print(f"[Qwen-TTS Fallback/Log] {str(e)}", file=sys.stderr)
         
         try:
+            import subprocess
             aiff_tmp = output_path + ".aiff"
             subprocess_voice = "Yuna"
-            os.system(f'say -v "{subprocess_voice}" "{text}" -o "{aiff_tmp}"')
+            subprocess.run(["say", "-v", subprocess_voice, text, "-o", aiff_tmp], check=False)
             if os.path.exists(aiff_tmp):
-                os.system(f'ffmpeg -y -i "{aiff_tmp}" "{output_path}" >/dev/null 2>&1')
+                subprocess.run(["ffmpeg", "-y", "-i", aiff_tmp, output_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
                 if os.path.exists(aiff_tmp):
                     os.remove(aiff_tmp)
                 print(json.dumps({"status": "success", "output": output_path, "note": "fallback_system_tts"}))
