@@ -33,6 +33,13 @@ PRESET_VOICES = [
         "is_custom": True
     },
     {
+        "id": "voice_design",
+        "name": "🎨 AI 보이스 디자인 (Voice Design)",
+        "type": "design",
+        "description": "원하는 목소리 특징을 자연어 프롬프트로 직접 설계",
+        "instruct": "50대 중후반의 깊고 묵직한 다큐멘터리 남성 해설가 톤"
+    },
+    {
         "id": "docu_male",
         "name": "🎙️ 진중한 다큐멘터리 남성 성우",
         "type": "preset",
@@ -80,7 +87,7 @@ import numpy as np
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", required=True, choices=["preset", "clone"])
+    parser.add_argument("--mode", required=True, choices=["preset", "clone", "design"])
     parser.add_argument("--text", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--ref_audio", default="")
@@ -94,7 +101,6 @@ def main():
     output_path = args.output
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    # Qwen-TTS 모델 로드 및 합성 시도
     try:
         import torch
         from qwen_tts import Qwen3TTSModel
@@ -103,7 +109,7 @@ def main():
         dtype = torch.float16 if device != "cpu" else torch.float32
 
         if args.mode == "clone" and args.ref_audio and os.path.exists(args.ref_audio):
-            # Voice Clone 모드 (내 목소리 복제)
+            # 1. Voice Clone 모드 (내 목소리 복제 - Base 모델)
             model = Qwen3TTSModel.from_pretrained(
                 "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
                 device_map=device,
@@ -120,8 +126,25 @@ def main():
             print(json.dumps({"status": "success", "output": output_path, "sample_rate": sr}))
             return
 
+        elif args.mode == "design":
+            # 2. Voice Design 모드 (자연어 보이스 설계 - VoiceDesign 모델)
+            model = Qwen3TTSModel.from_pretrained(
+                "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+                device_map=device,
+                dtype=dtype
+            )
+            instruct_text = args.instruct or "차분하고 깊은 40대 남성 내레이터"
+            wavs, sr = model.generate_voice_design(
+                text=text,
+                language=args.language,
+                instruct=instruct_text
+            )
+            sf.write(output_path, wavs[0], sr)
+            print(json.dumps({"status": "success", "output": output_path, "sample_rate": sr}))
+            return
+
         else:
-            # Custom Voice / Preset 모드
+            # 3. Custom Voice / Preset 모드 (지정 화자 + 어조 제어 - CustomVoice 모델)
             model = Qwen3TTSModel.from_pretrained(
                 "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
                 device_map=device,
@@ -138,12 +161,9 @@ def main():
             return
 
     except Exception as e:
-        # 모델 미다운로드 또는 의존성 에러 시 fallback: 표준 TTS 또는 안내
         print(f"[Qwen-TTS Fallback/Log] {str(e)}", file=sys.stderr)
         
-        # 시스템 기본 TTS 또는 gTTS fallback
         try:
-            # macOS say 명령어로 고음질 aiff -> wav 변환
             aiff_tmp = output_path + ".aiff"
             subprocess_voice = "Yuna" if "female" in args.speaker else "Yuna"
             os.system(f'say -v "{subprocess_voice}" "{text}" -o "{aiff_tmp}"')
@@ -273,6 +293,11 @@ class TTSService:
             else:
                 # 등록된 음성이 없으면 일반 다큐 톤으로 생성
                 cmd.extend(["--mode", "preset", "--speaker", "male", "--instruct", "진중한 내레이션"])
+        elif voice_id == "voice_design":
+            cmd.extend([
+                "--mode", "design",
+                "--instruct", voice_config.get("instruct", "50대 중후반의 깊고 묵직한 다큐멘터리 남성 해설가 톤")
+            ])
         else:
             cmd.extend([
                 "--mode", "preset",
