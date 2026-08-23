@@ -651,16 +651,23 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.target === detailModal) detailModal.style.display = 'none';
   });
 
-  // 8. 삭제
+  // 8. 삭제 (영상 및 연관 데이터/리포트/오디오 전체 완전 삭제)
   async function deleteVideo(videoId) {
+    if (!confirm('이 영상과 관련된 모든 메타데이터, 자막, AI 분석 리포트, 생성된 오디오 파일이 함께 영구 삭제됩니다. 삭제하시겠습니까?')) {
+      return;
+    }
     try {
       const res = await fetch(`/api/metadata/${videoId}`, { method: 'DELETE' });
+      const data = await res.json();
       if (res.ok) {
-        showAlert('관련 모든 데이터가 삭제되었습니다.', 'success');
+        showAlert(data.message || '영상 및 연관된 모든 데이터가 삭제되었습니다.', 'success');
         loadHistory();
+        loadPromptStrengths();
+      } else {
+        showAlert(data.detail || '삭제 중 오류가 발생했습니다.', 'error');
       }
     } catch (e) {
-      showAlert('삭제 중 오류 발생', 'error');
+      showAlert('삭제 요청 실패: ' + e.message, 'error');
     }
   }
 

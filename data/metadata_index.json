@@ -16,7 +16,8 @@
     "analyzed_at": "2026-08-23 01:16:46",
     "url": "https://www.youtube.com/watch?v=SF29doLuBfc",
     "thumbnail": "https://i.ytimg.com/vi/SF29doLuBfc/maxresdefault.jpg",
-    "file_name": "SF29doLuBfc_metadata.json"
+    "file_name": "SF29doLuBfc_metadata.json",
+    "has_report": true
   },
   {
     "id": "cfkCUulmL94",
@@ -34,7 +35,8 @@
     "analyzed_at": "2026-08-23 00:33:33",
     "url": "https://www.youtube.com/watch?v=cfkCUulmL94",
     "thumbnail": "https://i.ytimg.com/vi_webp/cfkCUulmL94/maxresdefault.webp",
-    "file_name": "cfkCUulmL94_metadata.json"
+    "file_name": "cfkCUulmL94_metadata.json",
+    "has_report": true
   },
   {
     "id": "6LhxcbrN0hU",
@@ -52,6 +54,7 @@
     "analyzed_at": "2026-08-23 00:31:41",
     "url": "https://www.youtube.com/watch?v=6LhxcbrN0hU",
     "thumbnail": "https://i.ytimg.com/vi/6LhxcbrN0hU/maxresdefault.jpg",
-    "file_name": "6LhxcbrN0hU_metadata.json"
+    "file_name": "6LhxcbrN0hU_metadata.json",
+    "has_report": true
   }
 ]

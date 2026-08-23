@@ -29,11 +29,34 @@ STATIC_DIR.mkdir(exist_ok=True)
 INDEX_FILE = DATA_DIR / "metadata_index.json"
 
 def load_index() -> List[Dict[str, Any]]:
+    """메타데이터 인덱스를 로드하고, 실제 파일이 삭제된 고아 데이터는 자동 동기화/정리"""
     if not INDEX_FILE.exists():
         return []
     try:
         with open(INDEX_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            raw_index = json.load(f)
+            
+        # 실제 메타데이터 파일이 존재하는 항목만 유효 항목으로 유지
+        valid_index = []
+        is_changed = False
+        for item in raw_index:
+            v_id = item.get("id")
+            if not v_id:
+                is_changed = True
+                continue
+            meta_file = DATA_DIR / f"{v_id}_metadata.json"
+            if meta_file.exists():
+                # 리포트 파일 존재 여부 실시간 최신화
+                report_file = DATA_DIR / f"{v_id}_리포트.txt"
+                item["has_report"] = report_file.exists()
+                valid_index.append(item)
+            else:
+                is_changed = True
+                
+        if is_changed:
+            save_index(valid_index)
+            
+        return valid_index
     except Exception:
         return []
 
@@ -618,17 +641,39 @@ async def export_video_comments_csv(video_id: str):
 
 @app.delete("/api/metadata/{video_id}")
 async def delete_metadata(video_id: str):
-    for fname in [f"{video_id}_metadata.json", f"{video_id}_c.info.json", f"{video_id}_comments.csv", f"{video_id}_comments_export.csv", f"{video_id}_리포트.txt", f"{video_id}.ko.srt"]:
-        f_p = DATA_DIR / fname
-        if f_p.exists():
+    """영상 및 그에 연관된 모든 정보, 자막, AI 리포트, 오디오 파일 등을 완전 삭제"""
+    deleted_files = []
+    
+    # 1. data/ 디렉토리 내 video_id가 포함된 모든 파일 검색 및 삭제
+    for p in DATA_DIR.glob(f"*{video_id}*"):
+        if p.is_file():
             try:
-                os.remove(f_p)
-            except Exception:
-                pass
+                p.unlink()
+                deleted_files.append(p.name)
+            except Exception as e:
+                print(f"[Delete Error] {p.name}: {e}")
+                
+    # 2. data/audio/ 디렉토리 내 video_id가 포함된 오디오 파일 삭제
+    audio_dir = DATA_DIR / "audio"
+    if audio_dir.exists():
+        for ap in audio_dir.glob(f"*{video_id}*"):
+            if ap.is_file():
+                try:
+                    ap.unlink()
+                    deleted_files.append(f"audio/{ap.name}")
+                except Exception:
+                    pass
+
+    # 3. 메타데이터 인덱스 파일에서 제거
     index = load_index()
     index = [item for item in index if item.get('id') != video_id]
     save_index(index)
-    return {"status": "success", "message": f"{video_id} 관련 모든 데이터가 삭제되었습니다."}
+    
+    return {
+        "status": "success", 
+        "message": f"영상({video_id}) 및 연관된 메타데이터, 자막, AI 리포트 등 총 {len(deleted_files)}개 파일이 완전히 삭제되었습니다.",
+        "deleted_files": deleted_files
+    }
 
 # ==========================================
 # AI 프롬프트 스튜디오 & AutoFlow-Pro 연동 API
