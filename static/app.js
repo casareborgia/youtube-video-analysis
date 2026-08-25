@@ -6,7 +6,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const chkComments = document.getElementById('chkComments');
   const chkAutoAiReport = document.getElementById('chkAutoAiReport');
   const commentLimit = document.getElementById('commentLimit');
-  const playlistLimit = document.getElementById('playlistLimit');
   const btnAnalyze = document.getElementById('btnAnalyze');
   const alertBox = document.getElementById('alertBox');
   
@@ -31,7 +30,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const tabBtns = document.querySelectorAll('.tab-btn');
   const tabPanes = document.querySelectorAll('.tab-pane');
 
+  // LLM 상태 배지 요소
+  const llmStatusBadge = document.getElementById('llmStatusBadge');
+  const llmBackendName = document.getElementById('llmBackendName');
+  const llmModelBadge = document.getElementById('llmModelBadge');
+
   let historyData = [];
+  let currentZipDownloadUrl = null;
 
   // XSS 방어 헬퍼 (Zero-Trust Contextual Escaping)
   function escapeHtml(str) {
@@ -83,6 +88,57 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${formatNumber(num)}명`;
   }
 
+  // ==============================================================
+  // LLM 실시간 상태 감지 및 클릭 전환
+  // ==============================================================
+  async function pollLLMStatus() {
+    try {
+      const res = await fetch('/api/llm/status');
+      if (!res.ok) return;
+      const data = await res.json();
+      const dot = llmStatusBadge.querySelector('.status-dot');
+
+      if (data.active) {
+        dot.className = 'status-dot online';
+        const prefLabel = data.preference === 'auto' ? 'Auto' : data.active.name;
+        llmBackendName.textContent = `${data.active.name} (${prefLabel})`;
+        llmModelBadge.textContent = data.active.model || '온라인';
+        llmModelBadge.style.display = 'inline-block';
+      } else {
+        dot.className = 'status-dot offline';
+        llmBackendName.textContent = '로컬 AI 꺼짐';
+        llmModelBadge.textContent = 'LM Studio/Ollama 실행 필요';
+        llmModelBadge.style.display = 'inline-block';
+      }
+    } catch (e) {
+      console.warn('LLM 상태 조회 실패:', e);
+    }
+  }
+
+  llmStatusBadge.addEventListener('click', async () => {
+    try {
+      const res = await fetch('/api/llm/status');
+      const data = await res.json();
+      const currentPref = data.preference || 'auto';
+      // auto -> lmstudio -> ollama -> auto 순환
+      const nextPref = currentPref === 'auto' ? 'lmstudio' : currentPref === 'lmstudio' ? 'ollama' : 'auto';
+
+      const selectRes = await fetch('/api/llm/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ backend: nextPref })
+      });
+      const selectData = await selectRes.json();
+      showAlert(`로컬 AI 백엔드가 [${selectData.preference.toUpperCase()}] 모드로 변경되었습니다.`, 'success');
+      pollLLMStatus();
+    } catch (e) {
+      showAlert('백엔드 전환 오류: ' + e.message, 'error');
+    }
+  });
+
+  pollLLMStatus();
+  setInterval(pollLLMStatus, 10000);
+
   // 3. 분석 폼 제출
   analyzeForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -103,8 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
           extract_subtitles: chkSubtitles.checked,
           extract_comments: chkComments.checked,
           max_comments: parseInt(commentLimit.value, 10),
-          auto_generate_ai_report: chkAutoAiReport.checked,
-          max_playlist_items: parseInt(playlistLimit.value, 10)
+          auto_generate_ai_report: chkAutoAiReport.checked
         })
       });
 
@@ -143,90 +198,57 @@ document.addEventListener('DOMContentLoaded', () => {
     items.forEach(item => {
       const card = document.createElement('div');
       card.className = 'result-card';
-      
-      const tagHtml = (item.tags || []).slice(0, 4).map(t => `<span class="tag-chip">#${t}</span>`).join('');
-      const commentsCount = item.comments_count_extracted || (item.comments ? item.comments.length : 0);
+      const info = item.info || item;
+      const commentsCount = item.comments ? item.comments.length : 0;
 
       card.innerHTML = `
-        <div class="card-thumbnail-wrap">
-          <img src="${item.thumbnail || 'https://via.placeholder.com/320x180?text=No+Thumbnail'}" alt="썸네일" loading="lazy">
-          <span class="follower-pill"><i class="fa-solid fa-users"></i> 구독자 ${formatFollowers(item.channel_follower_count)}</span>
-          <span class="duration-pill"><i class="fa-regular fa-clock"></i> ${item.duration_string || item.duration_formatted}</span>
+        <div class="result-thumb-wrapper">
+          <img src="${escapeHtml(info.thumbnail)}" alt="${escapeHtml(info.title)}" class="result-thumb">
+          <span class="duration-badge">${escapeHtml(info.duration_string || '00:00')}</span>
         </div>
-        <div class="card-content">
-          <a href="javascript:void(0)" class="card-title btn-open-detail" data-id="${item.id}" title="${item.title}">${item.title}</a>
-          <div class="card-channel">
-            <i class="fa-regular fa-user"></i>
-            <span>${item.channel}</span>
-            <span style="margin-left: auto; font-size: 11px; color: var(--text-muted);">${item.upload_date}</span>
+        <div class="result-info">
+          <h4 class="result-title">${escapeHtml(info.title)}</h4>
+          <div class="result-channel">
+            <i class="fa-solid fa-circle-user"></i> ${escapeHtml(info.channel)}
           </div>
-
-          <div class="stats-bar">
-            <div class="stat-item">
-              <span class="stat-label"><i class="fa-regular fa-eye"></i> 조회수</span>
-              <span class="stat-value">${formatNumber(item.view_count)}</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label"><i class="fa-regular fa-thumbs-up"></i> 좋아요</span>
-              <span class="stat-value">${formatNumber(item.like_count)}</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label"><i class="fa-regular fa-comments"></i> 총댓글</span>
-              <span class="stat-value">${formatNumber(item.comment_count)}</span>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label"><i class="fa-solid fa-list-ol"></i> 챕터</span>
-              <span class="stat-value">${item.chapters ? item.chapters.length : 0}개</span>
-            </div>
+          <div class="result-stats">
+            <span><i class="fa-solid fa-eye"></i> ${formatNumber(info.view_count)}</span>
+            <span><i class="fa-solid fa-thumbs-up"></i> ${formatNumber(info.like_count)}</span>
+            <span><i class="fa-solid fa-comments"></i> ${formatNumber(commentsCount)}</span>
           </div>
-
-          ${tagHtml ? `<div class="tag-cloud">${tagHtml}</div>` : ''}
-
-          <div class="card-actions">
-            <button class="btn btn-sm btn-primary btn-open-detail" data-id="${item.id}" data-tab="tabOverview" style="flex:1;">
-              <i class="fa-solid fa-chart-pie"></i> 메타데이터 확인
+          <div class="result-actions">
+            <button class="btn btn-sm btn-outline btn-view-detail" data-id="${escapeHtml(item.id)}">
+              <i class="fa-solid fa-magnifying-glass"></i> 상세 확인
             </button>
-            <button class="btn btn-sm btn-outline btn-open-detail" data-id="${item.id}" data-tab="tabComments" style="padding: 6px 10px;" title="댓글 여론">
-              <i class="fa-solid fa-comments"></i> ${commentsCount}
+            <button class="btn btn-sm btn-primary btn-open-prompt-studio" data-id="${escapeHtml(item.id)}">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> 이 영상으로 기획
             </button>
-            <button class="btn btn-sm btn-ai btn-open-detail" data-id="${item.id}" data-tab="tabAiReport" style="padding: 6px 10px;" title="AI 리포트">
-              <i class="fa-solid fa-robot"></i>
-            </button>
-            <a href="${item.url}" target="_blank" class="btn btn-sm btn-outline" style="padding: 6px 10px;" title="유튜브로 열기">
-              <i class="fa-solid fa-arrow-up-right-from-square"></i>
-            </a>
           </div>
         </div>
       `;
-
       recentResultsContainer.appendChild(card);
     });
 
     recentResultSection.style.display = 'block';
-    recentResultSection.scrollIntoView({ behavior: 'smooth' });
   }
 
-  // 5. 히스토리 로드
+  // 5. 히스토리 로드 및 렌더링
   async function loadHistory() {
     try {
-      const res = await fetch('/api/history');
-      const data = await res.json();
-      if (data.status === 'success') {
-        historyData = data.data;
+      const response = await fetch('/api/history');
+      const result = await response.json();
+      if (result.status === 'success') {
+        historyData = result.data || [];
         renderHistoryTable(historyData);
-        if (typeof updatePromptVideoSelect === 'function') {
-          updatePromptVideoSelect();
-        }
       }
     } catch (e) {
       console.error('히스토리 로드 실패:', e);
     }
   }
 
-  function renderHistoryTable(items) {
-    totalHistoryCount.textContent = `${items.length}개 영상`;
-
-    if (items.length === 0) {
+  function renderHistoryTable(data) {
+    totalHistoryCount.textContent = `${data.length}개 영상`;
+    if (data.length === 0) {
       historyTableBody.innerHTML = `
         <tr>
           <td colspan="9" class="text-center py-4 text-muted">
@@ -237,37 +259,35 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    historyTableBody.innerHTML = items.map(item => `
-      <tr class="history-row" data-id="${item.id}" style="cursor: pointer;">
+    historyTableBody.innerHTML = data.map(item => `
+      <tr>
         <td>
-          <img src="${item.thumbnail || 'https://via.placeholder.com/60x34'}" class="table-thumb" alt="썸네일">
+          <img src="${escapeHtml(item.thumbnail)}" class="table-thumb" alt="thumb">
         </td>
         <td>
-          <div class="table-title-cell">
-            <span class="table-title font-weight-bold">${escapeHtml(item.title)}</span>
-            <span class="table-channel">${escapeHtml(item.channel)} (${formatFollowers(item.channel_follower_count)})</span>
-          </div>
+          <div class="table-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
+          <div class="table-channel text-muted">${escapeHtml(item.channel)} (${formatFollowers(item.channel_follower_count)})</div>
         </td>
-        <td><code>${item.duration_string || item.duration_formatted}</code></td>
-        <td><strong>${formatNumber(item.view_count)}</strong></td>
+        <td>${escapeHtml(item.duration_string || '00:00')}</td>
+        <td>${formatNumber(item.view_count)}</td>
         <td>${formatNumber(item.like_count)}</td>
-        <td>${formatNumber(item.comment_count)} <span style="font-size:11px; color:#10b981;">(${item.comments_extracted || 0})</span></td>
+        <td>${formatNumber(item.comments_extracted || item.comment_count)}</td>
         <td>
           ${item.has_ai_report 
-            ? '<span class="badge badge-ai"><i class="fa-solid fa-check"></i> 생성됨</span>' 
-            : '<span class="badge" style="opacity:0.6;">미생성</span>'}
+            ? '<span class="badge badge-success"><i class="fa-solid fa-check"></i> 완료</span>' 
+            : '<span class="badge badge-warning">미생성</span>'}
         </td>
-        <td>${item.upload_date || '-'}</td>
+        <td>${escapeHtml(item.upload_date)}</td>
         <td>
           <div class="table-actions">
-            <button class="btn-table-action btn-open-detail" data-id="${item.id}" data-tab="tabOverview" title="메타데이터 확인">
-              <i class="fa-solid fa-chart-pie" style="color:var(--primary-color)"></i> 상세
+            <button class="btn btn-sm btn-outline btn-view-detail" data-id="${escapeHtml(item.id)}" title="상세 모달">
+              <i class="fa-solid fa-file-lines"></i> 상세
             </button>
-            <button class="btn-table-action btn-open-prompt-studio" data-id="${item.id}" title="AI 프롬프트 생성기 열기" style="color:#60a5fa; border-color:rgba(96,165,250,0.4);">
-              <i class="fa-solid fa-wand-magic-sparkles"></i> 프롬프트
+            <button class="btn btn-sm btn-primary btn-open-prompt-studio" data-id="${escapeHtml(item.id)}" title="프롬프트 스튜디오">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> 기획
             </button>
-            <button class="btn-table-action delete btn-delete" data-id="${item.id}" title="삭제">
-              <i class="fa-solid fa-trash-can"></i>
+            <button class="btn btn-sm btn-icon btn-delete-item" data-id="${escapeHtml(item.id)}" title="삭제">
+              <i class="fa-solid fa-trash-can text-danger"></i>
             </button>
           </div>
         </td>
@@ -275,431 +295,161 @@ document.addEventListener('DOMContentLoaded', () => {
     `).join('');
   }
 
+  // 6. 히스토리 검색
   historySearch.addEventListener('input', (e) => {
     const q = e.target.value.toLowerCase();
-    const filtered = historyData.filter(item => 
-      (item.title && item.title.toLowerCase().includes(q)) ||
-      (item.channel && item.channel.toLowerCase().includes(q))
+    const filtered = historyData.filter(d => 
+      (d.title && d.title.toLowerCase().includes(q)) || 
+      (d.channel && d.channel.toLowerCase().includes(q))
     );
     renderHistoryTable(filtered);
   });
 
   btnRefreshHistory.addEventListener('click', loadHistory);
 
-  // 6. 모달 탭 전환
-  tabBtns.forEach(btn => {
-    btn.addEventListener('click', () => {
-      switchTab(btn.dataset.tab);
-    });
-  });
-
-  function switchTab(tabId) {
-    tabBtns.forEach(b => {
-      b.classList.toggle('active', b.dataset.tab === tabId);
-    });
-    tabPanes.forEach(p => {
-      p.classList.toggle('active', p.id === tabId);
-    });
-  }
-
-  // 7. 클릭 이벤트 핸들링
-  document.addEventListener('click', async (e) => {
-    // 1) 상세/메타데이터/AI 버튼 클릭 시
-    const detailBtn = e.target.closest('.btn-open-detail');
-    if (detailBtn) {
-      e.stopPropagation();
-      const videoId = detailBtn.dataset.id;
-      const targetTab = detailBtn.dataset.tab || 'tabOverview';
-      openDetailModal(videoId, targetTab);
-      return;
-    }
-
-    // 2) 삭제 버튼 클릭 시
-    const deleteBtn = e.target.closest('.btn-delete');
-    if (deleteBtn) {
-      e.stopPropagation();
-      const videoId = deleteBtn.dataset.id;
-      if (confirm('해당 영상의 모든 메타데이터, 댓글, AI 리포트를 삭제하시겠습니까?')) {
-        await deleteVideo(videoId);
-      }
-      return;
-    }
-
-    // 3) 테이블 행(Row) 클릭 시
-    const historyRow = e.target.closest('.history-row');
-    if (historyRow && !e.target.closest('.table-actions')) {
-      const videoId = historyRow.dataset.id;
-      openDetailModal(videoId, 'tabOverview');
-      return;
-    }
-  });
-
-  // 상세 모달 열기 및 데이터 렌더링
+  // 7. 모달 열기/닫기 및 탭 전환
   async function openDetailModal(videoId, defaultTab = 'tabOverview') {
     try {
-      const res = await fetch(`/api/metadata/${videoId}`);
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.detail || '상세 정보 조회 실패');
+      const response = await fetch(`/api/metadata/${videoId}`);
+      if (!response.ok) throw new Error('데이터 로드 실패');
+      const resData = await response.json();
+      const item = resData.data;
+      const info = item.info || item;
 
-      const data = result.data;
+      modalTitle.textContent = info.title || '영상 상세 정보';
+      modalCommentCount.textContent = item.comments ? item.comments.length : 0;
+      modalChapterCount.textContent = (info.chapters || []).length;
 
-      modalTitle.innerHTML = `<i class="fa-brands fa-youtube" style="color:var(--accent-color);"></i> ${escapeHtml(data.title)}`;
-      modalChapterCount.textContent = (data.chapters || []).length;
-      modalCommentCount.textContent = (data.comments || []).length;
-
-      // 탭 전환 (기본: tabOverview)
-      switchTab(defaultTab);
-
-      // 1) 탭 1: 기본 메타데이터 요약 렌더링
-      renderOverviewTab(data);
-
-      // 2) 탭 2: 댓글 여론 렌더링
-      renderCommentsTab(data);
-
-      // 3) 탭 3: 자막 전문 렌더링
-      renderTranscriptTab(data);
-
-      // 4) 탭 4: AI 분석 리포트 렌더링
-      renderAiReportTab(data);
-
-      // 5) 탭 5: 챕터 목록 렌더링
-      renderChaptersTab(data);
-
-      // 6) 탭 6: 원본 JSON 탭
-      document.getElementById('tabRawJson').innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <span class="text-muted" style="font-size:12px;">파일: <code>data/${data.id}_metadata.json</code> & <code>data/${data.id}_c.info.json</code></span>
-          <button class="btn btn-sm btn-outline" id="btnCopyJson"><i class="fa-regular fa-copy"></i> JSON 복사</button>
-        </div>
-        <pre class="json-viewer">${JSON.stringify(data, null, 2)}</pre>
-      `;
-
-      document.getElementById('btnCopyJson').addEventListener('click', () => {
-        navigator.clipboard.writeText(JSON.stringify(data, null, 2));
-        alert('JSON 메타데이터가 클립보드에 복사되었습니다.');
-      });
-
-      detailModal.style.display = 'flex';
-    } catch (e) {
-      alert(e.message);
-    }
-  }
-
-  // [탭 1: 기본 메타데이터 요약] 상세 렌더링 함수
-  function renderOverviewTab(data) {
-    const resTags = (data.resolutions || []).map(r => `<span class="badge badge-accent" style="font-size:11px;">${r}</span>`).join(' ');
-    const tagsHtml = (data.tags || []).map(t => `<span class="tag-chip">#${escapeHtml(t)}</span>`).join(' ');
-    const categoriesHtml = (data.categories || []).map(c => `<span class="badge">${escapeHtml(c)}</span>`).join(' ');
-
-    const manualSubs = (data.subtitles && data.subtitles.manual_languages) || [];
-    const autoSubs = (data.subtitles && data.subtitles.automatic_languages) || [];
-
-    const engagementRate = data.view_count > 0 ? ((data.like_count / data.view_count) * 100).toFixed(2) : '0';
-
-    document.getElementById('tabOverview').innerHTML = `
-      <!-- 상단 주요 지표 카드 그리드 -->
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;">
-        <div style="background:var(--bg-input); padding:12px; border-radius:8px; border:1px solid var(--border-color); text-align:center;">
-          <div style="font-size:11px; color:var(--text-muted);"><i class="fa-regular fa-eye"></i> 총 조회수</div>
-          <div style="font-size:16px; font-weight:800; color:var(--text-primary); margin-top:4px;">${formatNumber(data.view_count)}회</div>
-        </div>
-        <div style="background:var(--bg-input); padding:12px; border-radius:8px; border:1px solid var(--border-color); text-align:center;">
-          <div style="font-size:11px; color:var(--text-muted);"><i class="fa-regular fa-thumbs-up"></i> 좋아요 수</div>
-          <div style="font-size:16px; font-weight:800; color:#10b981; margin-top:4px;">${formatNumber(data.like_count)}개</div>
-        </div>
-        <div style="background:var(--bg-input); padding:12px; border-radius:8px; border:1px solid var(--border-color); text-align:center;">
-          <div style="font-size:11px; color:var(--text-muted);"><i class="fa-regular fa-comments"></i> 총 댓글 수</div>
-          <div style="font-size:16px; font-weight:800; color:#3b82f6; margin-top:4px;">${formatNumber(data.comment_count)}개</div>
-        </div>
-        <div style="background:var(--bg-input); padding:12px; border-radius:8px; border:1px solid var(--border-color); text-align:center;">
-          <div style="font-size:11px; color:var(--text-muted);"><i class="fa-solid fa-fire"></i> 반응 참여율</div>
-          <div style="font-size:16px; font-weight:800; color:#f59e0b; margin-top:4px;">${engagementRate}%</div>
-        </div>
-        <div style="background:var(--bg-input); padding:12px; border-radius:8px; border:1px solid var(--border-color); text-align:center;">
-          <div style="font-size:11px; color:var(--text-muted);"><i class="fa-regular fa-clock"></i> 재생 시간</div>
-          <div style="font-size:16px; font-weight:800; color:var(--text-primary); margin-top:4px;">${data.duration_string || data.duration_formatted}</div>
-        </div>
-      </div>
-
-      <!-- 상세 메타데이터 정보 박스 -->
-      <div style="display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; background:var(--bg-card); padding:16px; border-radius:10px; border:1px solid var(--border-color);">
-        <img src="${data.thumbnail}" style="width:240px; border-radius:8px; object-fit:cover;" alt="썸네일">
-        <div style="flex:1; display:flex; flex-direction:column; gap:10px; min-width:280px;">
-          <div>
-            <span style="font-size:11px; color:var(--text-muted);">채널명</span>
-            <div style="font-size:15px; font-weight:700; margin-top:2px;">
-              <a href="${data.channel_url}" target="_blank" style="color:var(--primary-color); text-decoration:none;">
-                ${escapeHtml(data.channel)} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:12px;"></i>
+      // 탭 내용 채우기
+      document.getElementById('tabOverview').innerHTML = `
+        <div class="overview-grid">
+          <div class="overview-thumb-box">
+            <img src="${escapeHtml(info.thumbnail)}" alt="thumb" style="width:100%; border-radius:8px;">
+            <div style="margin-top:10px; display:flex; gap:8px;">
+              <a href="${escapeHtml(item.url)}" target="_blank" class="btn btn-sm btn-outline btn-block">
+                <i class="fa-brands fa-youtube"></i> 유튜브 열기
               </a>
-              <span class="badge" style="margin-left:8px; background:rgba(245, 158, 11, 0.15); color:#f59e0b;">
-                <i class="fa-solid fa-users"></i> 구독자 ${formatFollowers(data.channel_follower_count)}
-              </span>
+              ${item.has_ai_report ? `
+                <a href="/api/ai-report/${escapeHtml(item.id)}/download" class="btn btn-sm btn-primary btn-block">
+                  <i class="fa-solid fa-download"></i> 리포트 TXT
+                </a>
+              ` : ''}
             </div>
           </div>
-
-          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
-            <div>
-              <span style="font-size:11px; color:var(--text-muted);">업로드 일자</span>
-              <div style="font-size:13px; font-weight:600;">${data.upload_date || '-'}</div>
+          <div class="overview-meta-box">
+            <h4>${escapeHtml(info.title)}</h4>
+            <p class="text-muted" style="margin-bottom:12px;">${escapeHtml(info.channel)} • 업로드일: ${escapeHtml(info.upload_date)}</p>
+            <div class="stats-pills">
+              <span><strong>조회수:</strong> ${formatNumber(info.view_count)}회</span>
+              <span><strong>좋아요:</strong> ${formatNumber(info.like_count)}개</span>
+              <span><strong>재생시간:</strong> ${escapeHtml(info.duration_string || '00:00')}</span>
             </div>
-            <div>
-              <span style="font-size:11px; color:var(--text-muted);">분석 일시</span>
-              <div style="font-size:13px; font-weight:600;">${data.analyzed_at || '-'}</div>
-            </div>
-          </div>
-
-          <div>
-            <span style="font-size:11px; color:var(--text-muted);">카테고리 & 태그</span>
-            <div style="margin-top:4px; display:flex; flex-wrap:wrap; gap:4px;">
-              ${categoriesHtml || '<span class="text-muted" style="font-size:12px;">없음</span>'}
-              ${tagsHtml}
+            <div style="margin-top:14px;">
+              <strong>설명란:</strong>
+              <div class="desc-box">${escapeHtml(info.description || '(설명 없음)')}</div>
             </div>
           </div>
-
-          <div>
-            <span style="font-size:11px; color:var(--text-muted);">자막 정보</span>
-            <div style="font-size:12px; margin-top:2px;">
-              수동 자막: ${manualSubs.length > 0 ? manualSubs.map(s => `<span class="badge badge-accent">${s}</span>`).join(' ') : '<span class="text-muted">없음</span>'}
-              <span style="margin-left:8px;">자동 생성 자막: <strong>${autoSubs.length}개 언어</strong></span>
-            </div>
-          </div>
-
-          <div>
-            <span style="font-size:11px; color:var(--text-muted);">가용 해상도</span>
-            <div style="margin-top:4px; display:flex; flex-wrap:wrap; gap:4px;">
-              ${resTags || '정보 없음'}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 영상 설명란 -->
-      <div>
-        <h4 style="font-size:14px; margin-bottom:6px;"><i class="fa-solid fa-align-left"></i> 영상 설명 전문 (Description)</h4>
-        <textarea style="width:100%; height:130px; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-secondary); border-radius:6px; padding:10px; font-size:12px; resize:none;" readonly>${escapeHtml(data.description || '설명 없음')}</textarea>
-      </div>
-    `;
-  }
-
-  // [탭 2: 댓글 여론 분석]
-  function renderCommentsTab(data) {
-    const comments = data.comments || [];
-    const tab = document.getElementById('tabComments');
-
-    if (comments.length === 0) {
-      tab.innerHTML = `
-        <div class="text-center py-4 text-muted">
-          <i class="fa-regular fa-comment-dots" style="font-size:24px; margin-bottom:8px; display:block;"></i>
-          수집된 댓글이 없습니다.
-        </div>
-      `;
-      return;
-    }
-
-    tab.innerHTML = `
-      <div class="comments-header-bar">
-        <span><strong>수집된 댓글: ${comments.length}개</strong> (좋아요 순 정렬됨)</span>
-        <button class="btn btn-sm btn-outline" id="btnDownloadCommentsCsv">
-          <i class="fa-solid fa-file-arrow-down"></i> 댓글 CSV 다운로드
-        </button>
-      </div>
-      <div class="comments-list">
-        ${comments.map((c, idx) => `
-          <div class="comment-card">
-            <div class="comment-top">
-              <span class="badge" style="background:#3b82f6; color:#fff; font-size:11px;">#${idx + 1}</span>
-              <span class="comment-author-name">${escapeHtml(c.author)}</span>
-              <span class="comment-like-badge"><i class="fa-regular fa-thumbs-up"></i> ${formatNumber(c.like_count)}</span>
-              <span class="comment-date">${c.date}</span>
-            </div>
-            <div class="comment-text">${escapeHtml(c.text)}</div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-
-    document.getElementById('btnDownloadCommentsCsv').addEventListener('click', () => {
-      window.open(`/api/comments/${data.id}/csv`, '_blank');
-    });
-  }
-
-  // [탭 3: 자막 전문 (Transcript)]
-  function renderTranscriptTab(data) {
-    const tab = document.getElementById('tabTranscript');
-    const transcript = data.transcript || '(자막 없음 또는 아직 추출되지 않음)';
-
-    tab.innerHTML = `
-      <div style="display:flex; justify-content:space-between; align-items:center;">
-        <span><i class="fa-solid fa-closed-captioning"></i> <strong>한국어 자막 정제 텍스트</strong> (중복 타임라인 제거됨)</span>
-        <button class="btn btn-sm btn-outline" id="btnCopyTranscript"><i class="fa-regular fa-copy"></i> 자막 복사</button>
-      </div>
-      <textarea style="width:100%; height:380px; background:var(--bg-input); border:1px solid var(--border-color); color:var(--text-primary); border-radius:8px; padding:14px; font-size:13px; line-height:1.7; resize:none;" readonly>${escapeHtml(transcript)}</textarea>
-    `;
-
-    document.getElementById('btnCopyTranscript').addEventListener('click', () => {
-      navigator.clipboard.writeText(transcript);
-      alert('자막 전문이 클립보드에 복사되었습니다.');
-    });
-  }
-
-  // [탭 4: AI 분석 리포트]
-  function renderAiReportTab(data) {
-    const aiTab = document.getElementById('tabAiReport');
-
-    if (data.ai_report && data.has_ai_report) {
-      aiTab.innerHTML = `
-        <div class="ai-report-header">
-          <div class="ai-report-model-info">
-            <i class="fa-solid fa-brain"></i>
-            <span>LM Studio 로컬 AI 리포트 (google/gemma-4-e4b)</span>
-          </div>
-          <div style="display:flex; gap:8px;">
-            <button class="btn btn-sm btn-outline" id="btnCopyAiReport"><i class="fa-regular fa-copy"></i> 복사</button>
-            <a href="/api/ai-report/${data.id}/download" class="btn btn-sm btn-outline" target="_blank"><i class="fa-solid fa-file-arrow-down"></i> _리포트.txt 다운로드</a>
-            <button class="btn btn-sm btn-ai" id="btnRegenerateAiReport"><i class="fa-solid fa-rotate"></i> AI 재분석</button>
-          </div>
-        </div>
-        <div class="ai-report-content">${escapeHtml(data.ai_report)}</div>
-      `;
-
-      document.getElementById('btnCopyAiReport').addEventListener('click', () => {
-        navigator.clipboard.writeText(data.ai_report);
-        alert('AI 리포트 전문이 클립보드에 복사되었습니다.');
-      });
-
-      document.getElementById('btnRegenerateAiReport').addEventListener('click', () => {
-        triggerAiAnalysis(data.id);
-      });
-    } else {
-      aiTab.innerHTML = `
-        <div class="ai-empty-state">
-          <div class="ai-empty-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
-          <h4 style="font-size:16px; font-weight:700;">아직 AI 종합 분석 리포트가 생성되지 않았습니다</h4>
-          <p style="font-size:13px; color:var(--text-secondary); max-width:540px;">
-            LM Studio(Gemma 4)와 연동하여 <strong>제목·훅 구조, 전개 방식, 핵심 메시지, 댓글 여론 특징, 내 채널 적용점</strong> 5가지를 0원으로 자동 분석합니다.
-          </p>
-          <button class="btn btn-ai" id="btnGenerateAiReport" style="padding:10px 24px; font-size:15px; margin-top:8px;">
-            <span class="btn-text"><i class="fa-solid fa-robot"></i> 0원 로컬 AI 분석 리포트 생성</span>
-            <span class="spinner" style="display:none;"><i class="fa-solid fa-circle-notch fa-spin"></i> Gemma 4 AI 분석 중...</span>
-          </button>
         </div>
       `;
 
-      document.getElementById('btnGenerateAiReport').addEventListener('click', () => {
-        triggerAiAnalysis(data.id);
-      });
-    }
-  }
+      document.getElementById('tabComments').innerHTML = (item.comments || []).length > 0
+        ? `<div class="comments-list">${item.comments.map(c => `
+            <div class="comment-item">
+              <div class="comment-header">
+                <strong>${escapeHtml(c.author)}</strong>
+                <span class="text-muted"><i class="fa-solid fa-thumbs-up"></i> ${formatNumber(c.like_count)}</span>
+              </div>
+              <div class="comment-text">${escapeHtml(c.text)}</div>
+            </div>
+          `).join('')}</div>`
+        : '<p class="text-muted py-4 text-center">수집된 댓글이 없습니다.</p>';
 
-  async function triggerAiAnalysis(videoId) {
-    const aiTab = document.getElementById('tabAiReport');
-    aiTab.innerHTML = `
-      <div class="ai-empty-state" style="padding:60px 20px;">
-        <i class="fa-solid fa-circle-notch fa-spin text-ai" style="font-size:42px; margin-bottom:12px;"></i>
-        <h4 style="font-size:16px; font-weight:700;">LM Studio (Gemma 4) AI가 영상을 분석 중입니다...</h4>
-        <p style="font-size:13px; color:var(--text-secondary);">
-          메타데이터, 한국어 자막(SRT), 상위 댓글 여론을 조합하여 5대 핵심 분석 리포트를 작성하고 있습니다. (약 5~15초 소요)
-        </p>
-      </div>
-    `;
+      document.getElementById('tabTranscript').innerHTML = `
+        <div class="transcript-box">
+          <pre>${escapeHtml(item.transcript || '(자막 없음)')}</pre>
+        </div>
+      `;
 
-    try {
-      const res = await fetch(`/api/ai-analyze/${videoId}`, { method: 'POST' });
-      const result = await res.json();
-      if (!res.ok) throw new Error(result.detail || 'AI 분석 실패');
+      document.getElementById('tabAiReport').innerHTML = item.report || item.ai_report
+        ? `<div class="ai-report-box"><pre>${escapeHtml(item.report || item.ai_report)}</pre></div>`
+        : '<p class="text-muted py-4 text-center">AI 리포트가 생성되지 않았습니다.</p>';
 
-      openDetailModal(videoId, 'tabAiReport');
-      loadHistory();
-      showAlert('AI 심층 분석 리포트 생성이 완료되었습니다!', 'success');
+      document.getElementById('tabChapters').innerHTML = (info.chapters || []).length > 0
+        ? `<div class="chapters-list">${info.chapters.map(ch => `
+            <div class="chapter-item">
+              <span class="badge badge-accent">${escapeHtml(ch.start_time_formatted || ch.title)}</span>
+              <span>${escapeHtml(ch.title)}</span>
+            </div>
+          `).join('')}</div>`
+        : '<p class="text-muted py-4 text-center">챕터 정보가 없습니다.</p>';
+
+      document.getElementById('tabRawJson').innerHTML = `
+        <div class="json-viewer-box">
+          <pre>${escapeHtml(JSON.stringify(item, null, 2))}</pre>
+        </div>
+      `;
+
+      switchTab(defaultTab);
+      detailModal.style.display = 'flex';
     } catch (err) {
-      alert('AI 분석 실패: ' + err.message);
-      openDetailModal(videoId, 'tabAiReport');
+      showAlert('상세 정보 조회 오류: ' + err.message);
     }
   }
 
-  function renderChaptersTab(data) {
-    const chapters = data.chapters || [];
-    const tab = document.getElementById('tabChapters');
-
-    if (chapters.length === 0) {
-      tab.innerHTML = `
-        <div class="text-center py-4 text-muted">
-          <i class="fa-solid fa-list-ul" style="font-size:24px; margin-bottom:8px; display:block;"></i>
-          등록된 챕터 정보가 없습니다.
-        </div>
-      `;
-      return;
-    }
-
-    tab.innerHTML = `
-      <div class="chapter-list">
-        ${chapters.map(c => `
-          <div class="chapter-item">
-            <span class="chapter-time">${c.start_time_formatted} ~ ${c.end_time_formatted}</span>
-            <span class="chapter-title">${escapeHtml(c.title)}</span>
-          </div>
-        `).join('')}
-      </div>
-    `;
+  function switchTab(tabId) {
+    tabBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.tab === tabId));
+    tabPanes.forEach(pane => pane.classList.toggle('active', pane.id === tabId));
   }
 
-  function escapeHtml(text) {
-    if (!text) return '';
-    return String(text)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
-  // 모달 닫기
-  btnCloseModal.addEventListener('click', () => {
-    detailModal.style.display = 'none';
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
   });
 
+  const closeModal = () => { detailModal.style.display = 'none'; };
+  btnCloseModal.addEventListener('click', closeModal);
   detailModal.addEventListener('click', (e) => {
-    if (e.target === detailModal) detailModal.style.display = 'none';
+    if (e.target === detailModal) closeModal();
   });
 
-  // 8. 삭제 (영상 및 연관 데이터/리포트/오디오 전체 완전 삭제)
-  async function deleteVideo(videoId) {
-    if (!confirm('이 영상과 관련된 모든 메타데이터, 자막, AI 분석 리포트, 생성된 오디오 파일이 함께 영구 삭제됩니다. 삭제하시겠습니까?')) {
-      return;
-    }
-    try {
-      const res = await fetch(`/api/metadata/${videoId}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (res.ok) {
-        showAlert(data.message || '영상 및 연관된 모든 데이터가 삭제되었습니다.', 'success');
-        loadHistory();
-        loadPromptStrengths();
-      } else {
-        showAlert(data.detail || '삭제 중 오류가 발생했습니다.', 'error');
-      }
-    } catch (e) {
-      showAlert('삭제 요청 실패: ' + e.message, 'error');
-    }
-  }
-
-  // 9. Mac Finder 열기
+  // 8. 저장 폴더 및 CSV 내보내기
   btnOpenFolder.addEventListener('click', async () => {
     try {
-      const res = await fetch('/api/open-folder', { method: 'POST' });
-      const data = await res.json();
-      if (res.ok) showAlert(data.message, 'success');
+      await fetch('/api/open-folder', { method: 'POST' });
     } catch (e) {
-      showAlert('폴더 열기 요청 실패', 'error');
+      showAlert('폴더 열기 오류: ' + e.message);
     }
   });
 
-  // 10. 전체 CSV 내보내기
   btnExportCsv.addEventListener('click', () => {
-    window.open('/api/export/csv', '_blank');
+    window.location.href = '/api/export/csv';
+  });
+
+  // 9. 영상 삭제
+  document.addEventListener('click', async (e) => {
+    const delBtn = e.target.closest('.btn-delete-item');
+    if (delBtn) {
+      const vid = delBtn.dataset.id;
+      if (confirm(`영상(${vid}) 데이터와 관련 파일을 완전히 삭제하시겠습니까?`)) {
+        try {
+          const res = await fetch(`/api/metadata/${vid}`, { method: 'DELETE' });
+          if (res.ok) {
+            showAlert('영상이 성공적으로 삭제되었습니다.', 'success');
+            loadHistory();
+          }
+        } catch (err) {
+          showAlert('삭제 실패: ' + err.message);
+        }
+      }
+    }
+
+    const detailBtn = e.target.closest('.btn-view-detail');
+    if (detailBtn) {
+      openDetailModal(detailBtn.dataset.id);
+    }
   });
 
   // ==============================================================
-  // 11. AI 프롬프트 스튜디오 & Qwen-TTS (Voice Clone) 로직
+  // 11. AI 프롬프트 스튜디오 & 8초 씬 비디오 기획 로직
   // ==============================================================
   const navTabAnalysis = document.getElementById('navTabAnalysis');
   const navTabPromptStudio = document.getElementById('navTabPromptStudio');
@@ -717,20 +467,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const voiceDescText = document.getElementById('voiceDescText');
   const btnGeneratePrompts = document.getElementById('btnGeneratePrompts');
 
-  const strengthsCountBadge = document.getElementById('strengthsCountBadge');
-  const strengthsSummaryText = document.getElementById('strengthsSummaryText');
-
   const studioVideoTitle = document.getElementById('studioVideoTitle');
   const studioSceneBadge = document.getElementById('studioSceneBadge');
   const studioScenesContainer = document.getElementById('studioScenesContainer');
 
   const btnBatchTTS = document.getElementById('btnBatchTTS');
+  const btnDownloadZip = document.getElementById('btnDownloadZip');
   const btnCopyAllPrompts = document.getElementById('btnCopyAllPrompts');
   const btnExportAutoFlowTxt = document.getElementById('btnExportAutoFlowTxt');
   const btnExportCsvPrompts = document.getElementById('btnExportCsvPrompts');
-  const btnExportJsonPrompts = document.getElementById('btnExportJsonPrompts');
 
-  // 보이스 클론 모달 엘리먼트
+  // 보이스 클론 모달
   const voiceCloneModal = document.getElementById('voiceCloneModal');
   const btnOpenVoiceModal = document.getElementById('btnOpenVoiceModal');
   const btnCloseVoiceModal = document.getElementById('btnCloseVoiceModal');
@@ -744,14 +491,12 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentGeneratedBatch = null;
   let availableVoices = [];
 
-  // 메인 네비게이션 탭 전환
   function switchMainView(viewName) {
     if (viewName === 'promptStudio') {
       navTabPromptStudio.classList.add('active');
       navTabAnalysis.classList.remove('active');
       viewPromptStudio.style.display = 'block';
       viewAnalysis.style.display = 'none';
-      loadPromptStrengths();
       loadTTSVoices();
     } else {
       navTabAnalysis.classList.add('active');
@@ -764,7 +509,6 @@ document.addEventListener('DOMContentLoaded', () => {
   navTabAnalysis.addEventListener('click', () => switchMainView('analysis'));
   navTabPromptStudio.addEventListener('click', () => switchMainView('promptStudio'));
 
-  // 추천 주제 칩 클릭 이벤트 연동
   document.querySelectorAll('.btn-topic-chip').forEach(btn => {
     btn.addEventListener('click', () => {
       const topic = btn.dataset.topic;
@@ -775,22 +519,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // 분석 영상 공통 강점 데이터 로드
-  async function loadPromptStrengths() {
-    try {
-      const res = await fetch('/api/prompt/strengths');
-      const resData = await res.json();
-      if (resData.status === 'success' && resData.data) {
-        const d = resData.data;
-        if (strengthsCountBadge) strengthsCountBadge.textContent = `${d.analyzed_count}개 영상 강점 반영 중`;
-        if (strengthsSummaryText && d.summary) strengthsSummaryText.innerHTML = d.summary;
-      }
-    } catch (e) {
-      console.error('공통 강점 로드 실패:', e);
-    }
-  }
-
-  // Qwen-TTS 보이스 목록 로드
   async function loadTTSVoices() {
     try {
       const res = await fetch('/api/tts/voices');
@@ -813,9 +541,6 @@ document.addEventListener('DOMContentLoaded', () => {
       const opt = document.createElement('option');
       opt.value = v.id;
       opt.textContent = v.name;
-      if (v.id === 'my_voice' && !v.is_registered) {
-        opt.textContent += ' [미등록]';
-      }
       if (v.id === prev) opt.selected = true;
       promptVoiceSelect.appendChild(opt);
     });
@@ -833,22 +558,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   promptVoiceSelect.addEventListener('change', onVoiceSelectChange);
 
-  // 보이스 클론 모달 열기/닫기
   btnOpenVoiceModal.addEventListener('click', () => {
     voiceCloneModal.style.display = 'flex';
   });
 
-  const closeVoiceModal = () => {
-    voiceCloneModal.style.display = 'none';
-  };
+  const closeVoiceModal = () => { voiceCloneModal.style.display = 'none'; };
   btnCloseVoiceModal.addEventListener('click', closeVoiceModal);
   btnCancelVoiceModal.addEventListener('click', closeVoiceModal);
 
-  // 내 목소리 업로드 폼 제출
   voiceCloneForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!voiceFileInput.files || voiceFileInput.files.length === 0) {
-      alert('음성 파일(.wav 또는 .mp3)을 선택해주세요.');
+      alert('음성 파일을 선택해주세요.');
       return;
     }
 
@@ -858,21 +579,14 @@ document.addEventListener('DOMContentLoaded', () => {
     formData.append('ref_text', voiceRefTextInput.value.trim());
 
     btnSubmitVoiceClone.disabled = true;
-    btnSubmitVoiceClone.querySelector('.btn-text').style.display = 'none';
-    btnSubmitVoiceClone.querySelector('.spinner').style.display = 'inline-block';
-
     try {
-      const res = await fetch('/api/tts/upload-voice', {
-        method: 'POST',
-        body: formData
-      });
+      const res = await fetch('/api/tts/upload-voice', { method: 'POST', body: formData });
       const data = await res.json();
       if (res.ok) {
-        alert('🎉 내 목소리가 성공적으로 등록되었습니다! Voice Clone 모드를 사용할 수 있습니다.');
+        alert('🎉 내 목소리가 등록되었습니다!');
         closeVoiceModal();
         await loadTTSVoices();
         promptVoiceSelect.value = 'my_voice';
-        onVoiceSelectChange();
       } else {
         throw new Error(data.detail || '등록 실패');
       }
@@ -880,12 +594,9 @@ document.addEventListener('DOMContentLoaded', () => {
       alert('목소리 등록 오류: ' + err.message);
     } finally {
       btnSubmitVoiceClone.disabled = false;
-      btnSubmitVoiceClone.querySelector('.btn-text').style.display = 'inline-block';
-      btnSubmitVoiceClone.querySelector('.spinner').style.display = 'none';
     }
   });
 
-  // 외부에서 특정 주제로 프롬프트 스튜디오 열기
   window.openPromptStudioForTopic = function(topicText) {
     switchMainView('promptStudio');
     if (promptTopicInput) {
@@ -894,11 +605,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // 프롬프트 생성 요청 함수
   async function triggerPromptGeneration() {
     const topic = (promptTopicInput ? promptTopicInput.value : '').trim();
     if (!topic) {
-      alert('새로운 영상 주제나 스토리 컨셉을 입력해주세요.');
+      alert('영상 기획 주제를 입력해주세요.');
       if (promptTopicInput) promptTopicInput.focus();
       return;
     }
@@ -906,12 +616,13 @@ document.addEventListener('DOMContentLoaded', () => {
     btnGeneratePrompts.disabled = true;
     btnGeneratePrompts.querySelector('.btn-text').style.display = 'none';
     btnGeneratePrompts.querySelector('.spinner').style.display = 'inline-block';
-    
+    if (btnDownloadZip) btnDownloadZip.style.display = 'none';
+
     studioScenesContainer.innerHTML = `
       <div class="empty-state-box" style="border-color:#8b5cf6;">
         <i class="fa-solid fa-brain fa-spin fa-3x" style="color:var(--ai-purple); animation-duration: 3s;"></i>
-        <div style="font-size:15px; font-weight:700; color:#c4b5fd;">Ollama Gemma 4가 주제를 분석하여 최적 앵글·조명 추론 및 프롬프트 생성 중...</div>
-        <p style="font-size:12px; color:var(--text-muted);">분석 영상들의 훅·서사 강점을 결합하여 씬별 시네마틱 프롬프트와 나레이션 대본을 창작하고 있습니다. (약 10~25초 소요)</p>
+        <div style="font-size:15px; font-weight:700; color:#c4b5fd;">로컬 AI가 8초 씬별 대본 및 시네마틱 프롬프트 기획 중...</div>
+        <p style="font-size:12px; color:var(--text-muted);">성공 공식(5초 훅, 5단계 플롯, 카메라/조명)을 결합하여 씬을 생성하고 있습니다.</p>
       </div>
     `;
 
@@ -932,13 +643,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.detail || '프롬프트 생성 실패');
+        throw new Error(err.detail || '기획 생성 실패');
       }
 
       currentGeneratedBatch = await res.json();
       renderStudioScenes(currentGeneratedBatch);
     } catch (err) {
-      alert('프롬프트 생성 오류: ' + err.message);
+      alert('기획 생성 오류: ' + err.message);
     } finally {
       btnGeneratePrompts.disabled = false;
       btnGeneratePrompts.querySelector('.btn-text').style.display = 'inline-block';
@@ -948,7 +659,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   btnGeneratePrompts.addEventListener('click', triggerPromptGeneration);
 
-  // 씬 카드 렌더링
   function renderStudioScenes(batchData) {
     if (!batchData || !batchData.scenes || batchData.scenes.length === 0) {
       studioScenesContainer.innerHTML = `
@@ -960,82 +670,86 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    studioVideoTitle.innerHTML = `<i class="fa-solid fa-clapperboard"></i> 주제: ${escapeHtml(batchData.topic)}`;
-    studioSceneBadge.textContent = `총 ${batchData.scenes.length}개 씬 분할 완료 (${batchData.model})`;
+    const titleText = batchData.recommended_title || batchData.topic;
+    studioVideoTitle.innerHTML = `<i class="fa-solid fa-clapperboard"></i> ${escapeHtml(titleText)}`;
+    studioSceneBadge.textContent = `총 ${batchData.scenes.length}개 씬 (각 8초 분량)`;
 
-    studioScenesContainer.innerHTML = batchData.scenes.map((scene, idx) => `
-      <div class="scene-card" data-index="${idx}" id="sceneCard_${idx}">
-        <div class="scene-card-header">
-          <div class="scene-badge-group">
-            <span class="scene-num-badge">Scene #${scene.scene_index}</span>
-            <span class="scene-time-badge"><i class="fa-solid fa-layer-group"></i> ${escapeHtml(scene.stage || '스토리 단계')}</span>
-          </div>
-          <div class="scene-tag-chips">
-            ${(scene.keywords || []).map(kw => `<span class="tag-chip">#${escapeHtml(kw)}</span>`).join('')}
-          </div>
-        </div>
+    studioScenesContainer.innerHTML = batchData.scenes.map((scene, idx) => {
+      const sceneNum = scene.scene_num || (idx + 1);
+      const timeRange = scene.time_range || `씬 ${sceneNum}`;
+      const narration = scene.narration || scene.subtitle || '';
+      const promptEn = scene.prompt_en || scene.prompt || '';
+      const beat = scene.dramatic_beat || scene.stage || '8초 씬';
+      const camera = scene.camera || scene.inferred_angle || 'Cinematic Push-in';
+      const lighting = scene.lighting || scene.inferred_lighting || 'Volumetric Lighting';
 
-        <!-- 기획 대본 및 Qwen-TTS 오디오 플레이어 영역 -->
-        <div class="scene-narration-box">
-          <div style="margin-bottom:6px;">
-            <strong><i class="fa-solid fa-quote-left"></i> 기획 대본/내레이션:</strong> 
-            <span id="narrationText_${idx}">${escapeHtml(scene.narration)}</span>
+      return `
+        <div class="scene-card" data-index="${idx}" id="sceneCard_${idx}">
+          <div class="scene-card-header">
+            <div class="scene-badge-group">
+              <span class="scene-num-badge">Scene #${sceneNum}</span>
+              <span class="scene-time-badge"><i class="fa-solid fa-clock"></i> ${escapeHtml(timeRange)}</span>
+              <span class="tag-chip">${escapeHtml(beat)}</span>
+            </div>
           </div>
-          
-          <div class="scene-audio-section">
-            <div class="audio-info-label">
-              <i class="fa-solid fa-waveform-lines"></i> 성우 오디오:
+
+          <div class="scene-narration-box">
+            <div style="margin-bottom:6px;">
+              <strong><i class="fa-solid fa-quote-left"></i> 8초 나레이션 대본:</strong> 
+              <span id="narrationText_${idx}">${escapeHtml(narration)}</span>
             </div>
             
-            <audio id="sceneAudio_${idx}" class="scene-audio-player" controls style="${scene.audio_url ? '' : 'display:none;'}">
-              <source src="${scene.audio_url || ''}" type="audio/wav">
-              브라우저가 오디오 태그를 지원하지 않습니다.
-            </audio>
+            <div class="scene-audio-section">
+              <div class="audio-info-label">
+                <i class="fa-solid fa-waveform-lines"></i> 나레이션 음성:
+              </div>
+              
+              <audio id="sceneAudio_${idx}" class="scene-audio-player" controls style="${scene.audio_url ? '' : 'display:none;'}">
+                <source src="${scene.audio_url || ''}" type="audio/mpeg">
+              </audio>
 
-            <button class="btn-tts-single" data-index="${idx}">
-              <span class="tts-btn-text"><i class="fa-solid fa-microphone"></i> 음성 생성</span>
-              <span class="tts-spinner" style="display:none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 합성 중...</span>
-            </button>
+              <button class="btn-tts-single" data-index="${idx}">
+                <span class="tts-btn-text"><i class="fa-solid fa-microphone"></i> 음성 생성</span>
+                <span class="tts-spinner" style="display:none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 합성 중...</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="scene-prompt-editor-area">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <label><i class="fa-solid fa-sparkles"></i> AI 영상 프롬프트 (Runway / Kling / Sora / Flow):</label>
+              <button class="btn btn-sm btn-outline btn-copy-single" data-index="${idx}" style="padding:2px 8px; font-size:11px;">
+                <i class="fa-solid fa-copy"></i> 복사
+              </button>
+            </div>
+            <textarea class="prompt-textarea" data-index="${idx}">${escapeHtml(promptEn)}</textarea>
+          </div>
+
+          <div class="scene-card-footer">
+            <div class="scene-modifiers-info">
+              <span><i class="fa-solid fa-camera" style="color:#60a5fa;"></i> 카메라: ${escapeHtml(camera)}</span>
+              <span><i class="fa-solid fa-sun" style="color:#f59e0b;"></i> 조명: ${escapeHtml(lighting)}</span>
+            </div>
           </div>
         </div>
+      `;
+    }).join('');
 
-        <div class="scene-prompt-editor-area">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <label><i class="fa-solid fa-sparkles"></i> AI 시네마틱 프롬프트 (수정 가능):</label>
-            <button class="btn btn-sm btn-outline btn-copy-single" data-index="${idx}" style="padding:2px 8px; font-size:11px;">
-              <i class="fa-solid fa-copy"></i> 복사
-            </button>
-          </div>
-          <textarea class="prompt-textarea" data-index="${idx}">${escapeHtml(scene.prompt)}</textarea>
-        </div>
-
-        <div class="scene-card-footer">
-          <div class="scene-modifiers-info">
-            <span><i class="fa-solid fa-camera" style="color:#60a5fa;"></i> 추론 앵글: ${escapeHtml(scene.inferred_angle || 'Auto')}</span>
-            <span><i class="fa-solid fa-sun" style="color:#f59e0b;"></i> 추론 조명: ${escapeHtml(scene.inferred_lighting || 'Auto')}</span>
-            <span><i class="fa-solid fa-crop"></i> ${scene.aspect_ratio || '16:9'}</span>
-          </div>
-        </div>
-      </div>
-    `).join('');
-
-    // 개별 프롬프트 수정 이벤트 바인딩
-    const textareas = studioScenesContainer.querySelectorAll('.prompt-textarea');
-    textareas.forEach(ta => {
+    // 프롬프트 수정 반영
+    studioScenesContainer.querySelectorAll('.prompt-textarea').forEach(ta => {
       ta.addEventListener('input', (e) => {
         const index = parseInt(e.target.dataset.index, 10);
         if (currentGeneratedBatch && currentGeneratedBatch.scenes[index]) {
-          currentGeneratedBatch.scenes[index].prompt = e.target.value;
+          currentGeneratedBatch.scenes[index].prompt_en = e.target.value;
         }
       });
     });
 
-    // 개별 복사 버튼
-    const copyBtns = studioScenesContainer.querySelectorAll('.btn-copy-single');
-    copyBtns.forEach(btn => {
-      btn.addEventListener('click', (e) => {
+    // 개별 프롬프트 복사
+    studioScenesContainer.querySelectorAll('.btn-copy-single').forEach(btn => {
+      btn.addEventListener('click', () => {
         const index = parseInt(btn.dataset.index, 10);
-        const promptText = currentGeneratedBatch.scenes[index].prompt;
+        const promptText = currentGeneratedBatch.scenes[index].prompt_en || currentGeneratedBatch.scenes[index].prompt;
         navigator.clipboard.writeText(promptText).then(() => {
           const original = btn.innerHTML;
           btn.innerHTML = '<i class="fa-solid fa-check text-success"></i> 복사됨';
@@ -1044,13 +758,12 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // 개별 씬 음성 합성 버튼 이벤트 바인딩
-    const ttsBtns = studioScenesContainer.querySelectorAll('.btn-tts-single');
-    ttsBtns.forEach(btn => {
+    // 개별 씬 음성 합성
+    studioScenesContainer.querySelectorAll('.btn-tts-single').forEach(btn => {
       btn.addEventListener('click', async () => {
         const index = parseInt(btn.dataset.index, 10);
         const scene = currentGeneratedBatch.scenes[index];
-        const narration = scene.narration;
+        const narration = scene.narration || scene.subtitle;
 
         btn.disabled = true;
         btn.querySelector('.tts-btn-text').style.display = 'none';
@@ -1063,7 +776,7 @@ document.addEventListener('DOMContentLoaded', () => {
             body: JSON.stringify({
               text: narration,
               voice_id: promptVoiceSelect.value,
-              scene_index: scene.scene_index || (index + 1),
+              scene_index: scene.scene_num || (index + 1),
               topic_slug: currentGeneratedBatch.topic || 'scene',
               language: promptLanguageSelect ? promptLanguageSelect.value : 'korean'
             })
@@ -1095,36 +808,42 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 전체 씬 일괄 음성 합성 (Batch TTS)
+  // 전체 씬 일괄 음성 합성 (Edge-TTS 초고속 병렬 + ZIP 번들 생성)
   btnBatchTTS.addEventListener('click', async () => {
     if (!currentGeneratedBatch || !currentGeneratedBatch.scenes || currentGeneratedBatch.scenes.length === 0) {
-      alert('먼저 프롬프트를 생성해주세요.');
+      alert('먼저 씬을 기획/생성해주세요.');
       return;
     }
 
     btnBatchTTS.disabled = true;
     const originalText = btnBatchTTS.innerHTML;
-    btnBatchTTS.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 전체 음성 합성 중...';
+    btnBatchTTS.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 초고속 병렬 합성 중...';
 
     try {
-      const res = await fetch('/api/tts/generate-batch', {
+      const res = await fetch('/api/tts/generate-all-scenes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scenes: currentGeneratedBatch.scenes,
           voice_id: promptVoiceSelect.value,
-          topic: currentGeneratedBatch.topic || 'topic',
-          language: promptLanguageSelect ? promptLanguageSelect.value : 'korean'
+          topic: currentGeneratedBatch.topic || 'custom_topic'
         })
       });
 
       if (!res.ok) throw new Error('일괄 음성 합성 실패');
 
       const data = await res.json();
-      alert(`🎉 전체 ${data.total}개 씬의 음성 합성이 완료되었습니다!`);
+      currentZipDownloadUrl = data.zip_download_url;
+
+      // ZIP 다운로드 버튼 표시
+      if (btnDownloadZip && currentZipDownloadUrl) {
+        btnDownloadZip.style.display = 'inline-flex';
+      }
+
+      alert(`🎉 전체 ${data.total_scenes}개 씬의 음성 및 마스터 오디오 완결! [전체 ZIP 다운로드]를 클릭해 일괄 다운로드할 수 있습니다.`);
       
       // 씬 카드별 플레이어 갱신
-      (data.data || []).forEach((item, idx) => {
+      (data.scenes_audio || []).forEach((item, idx) => {
         if (currentGeneratedBatch.scenes[idx]) {
           currentGeneratedBatch.scenes[idx].audio_url = item.audio_url;
         }
@@ -1143,13 +862,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // ZIP 일괄 다운로드 버튼 클릭
+  btnDownloadZip.addEventListener('click', () => {
+    if (currentZipDownloadUrl) {
+      window.location.href = currentZipDownloadUrl;
+    }
+  });
+
   // 전체 프롬프트 복사
   btnCopyAllPrompts.addEventListener('click', () => {
     if (!currentGeneratedBatch || !currentGeneratedBatch.scenes) {
       alert('먼저 프롬프트를 생성해주세요.');
       return;
     }
-    const allText = currentGeneratedBatch.scenes.map(s => s.prompt).join('\n\n');
+    const allText = currentGeneratedBatch.scenes.map(s => s.prompt_en || s.prompt).join('\n\n');
     navigator.clipboard.writeText(allText).then(() => {
       const original = btnCopyAllPrompts.innerHTML;
       btnCopyAllPrompts.innerHTML = '<i class="fa-solid fa-check text-success"></i> 전체 복사됨!';
@@ -1157,7 +883,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // 내보내기 헬퍼 함수
   async function exportPromptBatch(format) {
     if (!currentGeneratedBatch || !currentGeneratedBatch.scenes) {
       alert('먼저 프롬프트를 생성해주세요.');
@@ -1198,9 +923,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   btnExportAutoFlowTxt.addEventListener('click', () => exportPromptBatch('autoflow_txt'));
   btnExportCsvPrompts.addEventListener('click', () => exportPromptBatch('csv'));
-  btnExportJsonPrompts.addEventListener('click', () => exportPromptBatch('json'));
 
-  // 테이블 내 프롬프트 바로가기 연동 (영상 제목을 신규 주제로 채워서 스튜디오 오픈)
   document.addEventListener('click', (e) => {
     const promptBtn = e.target.closest('.btn-open-prompt-studio');
     if (promptBtn) {
@@ -1211,7 +934,5 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 초기 히스토리 로드
   loadHistory();
 });
-

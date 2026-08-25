@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YouTube 영상 분석 & AI 리포트 스튜디오</title>
+  <title>TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오</title>
   <!-- Google Fonts & FontAwesome -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -20,8 +20,8 @@
           <i class="fa-brands fa-youtube"></i>
         </div>
         <div class="brand-text">
-          <h1>YouTube 영상 분석 & 프롬프트 스튜디오</h1>
-          <span class="badge-version">yt-dlp Engine • Google Flow / AutoFlow-Pro 연동</span>
+          <h1>TubeInsight AI 스튜디오</h1>
+          <span class="badge-version">0원 완전 분석 • 8초 비디오 기획 • 무료 Edge-TTS / Qwen-TTS</span>
         </div>
       </div>
       
@@ -31,13 +31,21 @@
           <i class="fa-solid fa-chart-line"></i> 영상 분석 대시보드
         </button>
         <button id="navTabPromptStudio" class="nav-tab">
-          <i class="fa-solid fa-wand-magic-sparkles"></i> AI 프롬프트 스튜디오 <span class="badge-new">NEW</span>
+          <i class="fa-solid fa-wand-magic-sparkles"></i> 8초 비디오 기획 스튜디오 <span class="badge-new">NEW</span>
         </button>
       </nav>
 
+      <!-- LLM 상태 배지 & 헤더 액션 -->
       <div class="header-actions">
+        <!-- LLM 백엔드 상태 배지 (클릭 시 LM Studio / Ollama / Auto 전환) -->
+        <div id="llmStatusBadge" class="llm-status-pill" title="클릭하여 백엔드(Auto / LM Studio / Ollama) 전환">
+          <span class="status-dot online"></span>
+          <span id="llmBackendName">로컬 AI 확인 중...</span>
+          <span id="llmModelBadge" class="llm-model-sub"></span>
+        </div>
+
         <button id="btnOpenFolder" class="btn btn-outline" title="Finder에서 data 폴더 열기">
-          <i class="fa-regular fa-folder-open"></i> 저장 폴더 열기
+          <i class="fa-regular fa-folder-open"></i> 저장 폴더
         </button>
         <button id="btnExportCsv" class="btn btn-outline" title="전체 수집 메타데이터 CSV 다운로드">
           <i class="fa-solid fa-file-csv"></i> 전체 CSV
@@ -57,7 +65,7 @@
           <div class="section-title">
             <i class="fa-solid fa-wand-magic-sparkles"></i>
             <h2>유튜브 링크 하나로 완전 분석</h2>
-            <span class="sub-text">메타데이터 + 한국어 자막(SRT) + 여론 상위 댓글 + <strong>LM Studio 로컬 AI(Gemma 4)</strong> 종합 분석</span>
+            <span class="sub-text">메타데이터 + 한국어 자막(SRT/VTT 타임스탬프) + 여론 상위 댓글 + <strong>로컬 AI(Gemma 4)</strong> 종합 분석</span>
           </div>
 
           <form id="analyzeForm" class="analyze-form">
@@ -83,7 +91,7 @@
                 <label class="checkbox-label">
                   <input type="checkbox" id="chkSubtitles" checked>
                   <span class="custom-checkbox"></span>
-                  자막(한국어 CC) 수집
+                  자막(타임스탬프 VTT/SRT) 수집
                 </label>
                 <label class="checkbox-label">
                   <input type="checkbox" id="chkComments" checked>
@@ -91,7 +99,7 @@
                   댓글(Comments) 수집 & 여론 분석
                 </label>
                 <label class="checkbox-label" style="color: #a78bfa; font-weight:600;">
-                  <input type="checkbox" id="chkAutoAiReport">
+                  <input type="checkbox" id="chkAutoAiReport" checked>
                   <span class="custom-checkbox"></span>
                   <i class="fa-solid fa-robot"></i> 수집 즉시 AI 심층 리포트 생성 (Gemma 4)
                 </label>
@@ -104,14 +112,6 @@
                     <option value="50">50개 (초고속)</option>
                     <option value="100" selected>100개 (권장)</option>
                     <option value="200">200개 (상세)</option>
-                  </select>
-                </div>
-                <div class="form-group-inline">
-                  <label for="playlistLimit">재생목록 영상 수:</label>
-                  <select id="playlistLimit" class="form-select">
-                    <option value="5">5개</option>
-                    <option value="10" selected>10개</option>
-                    <option value="20">20개</option>
                   </select>
                 </div>
               </div>
@@ -154,14 +154,14 @@
               <thead>
                 <tr>
                   <th width="70">썸네일</th>
-                  <th>영상 제목 & 채널 (구독자수)</th>
+                  <th>영상 제목 & 채널</th>
                   <th width="85">재생시간</th>
                   <th width="105">조회수</th>
                   <th width="90">좋아요</th>
                   <th width="95">댓글 (수집)</th>
                   <th width="95">AI 리포트</th>
                   <th width="95">업로드일</th>
-                  <th width="170">상세 확인 & 프롬프트</th>
+                  <th width="170">상세 확인 & 기획</th>
                 </tr>
               </thead>
               <tbody id="historyTableBody">
@@ -182,11 +182,11 @@
         <div class="strengths-banner card">
           <div class="strengths-header">
             <i class="fa-solid fa-chart-line-up" style="color:var(--success-color)"></i>
-            <span class="strengths-title">분석 영상들에서 도출된 공통 성공 공식 (프롬프트 엔진 자동 주입)</span>
+            <span class="strengths-title">분석 영상 성공 공식 자동 주입 (8초 씬 비디오 기획)</span>
             <span id="strengthsCountBadge" class="badge badge-accent">분석 데이터 반영 중</span>
           </div>
           <p id="strengthsSummaryText" class="strengths-desc">
-            기존 분석된 영상들(SCP 미스터리, 건축 다큐, 탐사물 등)의 공통 강점인 <strong>'초반 5초 오프닝 훅'</strong>, <strong>'4단계 서사 빌드업'</strong>, <strong>'스케일 대비 앵글'</strong>, <strong>'시네마틱 조명'</strong> 공식이 새로 생성될 모든 씬 프롬프트에 자동으로 적용됩니다.
+            분석된 영상들의 공통 강점인 <strong>'초반 5초 오프닝 훅'</strong>, <strong>'5단계 마스터 서사 플롯'</strong>, <strong>'8초 단위 씬별 대본'</strong>, <strong>'시네마틱 카메라/조명'</strong> 공식이 새로 생성될 모든 프롬프트와 나레이션에 자동으로 적용됩니다.
           </p>
         </div>
 
@@ -195,49 +195,50 @@
           <div class="card studio-controls-panel">
             <div class="panel-header">
               <i class="fa-solid fa-wand-magic-sparkles"></i>
-              <h3>새로운 영상 주제 기획 & 프롬프트 생성</h3>
+              <h3>8초 비디오 씬 기획 & 나레이션 생성</h3>
             </div>
 
             <!-- 사용자 신규 주제 입력창 -->
             <div class="control-group">
-              <label for="promptTopicInput"><i class="fa-solid fa-pen-nib"></i> 새로운 영상 주제 / 스토리 컨셉 입력 <span class="text-danger">*</span></label>
+              <label for="promptTopicInput"><i class="fa-solid fa-pen-nib"></i> 영상 기획 주제 / 스토리 컨셉 <span class="text-danger">*</span></label>
               <textarea 
                 id="promptTopicInput" 
                 class="form-control" 
                 rows="3" 
-                placeholder="만들고자 하는 영상/쇼츠의 주제나 시놉시스를 자유롭게 입력하세요.&#10;(예: 2050년 네오 서울, 인공지능 통제에 맞서는 마지막 인간 해커의 심야 침투 작전)"
+                placeholder="만들고자 하는 영상의 주제를 입력하세요.&#10;(예: 지하 50층 국가 최고 기밀 벙커의 진실과 공학적 난제)"
                 required
               ></textarea>
               <!-- 추천 주제 칩 -->
               <div class="topic-chip-container">
                 <span class="topic-chip-label">추천 예시:</span>
+                <button type="button" class="btn-topic-chip" data-topic="지하 50층 국가 최고 기밀 벙커의 진실과 공학적 난제">🏢 지하 비밀 벙커</button>
                 <button type="button" class="btn-topic-chip" data-topic="심해 1만 미터 마리아나 해구에서 발견된 미지의 발광 생명체와 거대 유적">🌊 심해 미지의 유적</button>
                 <button type="button" class="btn-topic-chip" data-topic="2050년 사이버펑크 도시의 마지막 인간 해커와 거대 AI의 대결">🤖 AI 사이버펑크</button>
                 <button type="button" class="btn-topic-chip" data-topic="극지방 빙하 속에 수만 년간 갇혀 있던 미지의 고대 우주선 발굴 탐사">❄️ 극지방 우주선 탐사</button>
-                <button type="button" class="btn-topic-chip" data-topic="조선 시대로 타임슬립한 현대 수석 엔지니어의 첨단 무기 개발기">⚔️ 조선 타임슬립 테크</button>
               </div>
             </div>
 
             <div class="control-group">
-              <label for="promptTargetModel"><i class="fa-solid fa-robot"></i> 타겟 생성 AI 모델</label>
+              <label for="promptTargetModel"><i class="fa-solid fa-robot"></i> 타겟 AI 비디오 생성 툴</label>
               <select id="promptTargetModel" class="form-select">
-                <option value="google_flow" selected>Google Flow (Veo 2/3, Imagen 3/4) - AutoFlow 호환</option>
-                <option value="midjourney">Midjourney v6.1 (--ar, --v 6.1)</option>
-                <option value="runway_kling">Runway Gen-3 / Kling AI / Luma</option>
+                <option value="runway_kling" selected>Runway Gen-3 / Kling AI / Sora (8초 씬 최적화)</option>
+                <option value="google_flow">Google Flow (Veo 2/3, Imagen 3/4) - AutoFlow 호환</option>
+                <option value="midjourney">Midjourney v6.1 (--ar, --v 6.1, --style raw)</option>
               </select>
             </div>
 
             <div class="control-row">
               <div class="control-group half">
-                <label for="promptSceneCount"><i class="fa-solid fa-film"></i> 씬(Scene) 분할 수</label>
+                <label for="promptSceneCount"><i class="fa-solid fa-film"></i> 씬 분할 (8초 단위)</label>
                 <select id="promptSceneCount" class="form-select">
-                  <option value="4">4개 씬</option>
-                  <option value="6" selected>6개 씬 (권장)</option>
-                  <option value="8">8개 씬 (상세)</option>
+                  <option value="6">6개 씬 (48초 분량)</option>
+                  <option value="8">8개 씬 (64초 분량)</option>
+                  <option value="10" selected>10개 씬 (80초 완결 - 권장)</option>
+                  <option value="12">12개 씬 (96초 상세)</option>
                 </select>
               </div>
               <div class="control-group half">
-                <label for="promptAspectRatio"><i class="fa-solid fa-crop-simple"></i> 화면 비율 (Aspect)</label>
+                <label for="promptAspectRatio"><i class="fa-solid fa-crop-simple"></i> 화면 비율</label>
                 <select id="promptAspectRatio" class="form-select">
                   <option value="16:9" selected>16:9 (Landscape - YouTube)</option>
                   <option value="9:16">9:16 (Portrait - Shorts/Reels)</option>
@@ -245,12 +246,6 @@
                   <option value="21:9">21:9 (Cinemascope)</option>
                 </select>
               </div>
-            </div>
-
-            <!-- 카메라 및 조명 자동 추론 배너 -->
-            <div class="auto-inference-info-card">
-              <div class="info-title"><i class="fa-solid fa-camera-movie" style="color:#60a5fa;"></i> 카메라 앵글 & 조명 연출: <strong>AI 자동 추론</strong></div>
-              <p class="info-desc">Ollama Gemma 4가 입력된 주제의 극적 분위기에 맞춰 씬마다 최적의 <strong>카메라 무빙(와이드/클로즈업/드론)</strong>과 <strong>조명(네온/안개/골든아워)</strong>을 스스로 판단하여 합성합니다.</p>
             </div>
 
             <div class="control-group">
@@ -263,9 +258,9 @@
               </select>
             </div>
 
-            <!-- 대본 및 음성 생성 언어 선택 (Multilingual) -->
+            <!-- 대본 및 음성 생성 언어 선택 -->
             <div class="control-group">
-              <label for="promptLanguageSelect"><i class="fa-solid fa-globe"></i> 대본 및 음성 생성 언어 (Language)</label>
+              <label for="promptLanguageSelect"><i class="fa-solid fa-globe"></i> 대본 및 나레이션 언어</label>
               <select id="promptLanguageSelect" class="form-select">
                 <option value="korean" selected>🇰🇷 한국어 (Korean)</option>
                 <option value="english">🇺🇸 English (영어)</option>
@@ -275,37 +270,38 @@
                 <option value="german">🇩🇪 Deutsch (독일어)</option>
                 <option value="spanish">🇪🇸 Español (스페인어)</option>
               </select>
-              <span class="helper-text">선택한 언어로 기획 대본 및 Qwen-TTS 다국어 음성이 합성됩니다.</span>
             </div>
 
-            <!-- AI 성우 보이스 선택 (Qwen-TTS & Voice Clone) -->
+            <!-- AI 성우 보이스 선택 (Edge-TTS 무료 고속 프리셋 + Qwen-TTS Voice Clone) -->
             <div class="control-group">
               <div style="display:flex; justify-content:space-between; align-items:center;">
-                <label for="promptVoiceSelect"><i class="fa-solid fa-microphone-lines"></i> AI 내레이션 보이스 (Qwen-TTS)</label>
+                <label for="promptVoiceSelect"><i class="fa-solid fa-microphone-lines"></i> 나레이션 보이스 (Edge-TTS / Qwen)</label>
                 <button type="button" id="btnOpenVoiceModal" class="btn btn-sm btn-outline" style="font-size:11px; padding:2px 8px; color:#c4b5fd; border-color:rgba(167,139,250,0.4);">
                   <i class="fa-solid fa-user-plus"></i> 내 목소리 등록
                 </button>
               </div>
               <select id="promptVoiceSelect" class="form-select">
+                <option value="edge_injoon" selected>⚡ 인준 (남성 다큐·지식 전문 - 무료 고속)</option>
+                <option value="edge_sunhi">⚡ 선희 (여성 다큐·뉴스 전문 - 무료 고속)</option>
+                <option value="edge_hyunsu">⚡ 현수 (남성 스토리텔러 - 무료 고속)</option>
                 <option value="my_voice">👤 내 목소리 (Voice Clone)</option>
-                <option value="docu_male" selected>🎙️ 진중한 다큐멘터리 남성 성우 (Ryan)</option>
-                <option value="docu_female">🎙️ 명확하고 차분한 여성 성우 (Sohee)</option>
-                <option value="mystery_narrator">🎙️ 미스터리 / 스릴러 성우 (Uncle Fu)</option>
-                <option value="shorts_energetic">🎙️ 트렌디 쇼츠 / 릴스 성우 (Vivian)</option>
+                <option value="docu_male">🎙️ 진중한 남성 성우 Ryan (Qwen-TTS)</option>
+                <option value="docu_female">🎙️ 명확한 여성 성우 Sohee (Qwen-TTS)</option>
+                <option value="mystery_narrator">🎙️ 미스터리 성우 Uncle Fu (Qwen-TTS)</option>
+                <option value="shorts_energetic">🎙️ 트렌디 쇼츠 성우 Vivian (Qwen-TTS)</option>
                 <option value="voice_design">🎨 AI 보이스 디자인 (Voice Design)</option>
               </select>
-              <span id="voiceDescText" class="helper-text">차분하고 신뢰감 넘치는 묵직한 내레이션</span>
+              <span id="voiceDescText" class="helper-text">차분하고 신뢰감 넘치는 다큐멘터리 어조 (무료 고속 합성)</span>
             </div>
 
             <div class="control-group">
               <label for="promptCustomSubject"><i class="fa-solid fa-user-astronaut"></i> 고정 피사체/캐릭터 일관성 키워드 (선택)</label>
               <input type="text" id="promptCustomSubject" class="form-control" placeholder="예: Korean male researcher in yellow biohazard suit">
-              <span class="helper-text">모든 씬에 고정 반영될 핵심 캐릭터 또는 피사체 묘사</span>
             </div>
 
             <button id="btnGeneratePrompts" class="btn btn-primary btn-block">
-              <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> AI 씬별 프롬프트 자동 생성</span>
-              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> Ollama Gemma 4 생성 중...</span>
+              <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 8초 씬별 기획 & 대본 자동 생성</span>
+              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 로컬 AI 기획 중...</span>
             </button>
           </div>
 
@@ -313,24 +309,24 @@
           <div class="studio-content-panel">
             <div class="card studio-results-header">
               <div class="header-left">
-                <h3 id="studioVideoTitle"><i class="fa-solid fa-clapperboard"></i> 씬별 스토리보드 & 시네마틱 프롬프트</h3>
-                <span id="studioSceneBadge" class="badge badge-accent">새 주제 생성 대기</span>
+                <h3 id="studioVideoTitle"><i class="fa-solid fa-clapperboard"></i> 8초 씬별 스토리보드 & 나레이션 스튜디오</h3>
+                <span id="studioSceneBadge" class="badge badge-accent">기획 대기</span>
               </div>
               <div class="header-actions-group">
-                <button id="btnBatchTTS" class="btn btn-sm btn-outline" style="color:#a78bfa; border-color:#8b5cf6;" title="전체 씬의 나레이션을 Qwen-TTS 음성으로 일괄 생성">
+                <button id="btnBatchTTS" class="btn btn-sm btn-primary" title="전체 씬의 나레이션 오디오를 초고속 병렬 합성">
                   <i class="fa-solid fa-microphone-lines"></i> 전체 음성 생성
+                </button>
+                <button id="btnDownloadZip" class="btn btn-sm btn-success" style="display: none;" title="전체 씬 오디오 + 마스터 음성 + 대본 TXT를 하나의 ZIP 파일로 다운로드">
+                  <i class="fa-solid fa-file-zipper"></i> 전체 ZIP 다운로드
                 </button>
                 <button id="btnCopyAllPrompts" class="btn btn-sm btn-outline" title="전체 프롬프트 복사">
                   <i class="fa-solid fa-copy"></i> 전체 복사
                 </button>
-                <button id="btnExportAutoFlowTxt" class="btn btn-sm btn-success" title="AutoFlow-Pro에서 Import 가능한 .txt 파일로 다운로드">
-                  <i class="fa-solid fa-file-arrow-down"></i> AutoFlow-Pro TXT
+                <button id="btnExportAutoFlowTxt" class="btn btn-sm btn-outline" title="AutoFlow-Pro에서 Import 가능한 .txt 파일로 다운로드">
+                  <i class="fa-solid fa-file-arrow-down"></i> AutoFlow TXT
                 </button>
                 <button id="btnExportCsvPrompts" class="btn btn-sm btn-outline" title="스마트 작업 관리용 CSV 다운로드">
                   <i class="fa-solid fa-file-csv"></i> CSV
-                </button>
-                <button id="btnExportJsonPrompts" class="btn btn-sm btn-outline" title="워크플로우 JSON 다운로드">
-                  <i class="fa-solid fa-code"></i> JSON
                 </button>
               </div>
             </div>
@@ -339,8 +335,8 @@
             <div class="autoflow-tip-box">
               <i class="fa-solid fa-circle-info"></i>
               <div>
-                <strong>AutoFlow-Pro & Qwen-TTS 연동 팁:</strong> 
-                생성된 <strong>[AutoFlow-Pro TXT]</strong>로 영상/이미지를 일괄 생성하고, 각 씬 카드의 <strong>[🎙️ 음성 생성]</strong> 버튼으로 내레이션 음성 파일(.wav)을 받아 결합하면 완전한 영상이 완성됩니다.
+                <strong>8초 비디오 & 나레이션 워크플로우:</strong> 
+                생성된 씬별 영문 프롬프트로 비디오 툴(Runway/Kling/Sora)에서 8초 클립을 만들고, <strong>[전체 음성 생성]</strong> 후 <strong>[전체 ZIP 다운로드]</strong>를 통해 마스터 오디오와 합치면 완성됩니다.
               </div>
             </div>
 
@@ -348,7 +344,7 @@
             <div id="studioScenesContainer" class="scenes-list-container">
               <div class="empty-state-box">
                 <i class="fa-solid fa-film fa-3x"></i>
-                <p>좌측에서 새로운 영상 주제를 입력하고 <strong>[AI 씬별 프롬프트 자동 생성]</strong> 버튼을 클릭하세요.</p>
+                <p>좌측에서 새로운 영상 주제를 입력하고 <strong>[8초 씬별 기획 & 대본 자동 생성]</strong> 버튼을 클릭하세요.</p>
               </div>
             </div>
           </div>
@@ -396,7 +392,7 @@
       </div>
     </div>
 
-    <!-- 상세 모달창 (메타데이터 탭을 기본으로 배치) -->
+    <!-- 상세 모달창 -->
     <div id="detailModal" class="modal-overlay" style="display: none;">
       <div class="modal-content">
         <div class="modal-header">
@@ -404,28 +400,21 @@
           <button class="modal-close" id="btnCloseModal"><i class="fa-solid fa-xmark"></i></button>
         </div>
         
-        <!-- 모달 탭 메뉴 (메타데이터를 첫 번째 탭으로) -->
         <div class="modal-tabs">
-          <button class="tab-btn active" data-tab="tabOverview"><i class="fa-solid fa-chart-pie"></i> 기본 메타데이터 요약</button>
+          <button class="tab-btn active" data-tab="tabOverview"><i class="fa-solid fa-chart-pie"></i> 기본 메타데이터</button>
           <button class="tab-btn" data-tab="tabComments"><i class="fa-solid fa-comments"></i> 댓글 여론 분석 (<span id="modalCommentCount">0</span>)</button>
-          <button class="tab-btn" data-tab="tabTranscript"><i class="fa-solid fa-closed-captioning"></i> 자막 전문 (Transcript)</button>
+          <button class="tab-btn" data-tab="tabTranscript"><i class="fa-solid fa-closed-captioning"></i> 타임스탬프 자막 전문</button>
           <button class="tab-btn" data-tab="tabAiReport"><i class="fa-solid fa-robot" style="color:#a78bfa;"></i> AI 심층 분석 리포트</button>
           <button class="tab-btn" data-tab="tabChapters"><i class="fa-solid fa-list-ol"></i> 챕터 (<span id="modalChapterCount">0</span>)</button>
           <button class="tab-btn" data-tab="tabRawJson"><i class="fa-solid fa-code"></i> 원본 JSON</button>
         </div>
 
         <div class="modal-body" id="modalBody">
-          <!-- 탭 1: 기본 메타데이터 요약 -->
           <div id="tabOverview" class="tab-pane active"></div>
-          <!-- 탭 2: 댓글 여론 분석 -->
           <div id="tabComments" class="tab-pane"></div>
-          <!-- 탭 3: 자막 전문 -->
           <div id="tabTranscript" class="tab-pane"></div>
-          <!-- 탭 4: AI 분석 리포트 -->
           <div id="tabAiReport" class="tab-pane"></div>
-          <!-- 탭 5: 챕터 목록 -->
           <div id="tabChapters" class="tab-pane"></div>
-          <!-- 탭 6: 원본 JSON -->
           <div id="tabRawJson" class="tab-pane"></div>
         </div>
       </div>
@@ -433,12 +422,11 @@
 
     <!-- 하단 상태 바 -->
     <footer class="app-footer">
-      <span><i class="fa-solid fa-bolt"></i> yt-dlp 메타데이터 & Google Flow / AutoFlow-Pro AI 프롬프트 스튜디오</span>
-      <span>저장 위치: <code>./data/</code> (JSON, CSV, _리포트.txt)</span>
+      <span><i class="fa-solid fa-bolt"></i> TubeInsight AI • 8초 씬 비디오 기획 & 무료 Edge-TTS / Qwen-TTS</span>
+      <span>저장 위치: <code>./data/</code> (JSON, CSV, ZIP, _리포트.txt)</span>
     </footer>
   </div>
 
   <script src="/static/app.js"></script>
 </body>
 </html>
-
