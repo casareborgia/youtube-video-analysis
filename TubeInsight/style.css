@@ -1,0 +1,217 @@
+/* ==========================================================================
+   TubeInsight AI — 기능 보조 스타일시트
+   index.html의 미니멀 화이트(Tailwind) 디자인을 보완합니다.
+   역할: 탭 전환, 버튼 활성 상태, 진행 단계, 자막 뷰어, 마크다운 렌더 서식
+   (Tailwind CDN의 preflight 리셋이 지운 기본 서식과 JS가 토글하는 상태 클래스 담당)
+   ========================================================================== */
+
+/* ── 탭 전환 (필수: 이게 없으면 3개 탭이 전부 동시에 표시됨) ── */
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* ── 모드 전환 버튼 (영상 분석기 / 8초 비디오 기획기) ── */
+.mode-btn { color: #525252; }
+.mode-btn:hover { color: #000; }
+.mode-btn.active {
+  background: #000;
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* ── 탭 버튼 ── */
+.tab-btn { color: #525252; }
+.tab-btn:hover { color: #000; background: #F5F5F5; }
+.tab-btn.active {
+  background: #000;
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+}
+.tab-btn.active:hover { background: #171717; color: #fff; }
+
+/* ── 빠른 샘플 버튼 활성 상태 ── */
+.sample-btn.active {
+  border-color: #000 !important;
+  color: #000 !important;
+  font-weight: 700;
+}
+
+/* ── 진행 단계 하이라이트 (1→2→3→4) ── */
+.step-item { color: #9CA3AF; transition: color 0.2s ease; }
+.step-item.active { color: #000; font-weight: 700; }
+.step-item.done { color: #059669; }
+
+/* ── 로딩 스피너 ── */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.9s linear infinite; }
+
+/* ── 자막 뷰어 (JS가 동적 생성하는 transcript 행) ── */
+.transcript-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  background: #FAFAFA;
+  border: 1px solid #F0F0F0;
+  border-radius: 8px;
+  transition: border-color 0.15s ease;
+}
+
+.transcript-row:hover { border-color: #C4C7CC; }
+
+.transcript-row.highlight {
+  background: #FEF3C7;
+  border-color: #F59E0B;
+}
+
+.time-badge {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #525252;
+  background: #fff;
+  border: 1px solid #E5E7EB;
+  padding: 2px 7px;
+  border-radius: 6px;
+  white-space: nowrap;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+
+.time-badge svg { width: 11px; height: 11px; }
+
+a.time-badge:hover { background: #000; color: #fff; border-color: #000; }
+
+.transcript-text {
+  color: #404040;
+  line-height: 1.6;
+  flex: 1;
+}
+
+/* ── 마크다운 렌더 서식 복원 (Tailwind preflight가 리셋한 기본값) ──
+   대상: AI 리포트 전문, 제목 훅, SEO 설명란, 플레이북 */
+#markdownReportContent, #genTitlesContent, #genDescContent, #playbookContent {
+  overflow-x: auto;
+}
+
+#markdownReportContent h1, #markdownReportContent h2 {
+  font-size: 1.15em;
+  font-weight: 800;
+  color: #000;
+  margin: 18px 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+#markdownReportContent h3,
+#genTitlesContent h1, #genTitlesContent h2, #genTitlesContent h3,
+#genDescContent h1, #genDescContent h2, #genDescContent h3,
+#playbookContent h1, #playbookContent h2, #playbookContent h3 {
+  font-size: 1.05em;
+  font-weight: 700;
+  color: #000;
+  margin: 14px 0 6px;
+}
+
+#markdownReportContent h4, #genTitlesContent h4, #genDescContent h4, #playbookContent h4 {
+  font-weight: 700;
+  color: #171717;
+  margin: 10px 0 4px;
+}
+
+#markdownReportContent p, #genTitlesContent p, #genDescContent p, #playbookContent p {
+  margin-bottom: 8px;
+}
+
+#markdownReportContent ul, #markdownReportContent ol,
+#genTitlesContent ul, #genTitlesContent ol,
+#genDescContent ul, #genDescContent ol,
+#playbookContent ul, #playbookContent ol {
+  margin: 4px 0 10px 18px;
+}
+
+#markdownReportContent ul, #genTitlesContent ul, #genDescContent ul, #playbookContent ul { list-style: disc; }
+#markdownReportContent ol, #genTitlesContent ol, #genDescContent ol, #playbookContent ol { list-style: decimal; }
+
+#markdownReportContent li, #genTitlesContent li, #genDescContent li, #playbookContent li {
+  margin-bottom: 4px;
+}
+
+#markdownReportContent strong, #genTitlesContent strong, #genDescContent strong, #playbookContent strong {
+  font-weight: 700;
+  color: #000;
+}
+
+#markdownReportContent blockquote, #genTitlesContent blockquote, #genDescContent blockquote, #playbookContent blockquote {
+  border-left: 3px solid #000;
+  background: #FAFAFA;
+  padding: 8px 12px;
+  margin: 10px 0;
+  border-radius: 0 6px 6px 0;
+}
+
+#markdownReportContent code, #genTitlesContent code, #genDescContent code, #playbookContent code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9em;
+  background: #F4F5F7;
+  border: 1px solid #E5E7EB;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+#markdownReportContent table, #genTitlesContent table, #genDescContent table, #playbookContent table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10px 0 14px;
+  font-size: 0.95em;
+}
+
+#markdownReportContent th, #markdownReportContent td,
+#genTitlesContent th, #genTitlesContent td,
+#genDescContent th, #genDescContent td,
+#playbookContent th, #playbookContent td {
+  border: 1px solid #E5E7EB;
+  padding: 6px 9px;
+  text-align: left;
+  vertical-align: top;
+}
+
+#markdownReportContent th, #genTitlesContent th, #genDescContent th, #playbookContent th {
+  background: #FAFAFA;
+  font-weight: 700;
+  color: #000;
+}
+
+#markdownReportContent hr, #genTitlesContent hr, #genDescContent hr, #playbookContent hr {
+  border: none;
+  border-top: 1px solid #E5E7EB;
+  margin: 16px 0;
+}
+
+#markdownReportContent a, #genTitlesContent a, #genDescContent a, #playbookContent a {
+  color: #000;
+  text-decoration: underline;
+}
+
+/* ── 가독성 보정: 초소형 글씨 확대 + 저대비 회색 진하게 (강의 녹화 대비) ── */
+.text-\[10px\] { font-size: 11px !important; }
+.text-\[11px\] { font-size: 12px !important; }
+.text-neutral-400 { color: #7C8594 !important; }
+
+/* ── 접근성: 키보드 포커스 표시 ── */
+:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── 모션 최소화 선호 사용자 배려 ── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

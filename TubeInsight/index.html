@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html class="light" lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>TubeInsight AI — 유튜브 영상 0원 완전 분석 & 8초 비디오 AI 기획기</title>
+  <meta name="description" content="미래지향적 미니멀리즘 화이트 랩 에디션 — 유튜브 알고리즘 분석 및 8초 비디오 대본/프롬프트 생성기"/>
+
+  <!-- Favicon -->
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23000000'/%3E%3Cpath d='M26 20l18 12-18 12z' fill='%23ffffff'/%3E%3C/svg%3E">
+
+  <!-- Tailwind CSS CDN & Stitch Typography -->
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css"/>
+  <script src="https://unpkg.com/lucide@0.454.0"></script>
+
+  <!-- Stitch "Clinical Precision" Minimalist White/Black Config -->
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "primary": "#000000",
+            "on-primary": "#FFFFFF",
+            "primary-container": "#1B1B1B",
+            "secondary": "#5C5F60",
+            "on-secondary": "#FFFFFF",
+            "secondary-container": "#F4F5F7",
+            "surface": "#FFFFFF",
+            "surface-dim": "#F8F9FA",
+            "surface-container": "#F4F5F7",
+            "surface-container-low": "#FAFAFA",
+            "surface-container-lowest": "#FFFFFF",
+            "on-surface": "#111827",
+            "on-surface-variant": "#4B5563",
+            "outline": "#D1D5DB",
+            "outline-variant": "#E5E7EB",
+            "live-red": "#FF0000"
+          },
+          fontFamily: {
+            "display": ["Outfit", "sans-serif"],
+            "body": ["Pretendard Variable", "Inter", "sans-serif"],
+            "mono": ["JetBrains Mono", "monospace"]
+          },
+          borderRadius: {
+            "lg": "8px",
+            "xl": "12px",
+            "2xl": "16px",
+            "full": "9999px"
+          },
+          boxShadow: {
+            "micro": "0 2px 12px rgba(0, 0, 0, 0.04)",
+            "glass": "0 4px 20px rgba(0, 0, 0, 0.04)",
+            "lift": "0 10px 30px rgba(0, 0, 0, 0.08)"
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #FAFAFA;
+      color: #111827;
+      font-family: 'Pretendard Variable', 'Inter', sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Minimalist Frosted White Glass Card */
+    .glass-card {
+      background-color: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid #E5E7EB;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .glass-card:hover {
+      border-color: #111827;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.06);
+    }
+
+    /* Minimalist Inputs */
+    .minimal-input {
+      background-color: #FFFFFF;
+      border: 1px solid #E5E7EB;
+      color: #111827;
+      transition: all 0.2s ease;
+    }
+    .minimal-input:focus {
+      border-color: #000000;
+      box-shadow: 0 0 0 1px #000000;
+      outline: none;
+    }
+
+    /* Recording Pulse */
+    @keyframes pulse-red {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); }
+      50% { transform: scale(1.04); box-shadow: 0 0 0 8px rgba(255, 0, 0, 0.15); }
+    }
+    .recording-red { animation: pulse-red 1.2s infinite ease-in-out; }
+
+    /* Custom Minimal Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+      background: #000000; color: #FFFFFF; border-radius: 8px;
+      padding: 12px 18px; font-size: 13px; font-weight: 600;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      display: flex; align-items: center; gap: 8px;
+      opacity: 0; transform: translateY(12px); transition: all 0.25s ease;
+      pointer-events: none;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  </style>
+
+  <!-- 기능 보조 스타일 (탭 전환, 활성 상태, 자막 뷰어, 마크다운 서식) -->
+  <link rel="stylesheet" href="style.css?v=fix1">
+</head>
+
+<body class="min-h-screen flex flex-col selection:bg-neutral-900 selection:text-white">
+
+  <!-- Minimalist Top Navigation Bar -->
+  <header class="sticky top-0 z-50 w-full bg-white/90 backdrop-blur-xl border-b border-[#E5E7EB] shadow-[0_2px_12px_rgba(0,0,0,0.02)]">
+    <div class="max-w-[1360px] mx-auto px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded bg-black text-white flex items-center justify-center font-bold font-display text-sm tracking-tighter">
+          TI
+        </div>
+        <div class="flex flex-col">
+          <span class="font-display text-lg font-bold text-black tracking-tight flex items-center gap-1.5">
+            TubeInsight AI
+            <span class="text-[10px] font-mono font-medium px-1.5 py-0.2 bg-neutral-100 border border-neutral-300 rounded text-neutral-600">LAB</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- Mode Switcher (Minimalist Floating Pill) -->
+      <nav class="flex items-center p-1 bg-[#F4F5F7] rounded-full border border-neutral-200 order-last w-full justify-center sm:order-none sm:w-auto">
+        <button id="btnModeAnalyze" data-mode="analyze" class="mode-btn active px-4 sm:px-5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap">
+          <i data-lucide="bar-chart-2" class="w-3.5 h-3.5"></i>
+          <span>영상 분석기</span>
+        </button>
+        <button id="btnModeGenerate" data-mode="generate" class="mode-btn px-4 sm:px-5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all whitespace-nowrap">
+          <i data-lucide="clapperboard" class="w-3.5 h-3.5"></i>
+          <span>8초 비디오 기획기</span>
+        </button>
+      </nav>
+
+      <!-- System Status: 로컬 AI 백엔드별 연결 표시 (검은 테두리 = 현재 사용 중) -->
+      <div class="flex items-center gap-1.5 text-xs font-mono">
+        <div id="lmsPill" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-50 border border-neutral-200 text-neutral-400 whitespace-nowrap transition-all" title="LM Studio 상태 확인 중">
+          <span id="lmsDot" class="w-2 h-2 rounded-full bg-neutral-300"></span>
+          <span id="lmsLabel">LM Studio</span>
+        </div>
+        <div id="ollamaPill" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-neutral-50 border border-neutral-200 text-neutral-400 whitespace-nowrap transition-all" title="Ollama 상태 확인 중">
+          <span id="ollamaDot" class="w-2 h-2 rounded-full bg-neutral-300"></span>
+          <span id="ollamaLabel">Ollama</span>
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-[1360px] w-full mx-auto px-6 py-8">
+
+    <!-- ==========================================
+         MODE 1: Analyzer Section (Minimalist White)
+         ========================================== -->
+    <div id="analyzerSection">
+      
+      <!-- Search & Input Section -->
+      <section class="max-w-3xl mx-auto text-center mt-4 mb-10">
+        <h1 class="font-display text-3xl md:text-4xl font-extrabold text-black tracking-tight mb-2">
+          유튜브 영상 URL 입력
+        </h1>
+        <p class="text-neutral-500 text-sm mb-6">
+          메타데이터 · 타임스탬프 자막 · 상위 댓글 · 로컬 AI 3단계 심층 분석을 0원으로 시각화합니다.
+        </p>
+
+        <!-- Minimal Search Box -->
+        <div class="flex flex-col sm:flex-row gap-2">
+          <div class="relative flex-1">
+            <input type="text" id="urlInput" placeholder="유튜브 링크 입력 (예: https://youtu.be/ws1Clj0vOAM)" value="https://youtu.be/ws1Clj0vOAM" class="w-full minimal-input rounded-lg px-4 py-3 text-sm text-black placeholder:text-neutral-400">
+            <button id="btnClear" class="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-black text-xs" title="지우기">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <button id="btnAnalyze" class="bg-black text-white font-display font-semibold text-sm px-7 py-3 rounded-lg hover:bg-neutral-800 transition-all flex items-center justify-center gap-2 whitespace-nowrap shadow-sm">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>
+            <span>분석 시작</span>
+          </button>
+        </div>
+
+        <!-- Sample Chips -->
+        <div class="flex items-center justify-center gap-2 mt-3 text-xs text-neutral-500 flex-wrap" id="samplePillsBox">
+          <span class="font-medium text-neutral-400">빠른 샘플:</span>
+          <button class="sample-btn px-2.5 py-1 rounded bg-white border border-neutral-200 text-neutral-700 hover:border-black hover:text-black transition-all" data-id="ws1Clj0vOAM">난지도 쓰레기산 (168만)</button>
+          <button class="sample-btn px-2.5 py-1 rounded bg-white border border-neutral-200 text-neutral-700 hover:border-black hover:text-black transition-all" data-id="dQw4w9WgXcQ">Rickroll (15억)</button>
+        </div>
+
+        <!-- Progress Tracker -->
+        <div class="glass-card rounded-lg p-4 mt-6 max-w-xl mx-auto" id="analysisProgress" style="display: none;">
+          <div class="w-full h-1 bg-neutral-100 rounded-full overflow-hidden mb-2">
+            <div class="h-full bg-black transition-all duration-300" id="progressBarFill" style="width: 20%;"></div>
+          </div>
+          <div class="flex justify-between text-[11px] font-mono">
+            <span id="step1" class="step-item active">1. 메타데이터</span>
+            <span id="step2" class="step-item">2. 자막 추출</span>
+            <span id="step3" class="step-item">3. 댓글 수집</span>
+            <span id="step4" class="step-item">4. 로컬 AI 분석</span>
+          </div>
+          <p class="text-xs text-neutral-500 mt-2 text-center" id="progressStatusMsg">데이터를 추출하고 있습니다...</p>
+        </div>
+      </section>
+
+      <!-- Video Hero Card & Stats Grid -->
+      <section class="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-8" id="dashboardSection">
+        
+        <!-- Video Hero Card (5 Cols) -->
+        <div class="lg:col-span-5 lg:self-start glass-card rounded-xl overflow-hidden flex flex-col">
+          <div class="aspect-video w-full bg-neutral-100 relative group">
+            <img id="videoThumb" src="https://i.ytimg.com/vi/ws1Clj0vOAM/maxresdefault.jpg" alt="썸네일" class="w-full h-full object-cover">
+            <a id="videoLink" href="https://youtu.be/ws1Clj0vOAM" target="_blank" class="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all">
+              <div class="w-12 h-12 rounded-full bg-white text-black flex items-center justify-center shadow-lg transform group-hover:scale-105 transition-transform">
+                <i data-lucide="play" class="w-5 h-5 fill-black ml-0.5"></i>
+              </div>
+            </a>
+            <span class="absolute bottom-2 right-2 px-2 py-0.5 bg-black text-white rounded text-[11px] font-mono font-bold" id="videoDuration">08:42</span>
+            <span id="sampleDataBadge" class="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-amber-100 border border-amber-300 text-amber-800 text-[10px] font-bold inline-flex items-center gap-1">
+              <i data-lucide="flask-conical" class="w-3 h-3"></i> 샘플 미리보기
+            </span>
+          </div>
+
+          <div class="p-5 flex flex-col gap-1">
+            <div>
+              <div class="flex items-center gap-2 mb-2 text-xs text-neutral-500">
+                <span class="font-bold text-black" id="channelName">신비한 건축사전</span>
+                <span>•</span>
+                <span id="channelSubs">구독자 15.2만명</span>
+                <span class="ml-auto font-mono text-[11px]" id="uploadDate">2024.03.15</span>
+              </div>
+              <h2 class="font-display font-bold text-base text-black line-clamp-2 leading-snug mb-5" id="videoTitle">
+                아파트 30층 높이 쓰레기 산, 서울은 결국 치우지 못했습니다
+              </h2>
+            </div>
+
+            <!-- Stats 4-Grid -->
+            <div class="grid grid-cols-2 gap-2 border-t border-neutral-100 pt-3 font-mono">
+              <div class="bg-neutral-50 p-2.5 rounded border border-neutral-200/60">
+                <span class="text-[10px] text-neutral-500 block uppercase font-sans">조회수</span>
+                <span class="text-sm font-bold text-black" id="viewCount">1,685,360</span>
+              </div>
+              <div class="bg-neutral-50 p-2.5 rounded border border-neutral-200/60">
+                <span class="text-[10px] text-neutral-500 block uppercase font-sans">좋아요</span>
+                <span class="text-sm font-bold text-black" id="likeCount">42,000+</span>
+              </div>
+              <div class="bg-neutral-50 p-2.5 rounded border border-neutral-200/60">
+                <span class="text-[10px] text-neutral-500 block uppercase font-sans">댓글 수</span>
+                <span class="text-sm font-bold text-black" id="commentCount">1,280+</span>
+              </div>
+              <div class="bg-neutral-50 p-2.5 rounded border border-neutral-200/60">
+                <span class="text-[10px] text-neutral-500 block uppercase font-sans">참여율 (Engagement)</span>
+                <span class="text-sm font-bold text-black" id="engagementRate">2.57%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5 Core Visual Analysis Cards & Tabs (7 Cols) -->
+        <div class="lg:col-span-7 flex flex-col gap-4">
+          
+          <!-- Tab Navigation -->
+          <div class="flex items-center justify-between border-b border-neutral-200 pb-2 flex-wrap gap-2">
+            <div class="flex gap-1">
+              <button class="tab-btn active px-4 py-2 rounded-lg font-display text-xs font-semibold flex items-center gap-1.5 transition-all" data-target="analysisVisual">
+                <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>
+                <span>5대 핵심 분석</span>
+              </button>
+              <button class="tab-btn px-4 py-2 rounded-lg font-display text-xs font-semibold flex items-center gap-1.5 transition-all" data-target="fullReportView">
+                <i data-lucide="file-text" class="w-3.5 h-3.5"></i>
+                <span>AI 리포트 전문</span>
+              </button>
+              <button class="tab-btn px-4 py-2 rounded-lg font-display text-xs font-semibold flex items-center gap-1.5 transition-all" data-target="rawTranscriptView">
+                <i data-lucide="align-left" class="w-3.5 h-3.5"></i>
+                <span>자막 전문</span>
+              </button>
+            </div>
+
+            <div class="flex gap-1.5">
+              <button class="px-3 py-1 rounded bg-white border border-neutral-200 text-xs text-neutral-700 hover:border-black hover:text-black transition-all flex items-center gap-1" id="btnCopyReport">
+                <i data-lucide="copy" class="w-3 h-3"></i> 복사
+              </button>
+              <button class="px-3 py-1 rounded bg-white border border-neutral-200 text-xs text-neutral-700 hover:border-black hover:text-black transition-all flex items-center gap-1" id="btnDownloadReport">
+                <i data-lucide="download" class="w-3 h-3"></i> 다운
+              </button>
+            </div>
+          </div>
+
+          <!-- TAB 1: Visual Analysis View -->
+          <div class="tab-pane active" id="analysisVisual">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              
+              <!-- 1. 제목 & 훅 구조 해체 -->
+              <div class="glass-card rounded-xl p-5 border-l-2 border-l-black flex flex-col justify-between">
+                <div>
+                  <div class="flex justify-between items-center mb-3">
+                    <span class="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-500">01 훅 구조 해체</span>
+                    <span class="text-xs font-mono font-extrabold text-black bg-neutral-100 px-2 py-0.5 rounded border border-neutral-200">CTR 98%</span>
+                  </div>
+
+                  <div class="bg-neutral-50 rounded-lg p-3 border border-neutral-200/60 mb-3 space-y-1.5">
+                    <div>
+                      <span class="text-[10px] text-neutral-400 font-mono block">대비 A (스케일)</span>
+                      <p class="text-xs font-bold text-black" id="hookPart1">"아파트 30층 높이 쓰레기 산"</p>
+                    </div>
+                    <div class="border-t border-neutral-200/60 pt-1.5">
+                      <span class="text-[10px] text-neutral-400 font-mono block">대비 B (실패 선언)</span>
+                      <p class="text-xs font-bold text-black" id="hookPart2">"서울은 결국 치우지 못했습니다"</p>
+                    </div>
+                  </div>
+
+                  <p class="text-xs text-neutral-600 leading-relaxed" id="hookAnalysisText">
+                    시각적인 압도적 스케일과 시스템 실패를 대비시켜 시청자의 초반 3초 이탈 방어율을 극대화했습니다.
+                  </p>
+                </div>
+              </div>
+
+              <!-- 3. 핵심 메시지 & 사회적 통찰 -->
+              <div class="glass-card rounded-xl p-5 border-l-2 border-l-neutral-400 flex flex-col justify-between">
+                <div>
+                  <div class="flex justify-between items-center mb-3">
+                    <span class="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-500">03 핵심 메시지</span>
+                    <span class="text-[11px] text-neutral-600 font-mono">사회적 반전</span>
+                  </div>
+
+                  <div class="bg-neutral-50 rounded-lg p-3 border border-neutral-200/60 mb-3">
+                    <p class="text-xs font-semibold text-neutral-800 leading-relaxed italic" id="coreMessageText">
+                      "단순히 쓰레기를 덮어 공원으로 만든 것이 아니라, 30년간 가스와 침출수를 통제해야 했던 필사의 도시 생존기였습니다."
+                    </p>
+                  </div>
+                </div>
+
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[10px] font-mono text-neutral-600">#도시재생</span>
+                  <span class="px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[10px] font-mono text-neutral-600">#난지도역사</span>
+                  <span class="px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-[10px] font-mono text-neutral-600">#환경공학</span>
+                </div>
+              </div>
+
+              <!-- 2. 5-Step Story Timeline (Full Width) -->
+              <div class="md:col-span-2 glass-card rounded-xl p-5 border-l-2 border-l-black">
+                <div class="flex justify-between items-center mb-4">
+                  <span class="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-500">02 5단계 스토리 전개 타임라인</span>
+                  <span class="text-[11px] font-mono text-neutral-400">Pacing Structure</span>
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-5 gap-2" id="storyTimelineGrid"><!-- timeline cells -->
+                  <div class="bg-neutral-50 rounded-lg p-2.5 border border-neutral-200/60 text-center">
+                    <span class="text-[10px] font-mono font-bold text-black uppercase">1. 도입</span>
+                    <p class="text-[10px] text-neutral-400 my-1 font-mono">00:00~01:20</p>
+                    <p class="text-xs text-neutral-800 font-medium leading-snug">쓰레기산의 충격 스케일</p>
+                  </div>
+                  <div class="bg-neutral-50 rounded-lg p-2.5 border border-neutral-200/60 text-center">
+                    <span class="text-[10px] font-mono font-bold text-black uppercase">2. 갈등</span>
+                    <p class="text-[10px] text-neutral-400 my-1 font-mono">01:21~03:40</p>
+                    <p class="text-xs text-neutral-800 font-medium leading-snug">악취와 오염의 한계</p>
+                  </div>
+                  <div class="bg-neutral-50 rounded-lg p-2.5 border border-neutral-200/60 text-center">
+                    <span class="text-[10px] font-mono font-bold text-black uppercase">3. 딜레마</span>
+                    <p class="text-[10px] text-neutral-400 my-1 font-mono">03:41~05:30</p>
+                    <p class="text-xs text-neutral-800 font-medium leading-snug">처리 비용 국가예산 초과</p>
+                  </div>
+                  <div class="bg-neutral-50 rounded-lg p-2.5 border border-neutral-200/60 text-center">
+                    <span class="text-[10px] font-mono font-bold text-black uppercase">4. 반전</span>
+                    <p class="text-[10px] text-neutral-400 my-1 font-mono">05:31~07:15</p>
+                    <p class="text-xs text-neutral-800 font-medium leading-snug">치우지 않고 봉인하는 역발상</p>
+                  </div>
+                  <div class="bg-neutral-50 rounded-lg p-2.5 border border-neutral-200/60 text-center">
+                    <span class="text-[10px] font-mono font-bold text-black uppercase">5. 여운</span>
+                    <p class="text-[10px] text-neutral-400 my-1 font-mono">07:16~08:42</p>
+                    <p class="text-xs text-neutral-800 font-medium leading-snug">오늘날 평화의 공원의 질문</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 4. 시청자 베스트 댓글 (실제 수집 데이터) -->
+              <div class="glass-card rounded-xl p-5 border-l-2 border-l-black">
+                <div class="flex justify-between items-center mb-3">
+                  <span class="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-500">04 시청자 베스트 댓글</span>
+                  <span class="text-[11px] font-mono text-neutral-400">Top Comments</span>
+                </div>
+                <div class="space-y-2" id="topCommentsList">
+                  <p class="text-xs text-neutral-400">분석을 실행하면 상위 댓글이 표시됩니다.</p>
+                </div>
+              </div>
+
+              <!-- 5. 내 채널 적용 플레이북 (AI 리포트 5번 섹션) -->
+              <div class="glass-card rounded-xl p-5 border-l-2 border-l-neutral-400">
+                <div class="flex justify-between items-center mb-3">
+                  <span class="text-[11px] font-mono font-bold uppercase tracking-wider text-neutral-500">05 내 채널 적용 플레이북</span>
+                  <span class="text-[11px] font-mono text-neutral-400">Actionable Playbook</span>
+                </div>
+                <div class="text-xs leading-relaxed text-neutral-800 max-h-[320px] overflow-y-auto pr-1" id="playbookContent">
+                  <p class="text-neutral-400">분석 리포트의 '내 채널 적용' 섹션이 여기에 표시됩니다.</p>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- TAB 2: Full Markdown AI Report View -->
+          <div class="tab-pane" id="fullReportView">
+            <div class="glass-card rounded-xl p-6 leading-relaxed text-sm text-neutral-800" id="markdownReportContent">
+              <!-- Rendered markdown -->
+            </div>
+          </div>
+
+          <!-- TAB 3: Timestamped Subtitle Script View -->
+          <div class="tab-pane" id="rawTranscriptView">
+            <div class="glass-card rounded-xl p-5">
+              <div class="flex justify-between items-center mb-3">
+                <input type="text" id="transcriptSearchInput" placeholder="자막 내용 검색..." class="minimal-input rounded px-3 py-1.5 text-xs w-56">
+                <button id="btnCopyTranscript" class="px-3 py-1.5 rounded bg-white border border-neutral-200 text-xs text-neutral-700 hover:border-black hover:text-black transition-all flex items-center gap-1">
+                  <i data-lucide="copy" class="w-3 h-3"></i> 자막 전체 복사
+                </button>
+              </div>
+              <div class="space-y-1.5 max-h-[460px] overflow-y-auto pr-1 text-xs" id="transcriptContainer">
+                <!-- Transcript rows -->
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div> <!-- /#analyzerSection -->
+
+    <!-- ==========================================
+         MODE 2: Generator Section (Minimalist White Studio)
+         ========================================== -->
+    <div id="generatorSection" style="display: none;">
+      
+      <!-- Studio Header & Config -->
+      <section class="max-w-4xl mx-auto text-center mt-2 mb-8">
+        <h1 class="font-display text-3xl md:text-4xl font-extrabold text-black tracking-tight mb-2">
+          8-Second Scene Video AI Studio
+        </h1>
+        <p class="text-neutral-500 text-sm mb-6 max-w-xl mx-auto">
+          주제를 입력하면 훅 공식과 5단계 전개 구조를 바탕으로 8초 단위 대본과 AI 영상 프롬프트를 자동 설계합니다.
+        </p>
+
+        <!-- Topic Search & Config Bar -->
+        <div class="glass-card rounded-xl p-4 text-left">
+          <div class="flex flex-col md:flex-row gap-2 mb-3">
+            <input type="text" id="topicInput" placeholder="영상 주제 입력 (예: 지하 50층 비밀 벙커의 진실, 심해 1만 미터의 미스터리)" value="지하 50층 비밀 벙커의 진실" class="flex-1 minimal-input rounded-lg px-4 py-2.5 text-sm text-black">
+            <button id="btnGenerate" class="bg-black text-white font-display font-semibold text-sm px-6 py-2.5 rounded-lg hover:bg-neutral-800 transition-all flex items-center justify-center gap-2 whitespace-nowrap shadow-sm">
+              <i data-lucide="film" class="w-4 h-4"></i>
+              <span>비디오 기획 & 음성 생성</span>
+            </button>
+          </div>
+
+          <div class="flex items-center justify-between pt-2 border-t border-neutral-100 flex-wrap gap-3">
+            <div class="flex items-center gap-2 text-xs">
+              <div class="flex items-center gap-1.5 bg-neutral-50 px-2.5 py-1.5 rounded border border-neutral-200">
+                <span class="text-neutral-500">씬 개수:</span>
+                <select id="sceneCountSelect" class="bg-transparent text-black font-semibold outline-none cursor-pointer">
+                  <option value="6">6개 씬 (48초 Shorts)</option>
+                  <option value="10" selected>10개 씬 (80초 롱폼)</option>
+                  <option value="15">15개 씬 (120초 미니 다큐)</option>
+                </select>
+              </div>
+
+              <div class="flex items-center gap-1.5 bg-neutral-50 px-2.5 py-1.5 rounded border border-neutral-200">
+                <span class="text-neutral-500">나레이션:</span>
+                <select id="voiceSelect" class="bg-transparent text-black font-semibold outline-none cursor-pointer">
+                  <option value="ko-KR-InJoonNeural">인준 (남성 다큐)</option>
+                  <option value="ko-KR-SunHiNeural">선희 (여성 뉴스)</option>
+                  <option value="ko-KR-HyunsuNeural">현수 (남성 스토리)</option>
+                </select>
+              </div>
+            </div>
+
+            <button id="btnOpenVoiceModal" class="px-3 py-1.5 rounded bg-white border border-neutral-300 text-xs font-bold text-black hover:border-black transition-all flex items-center gap-1.5">
+              <i data-lucide="mic" class="w-3.5 h-3.5"></i> 내 목소리 학습 (Qwen3)
+            </button>
+          </div>
+
+          <!-- Recommendation Chips -->
+          <div class="flex items-center gap-1.5 mt-3 pt-2 border-t border-neutral-100 text-xs text-neutral-500 flex-wrap">
+            <span class="font-medium text-neutral-400">추천 주제:</span>
+            <button class="topic-chip px-2.5 py-0.5 rounded bg-neutral-100 text-neutral-700 hover:bg-black hover:text-white transition-all" data-topic="지하 50층 비밀 벙커의 진실">지하 50층 비밀 벙커</button>
+            <button class="topic-chip px-2.5 py-0.5 rounded bg-neutral-100 text-neutral-700 hover:bg-black hover:text-white transition-all" data-topic="체르노빌 지하 30m 코끼리 발의 미스터리">체르노빌 코끼리 발</button>
+            <button class="topic-chip px-2.5 py-0.5 rounded bg-neutral-100 text-neutral-700 hover:bg-black hover:text-white transition-all" data-topic="바다 밑 3,000m 침몰선에서 발견된 금괴">심해 3,000m 침몰선</button>
+          </div>
+        </div>
+
+        <!-- Progress Tracker for Generator -->
+        <div class="glass-card rounded-lg p-4 mt-6 max-w-xl mx-auto" id="genProgress" style="display: none;">
+          <div class="w-full h-1 bg-neutral-100 rounded-full overflow-hidden mb-2">
+            <div class="h-full bg-black transition-all duration-300" id="genProgressBarFill" style="width: 30%;"></div>
+          </div>
+          <div class="flex justify-between text-[11px] font-mono">
+            <span id="genStep1" class="step-item active">1. 제목 훅 & SEO</span>
+            <span id="genStep2" class="step-item">2. 8초 씬별 대본</span>
+            <span id="genStep3" class="step-item">3. AI 비디오 프롬프트</span>
+          </div>
+          <p class="text-xs text-neutral-500 mt-2 text-center" id="genStatusMsg">분석 데이터를 바탕으로 기획을 시작합니다...</p>
+        </div>
+      </section>
+
+      <!-- Generator Results Dashboard -->
+      <section class="space-y-6" id="genResultsSection" style="display: none;">
+        
+        <!-- Action Toolbar -->
+        <div class="glass-card rounded-xl p-4 flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-neutral-600 inline-block mb-1" id="genTopicBadge">주제: 지하 50층 비밀 벙커의 진실</span>
+            <h2 class="font-display font-bold text-lg text-black" id="genMainTitle">AI 생성 유튜브 기획 & 8초 비디오 제작 가이드</h2>
+          </div>
+
+          <div class="flex items-center gap-1.5 flex-wrap">
+            <button id="btnPlayFullAudio" class="px-3 py-1.5 rounded-lg bg-black text-white text-xs font-semibold hover:bg-neutral-800 transition-all flex items-center gap-1 shadow-sm">
+              <i data-lucide="volume-2" class="w-3.5 h-3.5"></i> 전체 연속 재생
+            </button>
+            <button id="btnDownloadAudioZip" class="px-3 py-1.5 rounded-lg bg-black text-white text-xs font-semibold hover:bg-neutral-800 transition-all flex items-center gap-1 shadow-sm">
+              <i data-lucide="archive" class="w-3.5 h-3.5"></i> ZIP 일괄 다운로드
+            </button>
+            <button id="btnRegenerateAudios" class="px-3 py-1.5 rounded-lg bg-white border border-neutral-200 text-xs font-medium text-neutral-700 hover:border-black hover:text-black transition-all flex items-center gap-1">
+              <i data-lucide="refresh-cw" class="w-3 h-3"></i> 오디오 재생성
+            </button>
+            <button id="btnCopyAllPrompts" class="px-3 py-1.5 rounded-lg bg-white border border-neutral-200 text-xs font-medium text-neutral-700 hover:border-black hover:text-black transition-all flex items-center gap-1">
+              <i data-lucide="copy" class="w-3 h-3"></i> 프롬프트 복사
+            </button>
+            <button id="btnCopyFullScript" class="px-3 py-1.5 rounded-lg bg-white border border-neutral-200 text-xs font-medium text-neutral-700 hover:border-black hover:text-black transition-all flex items-center gap-1">
+              <i data-lucide="file-text" class="w-3 h-3"></i> 대본 복사
+            </button>
+            <button id="btnDownloadPlan" class="px-3 py-1.5 rounded-lg bg-white border border-neutral-200 text-xs font-medium text-neutral-700 hover:border-black hover:text-black transition-all flex items-center gap-1">
+              <i data-lucide="download" class="w-3 h-3"></i> 기획서 저장
+            </button>
+          </div>
+        </div>
+
+        <!-- 3 Title Hooks & Description Cards Grid -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div class="glass-card rounded-xl p-5 border-l-2 border-l-black">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="text-xs font-mono font-bold uppercase tracking-wider text-neutral-500">제목 훅 & SEO 설명란</span>
+            </div>
+            <div class="text-xs leading-relaxed text-neutral-800 max-h-[340px] overflow-y-auto pr-1" id="genTitlesContent"></div>
+          </div>
+
+          <div class="glass-card rounded-xl p-5 border-l-2 border-l-neutral-400">
+            <div class="flex items-center gap-2 mb-3">
+              <span class="text-xs font-mono font-bold uppercase tracking-wider text-neutral-500">8초 씬별 나레이션 대본 (전문)</span>
+            </div>
+            <div class="text-xs leading-relaxed text-neutral-800 max-h-[340px] overflow-y-auto pr-1" id="genDescContent"></div>
+          </div>
+        </div>
+
+        <!-- 8-Second Scenes Timeline Grid -->
+        <div>
+          <div class="flex justify-between items-center mb-4">
+            <div class="flex items-center gap-2">
+              <span class="font-display font-bold text-black text-base">8초 단위 씬별 타임라인 & AI 프롬프트</span>
+            </div>
+            <span class="text-xs font-mono px-2.5 py-0.5 rounded bg-neutral-100 border border-neutral-200 text-neutral-700 font-bold" id="totalDurationBadge">10 Scenes (80s)</span>
+          </div>
+
+          <div class="grid grid-cols-1 xl:grid-cols-2 gap-4" id="scenesGrid">
+            <!-- Dynamically generated scene cards -->
+          </div>
+        </div>
+
+      </section>
+
+    </div> <!-- /#generatorSection -->
+
+  </main>
+
+  <!-- Minimalist Voice Cloning Modal -->
+  <div class="fixed inset-0 bg-black/50 backdrop-blur-md z-[999] hidden items-center justify-center p-4" id="voiceClonePanel">
+    <div class="bg-white rounded-xl p-6 max-w-lg w-full border border-neutral-200 shadow-lift relative">
+      <div class="flex justify-between items-center mb-3">
+        <h4 class="font-display font-bold text-black text-base">나만의 목소리 학습 & 일관성 유지 (Qwen3-TTS)</h4>
+        <button id="btnCloseVoicePanel" class="text-neutral-400 hover:text-black p-1">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <p class="text-xs text-neutral-500 mb-4 leading-relaxed">
+        3초 이상 또렷하게 자신의 목소리를 녹음하거나 음성 파일(.wav/.mp3)을 업로드하세요. Qwen3 신경망 모델이 목소리 톤과 억양을 학습합니다.
+      </p>
+
+      <div class="space-y-3">
+        <div>
+          <label class="text-[11px] font-bold text-neutral-600 block mb-1">1. 목소리 프로필 이름</label>
+          <input type="text" id="voiceProfileName" placeholder="예: 제이 (AI 강사)" value="제이 목소리" class="w-full minimal-input rounded px-3 py-2 text-xs">
+        </div>
+
+        <div>
+          <label class="text-[11px] font-bold text-neutral-600 block mb-1">2. 녹음할 예시 문장 (참조 텍스트)</label>
+          <textarea id="voiceRefText" rows="2" placeholder="녹음한 문장을 입력하세요." class="w-full minimal-input rounded px-3 py-2 text-xs">안녕하세요 저는 제이라고 합니다. 저는 인공지능을 교육하고 있습니다. 저는 인공지능을 너무너무 사랑합니다.</textarea>
+        </div>
+
+        <div class="bg-neutral-50 rounded-lg p-4 border border-neutral-200 text-center">
+          <div class="flex items-center justify-center gap-3">
+            <button id="btnRecordVoice" class="px-5 py-2 rounded-lg bg-black text-white font-semibold text-xs flex items-center gap-1.5 shadow-sm hover:bg-neutral-800 transition-all">
+              <span class="w-2 h-2 rounded-full bg-red-500"></span>
+              <span id="recordBtnText">3초 마이크 녹음 시작</span>
+            </button>
+            <span class="text-xs text-neutral-400">또는</span>
+            <input type="file" id="voiceFileInput" accept="audio/*" class="hidden">
+            <label for="voiceFileInput" class="px-3.5 py-2 rounded-lg bg-white border border-neutral-200 text-xs font-semibold text-neutral-700 hover:border-black cursor-pointer flex items-center gap-1">
+              <i data-lucide="upload" class="w-3 h-3"></i> 파일 첨부
+            </label>
+          </div>
+          <audio id="recordedAudioPreview" controls class="w-full mt-3 hidden h-8"></audio>
+        </div>
+
+        <button id="btnSaveVoiceProfile" class="w-full py-2.5 rounded-lg bg-black text-white font-display font-bold text-xs hover:bg-neutral-800 transition-all flex items-center justify-center gap-1.5 shadow-sm">
+          <i data-lucide="check" class="w-3.5 h-3.5"></i> 내 목소리 학습 및 영구 저장하기
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div class="toast" id="toast">
+    <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
+    <span id="toastMsg">클립보드에 복사되었습니다.</span>
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="app.js?v=fix3"></script>
+</body>
+</html>

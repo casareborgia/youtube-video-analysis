@@ -36,6 +36,16 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "img-src 'self' data: https://i.ytimg.com https://*.youtube.com; "
+        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+        "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
+        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        "media-src 'self' blob: data:; "
+        "connect-src 'self';"
+    )
     return response
 
 # ==========================================
@@ -270,7 +280,7 @@ async def delete_metadata(video_id: str):
                 p.unlink()
                 deleted_files.append(p.name)
             except Exception as e:
-                print(f"[Delete Error] {e}")
+                print("[Delete Error]", str(e))
 
     index = load_index()
     index = [item for item in index if item.get('id') != video_id]

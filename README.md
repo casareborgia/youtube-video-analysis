@@ -36,37 +36,40 @@
   4. *Audience Reactions*: Key resonance factors from top comments.
   5. *Actionable Strategy*: 3 practical execution blueprints for creators.
 
-### 2. 🎨 AI Cinematic Prompt Studio
+### 2. 🎨 AI Cinematic & NanoBanana Redline Prompt Studio
 - **Proven Success Formula Injection**: Automatically injects top viral formulas (5s opening hook, tension build-up, visual scale contrast, cinematic lighting) into new video prompts.
-- **Auto-Inferred Camera Angle & Lighting**: The LLM autonomously determines the optimal camera motion (*Extreme Wide, Drone 360, Dolly Zoom, Low-Angle*) and lighting atmosphere (*Volumetric Fog, Cyberpunk Neon, Chiaroscuro*) based on the dramatic beat.
+- **🔴 NanoBanana Redline Image Prompt Generator**:
+  - **Full Redline Thumbnail (1x)**: Attention-grabbing hook text (<10 chars, in quotes), component callout labels, and verified dimension lines.
+  - **Scene First-Frame Redline Prompts (Nx)**: Redline annotation graphics-focused prompts with max 1 text string to eliminate AI video text-morphing artifacts.
+  - **Strict 6-Key JSON Schema**: Standardized schema across `format`, `style`, `scene`, `annotation_layer`, `text_layer`, and `constraints`.
+  - **Aspect Ratio Optimization**: 16:9 Landscape (horizontal HUD flow) & 9:16 Shorts (vertical layout with top hook area and subtitle clearance).
+- **⏱️ Strict 8-Second Narration Calibration**:
+  - Dynamically enforces **35–45 characters (1–2 sentences)** per scene for a natural, calibrated 8-second speech pace (approx. 5.2 chars/sec).
+  - Real-time character count and speech duration estimation with UI pacing indicators.
 - **Target Generative AI Formats**:
   - 🎥 **Google Flow (Veo 2/3, Imagen 3/4)**: AutoFlow-Pro optimized descriptive prompts.
   - 🎨 **Midjourney v6.1**: Auto-appended parameters (`--ar 16:9 --v 6.1 --style raw`).
-  - ⚡ **Runway Gen-3 / Kling AI / Luma**: Motion dynamics and physical interaction prompts.
-- **High-Speed Optimization**: 75% token reduction with Python assembly engine, cutting generation latency down to **10–20 seconds**.
+  - ⚡ **Runway Gen-3 / Kling AI / Luma / Sora**: Motion dynamics and physical interaction prompts.
+- **📁 Output Documentation Archive**: Auto-saves complete production plans to `output/` in both Markdown (`.md`) and JSON (`.json`) formats.
 
 ### 3. 🌐 7-Language Script Generation
 - 🇰🇷 **Korean** • 🇺🇸 **English** • 🇯🇵 **Japanese** • 🇨🇳 **Chinese** • 🇫🇷 **French** • 🇩🇪 **German** • 🇪🇸 **Spanish**
 - Automatically writes culturally natural narration scripts for global content creators.
 
-### 4. 🎙️ Qwen3-TTS & Voice Clone Studio
-- **3 Core Model Integrations**:
-  - `CustomVoice`: Official voice actors (*Ryan, Sohee, Uncle Fu, Vivian*) + natural language tone control.
-  - `VoiceClone (Base 1.7B)`: Zero-shot voice cloning from uploaded user reference audio.
-  - `VoiceDesign (1.7B)`: Custom character voice creation using descriptive prompts.
-- **Web UI Audio Player & Batch TTS**: In-browser audio streaming with a single-click `[Generate All Audio]` batch synthesizer.
+### 4. 🎙️ Hybrid TTS & Voice Clone Studio
+- **Edge-TTS & Qwen3-TTS Integration**:
+  - `Edge-TTS`: Ultra-fast free cloud presets (Injoon, Sunhi, Hyunsu).
+  - `Qwen3-TTS (1.7B)`: Zero-shot voice cloning (`my_voice`) and expressive custom voices (*Ryan, Sohee, Uncle Fu, Vivian*).
+- **Master Audio Merging & ZIP Bundle**: One-click parallel synthesis, concatenated master narration, and instant full-package ZIP download.
 
 ### 5. 📤 AutoFlow-Pro & Multi-Format Export
 - **AutoFlow-Pro `.txt`**: One-click batch import format for AutoFlow-Pro.
-- **Smart Task `.csv`**: Structured spreadsheet dataset with scene numbers, narrations, prompts, angles, and aspect ratios.
+- **Smart Task `.csv`**: Structured spreadsheet dataset with scene numbers, narrations, prompts, redline JSON, and camera angles.
 - **Workflow `.json`**: Standard dataset for automated pipeline integrations.
 
 ### 6. 🛡️ Zero-Trust Security Hardened
-- **PII & Path Neutralization**: Environment variable path resolution (`QWEN_PYTHON`, `QWEN_TTS_DIR`).
-- **Command Injection Prevention**: `os.system` eliminated; replaced with parameterized `subprocess.run`.
-- **SSRF Protection**: Strict domain whitelisting allowing only official YouTube domains (`verify_youtube_url`).
-- **Path Traversal Defense**: Audio streaming and uploads verified with `is_relative_to` boundaries.
-- **Security Headers Middleware**: Injected `nosniff`, `DENY` framing, and contextual `escapeHtml` sanitization.
+- **Never Trust, Always Verify**: Strict SSRF verification (`verify_youtube_url`), video ID regex (`verify_video_id`), prompt injection sanitization (`sanitize_input_text`), and path containment checks (`is_relative_to`).
+- **Security Headers Middleware**: Injected `Content-Security-Policy (CSP)`, `Permissions-Policy`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, and contextual `escapeHtml` sanitization.
 
 ---
 
@@ -81,20 +84,22 @@ graph TD
     end
 
     subgraph 2.AI_Prompt_Studio
-        E[New Topic / Concept] --> F[Scene Segmentation & Story Beats]
+        E[New Topic / Concept] --> F[Scene Segmentation & 8s Pacing]
         D --> F
         F --> G[Camera & Lighting Auto-Inference]
-        F --> H[Multilingual Script: 7 Languages]
-        F --> I[Cinematic Prompt Synthesis: Google Flow / MJ / Runway]
+        F --> H[8-Second Narration: 35-45 chars]
+        F --> I[Cinematic Video Prompts: Runway / Kling / Sora]
+        F --> RED[🔴 NanoBanana Redline Engine: Thumbnail & First-Frame JSON]
     end
 
     subgraph 3.Audio_Studio
-        H --> J[Qwen3-TTS & Voice Clone Engine]
-        J --> K[🎙️ In-Browser Audio Player & Batch Synthesis]
+        H --> J[Hybrid TTS & Voice Clone Engine]
+        J --> K[🎙️ Master Audio Merge & One-Click ZIP Download]
     end
 
-    subgraph 4.Export
-        I --> L[📥 AutoFlow-Pro .txt / CSV / JSON]
+    subgraph 4.Export_and_Archive
+        I & RED --> L[📥 AutoFlow-Pro .txt / CSV / JSON]
+        I & RED --> M[📁 output/ Permanent Markdown & JSON Plans]
     end
 ```
 
@@ -105,10 +110,7 @@ graph TD
 ### 1. Prerequisites
 - **Python 3.11+**
 - **FFmpeg** (`brew install ffmpeg` or your OS package manager)
-- **Ollama** ([https://ollama.ai](https://ollama.ai)) with Gemma 4:
-  ```bash
-  ollama run gemma4:latest
-  ```
+- **Ollama** ([https://ollama.ai](https://ollama.ai)) with Gemma 4 or LM Studio
 
 ### 2. Clone & Setup
 ```bash
@@ -120,15 +122,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3. Environment Variables (Optional)
-To customize Qwen-TTS paths, configure `.env`:
-```bash
-QWEN_TTS_DIR=/path/to/QWEN-tts
-QWEN_PYTHON=/path/to/QWEN-tts/.venv/bin/python
-OLLAMA_API_URL=http://127.0.0.1:11434/api/chat
-```
-
-### 4. Run Server
+### 3. Run Server
 ```bash
 chmod +x run.sh
 ./run.sh
@@ -151,38 +145,31 @@ Open **[http://localhost:8765](http://localhost:8765)** in your web browser.
   4. 댓글 여론 특징 및 시청자 반응
   5. 내 채널에 바로 적용할 3가지 실행 전략
 
-### 2. 🎨 AI 프롬프트 스튜디오 (AI Cinematic Prompt Studio)
-- **성공 공식 자동 주입**: 분석된 영상들의 공통 강점(5초 오프닝 훅, 4단계 서사, 스케일 대비 연출, 시네마틱 조명)을 프롬프트 엔진에 자동 결합
-- **카메라 앵글 & 시네마틱 조명 AI 자동 추론 (Auto-Inference)**: 씬별 분위기에 맞는 최적의 카메라 무빙(Extreme Wide, Drone 360, Dolly Zoom 등)과 조명(Volumetric Fog, Cyberpunk Neon, Chiaroscuro 등)을 스스로 판단하여 합성
-- **타겟 생성 AI 모델 지원**:
-  - 🎥 **Google Flow (Veo 2/3, Imagen 3/4)**: AutoFlow-Pro 최적화 서술형 프롬프트
-  - 🎨 **Midjourney v6.1**: `--ar 16:9 --v 6.1 --style raw` 자동 결합
-  - ⚡ **Runway Gen-3 / Kling AI / Luma**: 물리 인터랙션 & 카메라 모션 강조 프롬프트
-- **초고속 생성 최적화**: 토큰 75% 절감 및 파이썬 엔진 결합으로 **10~20초대** 신속 생성
+### 2. 🎨 AI 프롬프트 스튜디오 & 나노바나나 레드라인 엔진
+- **성공 공식 자동 주입**: 5초 오프닝 훅, 5단계 서사 플롯, 스케일 대비 연출, 시네마틱 조명 공식 자동 적용
+- **🔴 나노바나나 레드라인(NanoBanana Redline) 이미지 프롬프트 생성기**:
+  - **풀 레드라인 썸네일 (1건)**: 시선 강탈 훅 문구(10자 이내 큰따옴표), 주석 라벨, 실제 등장 수치 치수선
+  - **씬별 첫 프레임 주석 프롬프트 (N건)**: 비디오 AI(Runway/Kling/Sora) 변환 시 글자 뭉개짐 방지를 위해 주석 그래픽 위주 및 텍스트 1개 이하로 제한
+  - **6대 JSON 규격 준수**: `format`, `style`, `scene`, `annotation_layer`, `text_layer`, `constraints` 완벽 구조화
+  - **화면비 최적화**: `16:9 (롱폼)` 가로 HUD 구도 vs `9:16 (쇼츠)` 세로 모바일 구도 (상단 훅, 하단 자막 여백)
+- **⏱️ 8초 맞춤 대사(나레이션) 엄격 싱크 엔진**:
+  - 한국어 다큐 발화 속도 기준 **공백 포함 35자~45자 (1~2문장)**로 대사 길이를 정밀 제한하여 8초 영상 클립과 1:1 싱크
+  - UI 상에 글자 수 및 예상 발화 소요 시간 실시간 표시
+- **📁 `output/` 기획서 자동 저장**: 생성 즉시 마크다운(`.md`) 및 JSON(`.json`) 문서로 영구 보관
 
 ### 3. 🌐 7개국 다국어 대본 창작 (Multilingual Script Generator)
 - 🇰🇷 **한국어** • 🇺🇸 **English** • 🇯🇵 **日本語** • 🇨🇳 **中文** • 🇫🇷 **Français** • 🇩🇪 **Deutsch** • 🇪🇸 **Español**
-- 선택한 언어의 원어민 뉘앙스에 맞는 씬별 내레이션 대본을 자동 창작하여 글로벌 영상 기획 지원
 
-### 4. 🎙️ Qwen3-TTS & 내 목소리 학습(Voice Clone) 통합 음성 스튜디오
-- **3대 핵심 엔진 통합**:
-  - `CustomVoice`: 공식 성우 프리셋 (`Ryan`, `Sohee`, `Uncle Fu`, `Vivian`) + 어조/감정 제어
-  - `VoiceClone (Base 1.7B)`: 사용자 음성 파일 업로드 기반의 Zero-shot 본인 목소리 복제
-  - `VoiceDesign (1.7B)`: 자연어 프롬프트 기반 가상 캐릭터 목소리 설계
-- **웹 UI 오디오 플레이어 & 일괄 합성 (Batch TTS)**: 씬별 오디오 재생 및 전체 씬 일괄 생성
+### 4. 🎙️ 하이브리드 TTS & 음성 복제(Voice Clone) 스튜디오
+- **Edge-TTS (무료 초고속)** 및 **Qwen-TTS (보이스 클론)** 통합
+- **마스터 오디오 병합 & 원클릭 ZIP 다운로드**: 전체 씬 일괄 합성 후 통파일 마스터 오디오와 대본을 번들 다운로드
 
 ### 5. 📤 AutoFlow-Pro 및 멀티 포맷 내보내기 (Export)
-- **AutoFlow-Pro `.txt`**: AutoFlow-Pro의 `[Import from .txt]` 원클릭 불러오기 호환 포맷
-- **스마트 태스크 `.csv`**: 스프레드시트 및 업무 관리용 데이터셋
-- **워크플로우 `.json`**: 파이프라인 연동용 표준 JSON
+- **AutoFlow-Pro `.txt`** • **스마트 태스크 `.csv`** • **워크플로우 `.json`**
 
 ### 6. 🛡️ 제로트러스트(Zero-Trust) 보안 체계
-- **개인 경로 식별자 완전 제거** 및 환경변수화 (`QWEN_PYTHON`, `QWEN_TTS_DIR`)
-- **커맨드 인젝션 차단**: `os.system` 전면 제거 및 `subprocess.run` 인자 분리 적용
-- **SSRF 방어**: 공식 유튜브 도메인 외 내부망 요청 차단 (`verify_youtube_url`)
-- **Path Traversal 방어**: 오디오 서빙 및 업로드 경로 경계 검증 (`is_relative_to`)
-- **보안 헤더 미들웨어**: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `X-XSS-Protection`
-- **XSS 방어**: `escapeHtml` 컨텍스트 이스케이프 강제 적용
+- **입력값 철저 검증**: SSRF 방어(`verify_youtube_url`), Video ID 정규식(`verify_video_id`), 프롬프트 인젝션 정제(`sanitize_input_text`), 경로 순회 방어(`is_relative_to`)
+- **보안 헤더 미들웨어**: `Content-Security-Policy (CSP)`, `Permissions-Policy`, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`
 
 ---
 
@@ -191,19 +178,18 @@ Open **[http://localhost:8765](http://localhost:8765)** in your web browser.
 ```
 youtube-video-analysis/
 ├── app.py                  # FastAPI 메인 백엔드 서버 (제로트러스트 보안 미들웨어 탑재)
-├── prompt_generator.py     # AI 시네마틱 프롬프트 & 7개국어 대본 창작 엔진
-├── tts_service.py          # Qwen3-TTS & Voice Clone 음성 합성 서비스
+├── prompt_generator.py     # AI 시네마틱 & 나노바나나 레드라인 프롬프트 / 8초 대본 창작 엔진
+├── tts_service.py          # 하이브리드 Edge-TTS & Qwen3-TTS 음성 합성 서비스
 ├── qwen_tts_runner.py      # Qwen-TTS 격리 실행 러너 스크립트
 ├── analyze.py              # 유튜브 메타데이터 및 리포트 독립 분석 모듈
 ├── requirements.txt        # Python 의존성 목록
 ├── run.sh                  # 원클릭 실행 쉘 스크립트
 ├── .gitignore              # 제로트러스트 데이터 제외 규칙
 ├── data/                   # 분석 데이터 및 합성 오디오 저장소 (Git 제외)
-│   ├── audio/              # 생성된 씬별 .wav 음성 파일
-│   └── voices/             # 사용자 등록 Voice Clone 참조 파일
+├── output/                 # 생성된 영상 기획서 마크다운 & JSON 저장소
 └── static/                 # 글래스모피즘 다크 테마 웹 대시보드
-    ├── index.html          # 메인 UI (분석기 & 프롬프트 스튜디오)
-    ├── style.css           # 모던 UI 스타일시트
+    ├── index.html          # 메인 UI (분석기 & 프롬프트 스튜디오 & 레드라인 뷰어)
+    ├── style.css           # 모던 HUD & 레드라인 테마 스타일시트
     └── app.js              # 프론트엔드 비동기 컨트롤러 & 오디오 제어
 ```
 

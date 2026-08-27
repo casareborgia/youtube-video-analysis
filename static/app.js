@@ -647,6 +647,7 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       currentGeneratedBatch = await res.json();
+      renderThumbnailRedline(currentGeneratedBatch);
       renderStudioScenes(currentGeneratedBatch);
     } catch (err) {
       alert('기획 생성 오류: ' + err.message);
@@ -658,6 +659,88 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   btnGeneratePrompts.addEventListener('click', triggerPromptGeneration);
+
+  // 화면 비율 변경 시 힌트 텍스트 전환
+  const aspectRatioHint = document.getElementById('aspectRatioHint');
+  const thumbnailRedlineSection = document.getElementById('thumbnailRedlineSection');
+
+  if (promptAspectRatio && aspectRatioHint) {
+    promptAspectRatio.addEventListener('change', () => {
+      if (promptAspectRatio.value === '9:16') {
+        aspectRatioHint.textContent = '9:16 세로 쇼츠 구도 (상단 훅 문구, 하단 자막 여백, 세로 치수선) 적용';
+        aspectRatioHint.style.color = '#f43f5e';
+      } else {
+        aspectRatioHint.textContent = '16:9 가로 시네마틱 구도 및 엔지니어링 주석 적용';
+        aspectRatioHint.style.color = 'var(--text-muted)';
+      }
+    });
+  }
+
+  function renderThumbnailRedline(batchData) {
+    if (!thumbnailRedlineSection) return;
+
+    if (!batchData || !batchData.thumbnail_redline) {
+      thumbnailRedlineSection.style.display = 'none';
+      thumbnailRedlineSection.innerHTML = '';
+      return;
+    }
+
+    const tData = batchData.thumbnail_redline;
+    const textLayer = tData.text_layer || {};
+    const hookText = textLayer.hook_text || '';
+    const labels = Array.isArray(textLayer.labels) ? textLayer.labels.join(', ') : (textLayer.labels || '');
+    const dimensions = Array.isArray(textLayer.dimensions) ? textLayer.dimensions.join(', ') : (textLayer.dimensions || '');
+    const jsonPretty = JSON.stringify(tData, null, 2);
+    const isVertical = (tData.format && tData.format.aspect_ratio === '9:16');
+
+    thumbnailRedlineSection.style.display = 'block';
+    thumbnailRedlineSection.innerHTML = `
+      <div class="card redline-thumbnail-card">
+        <div class="redline-card-header">
+          <div class="redline-title-group">
+            <span class="redline-live-badge"><i class="fa-solid fa-crosshairs"></i> NANO-BANANA REDLINE</span>
+            <span class="redline-type-badge">🔥 풀 레드라인 썸네일</span>
+            <span class="badge ${isVertical ? 'badge-warning' : 'badge-accent'}">
+              <i class="fa-solid fa-crop-simple"></i> ${escapeHtml(tData.format?.aspect_ratio || '16:9')} (${isVertical ? '쇼츠 세로' : '롱폼 가로'})
+            </span>
+          </div>
+          <button id="btnCopyThumbnailRedline" class="btn btn-sm btn-danger btn-redline-copy">
+            <i class="fa-solid fa-copy"></i> 썸네일 JSON 복사
+          </button>
+        </div>
+
+        <div class="redline-summary-chips">
+          <div class="redline-chip">
+            <span class="chip-label"><i class="fa-solid fa-bolt"></i> 훅 문구:</span>
+            <span class="chip-value">${escapeHtml(hookText)}</span>
+          </div>
+          <div class="redline-chip">
+            <span class="chip-label"><i class="fa-solid fa-tags"></i> 주석 라벨:</span>
+            <span class="chip-value">${escapeHtml(labels)}</span>
+          </div>
+          <div class="redline-chip">
+            <span class="chip-label"><i class="fa-solid fa-ruler-combined"></i> 정밀 수치:</span>
+            <span class="chip-value text-red">${escapeHtml(dimensions)}</span>
+          </div>
+        </div>
+
+        <div class="redline-json-container">
+          <pre class="redline-json-code"><code>${escapeHtml(jsonPretty)}</code></pre>
+        </div>
+      </div>
+    `;
+
+    const copyBtn = document.getElementById('btnCopyThumbnailRedline');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(jsonPretty).then(() => {
+          const original = copyBtn.innerHTML;
+          copyBtn.innerHTML = '<i class="fa-solid fa-check"></i> 썸네일 JSON 복사 완료!';
+          setTimeout(() => copyBtn.innerHTML = original, 1800);
+        });
+      });
+    }
+  }
 
   function renderStudioScenes(batchData) {
     if (!batchData || !batchData.scenes || batchData.scenes.length === 0) {
@@ -682,6 +765,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const beat = scene.dramatic_beat || scene.stage || '8초 씬';
       const camera = scene.camera || scene.inferred_angle || 'Cinematic Push-in';
       const lighting = scene.lighting || scene.inferred_lighting || 'Volumetric Lighting';
+      const firstFrameRedline = scene.first_frame_redline || null;
+      const redlineJsonStr = firstFrameRedline ? JSON.stringify(firstFrameRedline, null, 2) : '';
+
+      const charLen = narration.length;
+      const estSec = scene.estimated_sec || (Math.round(charLen / 5.2 * 10) / 10);
+      const isOptimal = (charLen >= 30 && charLen <= 50);
 
       return `
         <div class="scene-card" data-index="${idx}" id="sceneCard_${idx}">
@@ -690,13 +779,18 @@ document.addEventListener('DOMContentLoaded', () => {
               <span class="scene-num-badge">Scene #${sceneNum}</span>
               <span class="scene-time-badge"><i class="fa-solid fa-clock"></i> ${escapeHtml(timeRange)}</span>
               <span class="tag-chip">${escapeHtml(beat)}</span>
+              <span class="badge ${isOptimal ? 'badge-success' : 'badge-warning'}" style="font-size:11px;" title="한국어 다큐 기준 8초 영상에 최적화된 35~45자 분량">
+                <i class="fa-solid fa-stopwatch"></i> 8초 맞춤 대사: ${charLen}자 (약 ${estSec}초)
+              </span>
             </div>
           </div>
 
           <div class="scene-narration-box">
-            <div style="margin-bottom:6px;">
-              <strong><i class="fa-solid fa-quote-left"></i> 8초 나레이션 대본:</strong> 
-              <span id="narrationText_${idx}">${escapeHtml(narration)}</span>
+            <div style="margin-bottom:6px; display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">
+              <div>
+                <strong><i class="fa-solid fa-quote-left"></i> 8초 나레이션 대본:</strong> 
+                <span id="narrationText_${idx}">${escapeHtml(narration)}</span>
+              </div>
             </div>
             
             <div class="scene-audio-section">
@@ -715,15 +809,33 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
           </div>
 
+          <!-- 8초 비디오 생성용 영문 프롬프트 -->
           <div class="scene-prompt-editor-area">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-              <label><i class="fa-solid fa-sparkles"></i> AI 영상 프롬프트 (Runway / Kling / Sora / Flow):</label>
+              <label><i class="fa-solid fa-video"></i> 8초 비디오 생성 프롬프트 (Runway / Kling / Sora / Flow):</label>
               <button class="btn btn-sm btn-outline btn-copy-single" data-index="${idx}" style="padding:2px 8px; font-size:11px;">
-                <i class="fa-solid fa-copy"></i> 복사
+                <i class="fa-solid fa-copy"></i> 비디오 프롬프트 복사
               </button>
             </div>
             <textarea class="prompt-textarea" data-index="${idx}">${escapeHtml(promptEn)}</textarea>
           </div>
+
+          <!-- 🔴 나노바나나 첫 프레임 레드라인 이미지 프롬프트 (JSON) -->
+          ${firstFrameRedline ? `
+            <div class="scene-redline-block">
+              <div class="scene-redline-header">
+                <div class="scene-redline-title">
+                  <i class="fa-solid fa-crosshairs text-red"></i> 
+                  <strong>첫 프레임 레드라인 이미지 프롬프트 (JSON)</strong>
+                  <span class="badge-subtle">주석 그래픽 위주 · 텍스트 뭉개짐 방지</span>
+                </div>
+                <button class="btn btn-sm btn-danger-outline btn-copy-scene-redline" data-index="${idx}">
+                  <i class="fa-solid fa-copy"></i> 첫 프레임 JSON 복사
+                </button>
+              </div>
+              <pre class="scene-redline-json"><code>${escapeHtml(redlineJsonStr)}</code></pre>
+            </div>
+          ` : ''}
 
           <div class="scene-card-footer">
             <div class="scene-modifiers-info">
@@ -745,7 +857,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     });
 
-    // 개별 프롬프트 복사
+    // 개별 비디오 프롬프트 복사
     studioScenesContainer.querySelectorAll('.btn-copy-single').forEach(btn => {
       btn.addEventListener('click', () => {
         const index = parseInt(btn.dataset.index, 10);
@@ -755,6 +867,22 @@ document.addEventListener('DOMContentLoaded', () => {
           btn.innerHTML = '<i class="fa-solid fa-check text-success"></i> 복사됨';
           setTimeout(() => btn.innerHTML = original, 1500);
         });
+      });
+    });
+
+    // 개별 씬 첫 프레임 레드라인 JSON 복사
+    studioScenesContainer.querySelectorAll('.btn-copy-scene-redline').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const index = parseInt(btn.dataset.index, 10);
+        const redlineData = currentGeneratedBatch.scenes[index].first_frame_redline;
+        if (redlineData) {
+          const jsonText = JSON.stringify(redlineData, null, 2);
+          navigator.clipboard.writeText(jsonText).then(() => {
+            const original = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> JSON 복사 완료!';
+            setTimeout(() => btn.innerHTML = original, 1500);
+          });
+        }
       });
     });
 

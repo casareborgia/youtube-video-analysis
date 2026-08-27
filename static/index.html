@@ -238,13 +238,12 @@
                 </select>
               </div>
               <div class="control-group half">
-                <label for="promptAspectRatio"><i class="fa-solid fa-crop-simple"></i> 화면 비율</label>
+                <label for="promptAspectRatio"><i class="fa-solid fa-crop-simple"></i> 화면 비율 (Aspect Ratio)</label>
                 <select id="promptAspectRatio" class="form-select">
-                  <option value="16:9" selected>16:9 (Landscape - YouTube)</option>
-                  <option value="9:16">9:16 (Portrait - Shorts/Reels)</option>
-                  <option value="1:1">1:1 (Square - Feed)</option>
-                  <option value="21:9">21:9 (Cinemascope)</option>
+                  <option value="16:9" selected>16:9 (롱폼 - YouTube 가로)</option>
+                  <option value="9:16">9:16 (쇼츠 - Shorts/Reels 세로)</option>
                 </select>
+                <span id="aspectRatioHint" class="helper-text">16:9 가로 시네마틱 구도 및 엔지니어링 주석 적용</span>
               </div>
             </div>
 
@@ -300,8 +299,8 @@
             </div>
 
             <button id="btnGeneratePrompts" class="btn btn-primary btn-block">
-              <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 8초 씬별 기획 & 대본 자동 생성</span>
-              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 로컬 AI 기획 중...</span>
+              <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 8초 씬별 기획 & 레드라인 프롬프트 자동 생성</span>
+              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 기획 & 레드라인 생성 중...</span>
             </button>
           </div>
 
@@ -319,8 +318,8 @@
                 <button id="btnDownloadZip" class="btn btn-sm btn-success" style="display: none;" title="전체 씬 오디오 + 마스터 음성 + 대본 TXT를 하나의 ZIP 파일로 다운로드">
                   <i class="fa-solid fa-file-zipper"></i> 전체 ZIP 다운로드
                 </button>
-                <button id="btnCopyAllPrompts" class="btn btn-sm btn-outline" title="전체 프롬프트 복사">
-                  <i class="fa-solid fa-copy"></i> 전체 복사
+                <button id="btnCopyAllPrompts" class="btn btn-sm btn-outline" title="전체 비디오 프롬프트 복사">
+                  <i class="fa-solid fa-copy"></i> 전체 프롬프트 복사
                 </button>
                 <button id="btnExportAutoFlowTxt" class="btn btn-sm btn-outline" title="AutoFlow-Pro에서 Import 가능한 .txt 파일로 다운로드">
                   <i class="fa-solid fa-file-arrow-down"></i> AutoFlow TXT
@@ -335,16 +334,19 @@
             <div class="autoflow-tip-box">
               <i class="fa-solid fa-circle-info"></i>
               <div>
-                <strong>8초 비디오 & 나레이션 워크플로우:</strong> 
-                생성된 씬별 영문 프롬프트로 비디오 툴(Runway/Kling/Sora)에서 8초 클립을 만들고, <strong>[전체 음성 생성]</strong> 후 <strong>[전체 ZIP 다운로드]</strong>를 통해 마스터 오디오와 합치면 완성됩니다.
+                <strong>나노바나나 레드라인 & 8초 비디오 워크플로우:</strong> 
+                <strong>1) 썸네일 레드라인 프롬프트</strong>로 시선 강탈 썸네일을 생성하고, <strong>2) 씬별 첫 프레임 주석 프롬프트</strong>로 첫 이미지를 만든 뒤 비디오 AI에서 8초 클립으로 확장하세요.
               </div>
             </div>
+
+            <!-- 🔴 나노바나나 레드라인 썸네일 프롬프트 카드 영역 -->
+            <div id="thumbnailRedlineSection" class="thumbnail-redline-container" style="display: none;"></div>
 
             <!-- 씬 카드 목록 컨테이너 -->
             <div id="studioScenesContainer" class="scenes-list-container">
               <div class="empty-state-box">
                 <i class="fa-solid fa-film fa-3x"></i>
-                <p>좌측에서 새로운 영상 주제를 입력하고 <strong>[8초 씬별 기획 & 대본 자동 생성]</strong> 버튼을 클릭하세요.</p>
+                <p>좌측에서 새로운 영상 주제를 입력하고 <strong>[8초 씬별 기획 & 레드라인 프롬프트 자동 생성]</strong> 버튼을 클릭하세요.</p>
               </div>
             </div>
           </div>
