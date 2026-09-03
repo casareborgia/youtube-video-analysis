@@ -23,11 +23,27 @@ SETTINGS_FILE = DATA_DIR / "settings.json"
 _cache = {"ts": 0.0, "backend": None}
 
 
-def _load_preference() -> str:
+def _load_settings() -> dict:
     try:
         if SETTINGS_FILE.exists():
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f).get("llm_backend", "auto")
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_settings(data: dict):
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"Warning: Failed to save settings: {e}")
+
+
+def _load_preference() -> str:
+    try:
+        return _load_settings().get("llm_backend", "auto")
     except Exception:
         pass
     return "auto"

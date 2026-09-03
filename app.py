@@ -30,6 +30,7 @@ import channel_builder
 import marketing
 import producer
 import uploader
+import luna_engine
 
 app = FastAPI(title="TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오")
 
@@ -862,12 +863,95 @@ async def upload_youtube_video(req: YoutubeUploadRequest):
 
 
 # ==========================================
+# Phase 6: 에이전트 루나(Agent Luna) AI 음악 자동화 API
+# ==========================================
+class LunaTrackGenerateRequest(BaseModel):
+    genre: str = "lofi"
+    mood: str = "dawn"
+    custom_topic: Optional[str] = ""
+    duration_seconds: Optional[int] = 180
+
+class LunaRenderVideoRequest(BaseModel):
+    track_id: str
+    quality: Optional[str] = "1080p"
+
+class LunaUploadRequest(BaseModel):
+    track_id: str
+    privacy_status: Optional[str] = "public"
+
+@app.get("/api/luna/presets")
+async def get_luna_presets():
+    """루나 장르 및 무드 프리셋 목록"""
+    return {
+        "genres": luna_engine.GENRE_PRESETS,
+        "moods": luna_engine.MOOD_PRESETS
+    }
+
+@app.post("/api/luna/generate")
+async def generate_luna_track(req: LunaTrackGenerateRequest):
+    """에이전트 루나 AI 음악 콘셉트 기획 및 Lyria 3 Pro 완곡 음원 & 앨범아트 생성"""
+    try:
+        concept = luna_engine.generate_music_concept(
+            genre=req.genre,
+            mood=req.mood,
+            custom_topic=req.custom_topic or ""
+        )
+        track_id = f"luna_{int(time.time())}"
+        concept["track_id"] = track_id
+        concept["created_at"] = time.time()
+        
+        # 음원 생성 (Lyria 3 Pro / 오토 신스)
+        track_with_audio = luna_engine.generate_luna_audio(concept, duration_seconds=req.duration_seconds or 180)
+        
+        # 앨범 커버 생성 (나노바나나)
+        full_track = luna_engine.generate_luna_cover(track_with_audio)
+        
+        # 메타데이터 생성 및 저장
+        meta = luna_engine.build_luna_metadata(full_track)
+        full_track["metadata"] = meta
+        luna_engine.save_track(full_track)
+        
+        return full_track
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"루나 트랙 생성 실패: {e}")
+
+@app.post("/api/luna/render")
+async def render_luna_music_video(req: LunaRenderVideoRequest):
+    """앨범 커버 + 완곡 음원 기반 ffmpeg 켄번즈 감성 비디오 렌더링"""
+    try:
+        track = luna_engine.load_track(req.track_id)
+        if not track:
+            raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
+        rendered = luna_engine.render_luna_video(track, quality=req.quality or "1080p")
+        return rendered
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"루나 영상 렌더링 실패: {e}")
+
+@app.post("/api/luna/upload")
+async def upload_luna_music_video(req: LunaUploadRequest):
+    """루나 유튜브 채널로 감성 음악 영상 원클릭 업로드"""
+    try:
+        res = luna_engine.upload_luna_to_youtube(req.track_id, privacy_status=req.privacy_status or "public")
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"루나 유튜브 업로드 실패: {e}")
+
+@app.get("/api/luna/history")
+async def get_luna_history():
+    """생성된 루나 음악 및 비디오 히스토리 목록"""
+    return luna_engine.list_tracks()
+
+
+# ==========================================
 # 정적 파일 서빙 및 렌더 디렉토리 마운트
 # ==========================================
 if os.path.exists(producer.RENDERS_DIR):
     app.mount("/data/renders", StaticFiles(directory=str(producer.RENDERS_DIR)), name="renders")
 if os.path.exists(channel_builder.CHANNELS_DIR):
     app.mount("/data/channels", StaticFiles(directory=str(channel_builder.CHANNELS_DIR)), name="channels")
+if os.path.exists(luna_engine.LUNA_DIR):
+    app.mount("/data/luna_music", StaticFiles(directory=str(luna_engine.LUNA_DIR)), name="luna_music")
+
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 

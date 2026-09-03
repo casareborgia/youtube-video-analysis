@@ -42,6 +42,9 @@
         <button id="navTabMarketing" class="nav-tab">
           <i class="fa-solid fa-bullhorn"></i> 5. 멀티 마케팅 (OSMU)
         </button>
+        <button id="navTabMusic" class="nav-tab">
+          <i class="fa-solid fa-compact-disc" style="color: #c084fc;"></i> 6. AI 음악 스튜디오 (Luna)
+        </button>
       </nav>
 
       <!-- LLM 상태 배지 & 헤더 액션 -->
@@ -954,6 +957,176 @@
                     <p>생성된 뉴스레터 제목 A/B 및 본문이 여기에 표시됩니다.</p>
                   </div>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 뷰 6: 에이전트 루나(Agent Luna) AI 음악 자동화 스튜디오 -->
+      <div id="viewMusic" class="view-panel" style="display: none;">
+        <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px;">
+          <!-- 좌측: 루나 AI 음악 작곡 & 기획 폼 -->
+          <div class="card">
+            <div class="panel-header" style="margin-bottom: 16px;">
+              <i class="fa-solid fa-compact-disc" style="color: #c084fc;"></i>
+              <h3>에이전트 루나(Luna) AI 음악 영상 자동화</h3>
+            </div>
+
+            <div style="background: rgba(192, 132, 252, 0.08); border-left: 3px solid #c084fc; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
+              <i class="fa-solid fa-sparkles" style="color: #c084fc; margin-right: 4px;"></i>
+              <strong>루나 무인 음악 채널 파이프라인:</strong><br>
+              Lyria 3 Pro 기반 고음질 완곡(3분) 작곡 ➔ 나노바나나 16:9 감성 비주얼 ➔ ffmpeg 켄번즈 영상 렌더링 ➔ 루나 유튜브 채널(@음악에이전트-c3j) 원클릭 업로드까지 전 과정을 원스톱으로 처리합니다.
+            </div>
+
+            <form id="lunaMusicForm">
+              <div class="control-row">
+                <div class="control-group half">
+                  <label for="lunaGenreSelect"><i class="fa-solid fa-headphones"></i> 음악 장르 (Genre)</label>
+                  <select id="lunaGenreSelect" class="form-select">
+                    <option value="lofi" selected>Lo-Fi / Chillhop (로파이 칠홉)</option>
+                    <option value="ambient">Cinematic Ambient (시네마틱 앰비언트)</option>
+                    <option value="synthwave">Synthwave / Cyberpunk (신스웨이브)</option>
+                    <option value="sleep">Deep Sleep / Meditation (수면/명상 432Hz)</option>
+                    <option value="jazz">Late Night Jazz Cafe (자정의 재즈카페)</option>
+                    <option value="piano">Emotional Piano Solo (서정적 피아노 솔로)</option>
+                  </select>
+                </div>
+                <div class="control-group half">
+                  <label for="lunaMoodSelect"><i class="fa-solid fa-moon"></i> 감성 무드 (Mood)</label>
+                  <select id="lunaMoodSelect" class="form-select">
+                    <option value="dawn" selected>새벽 감성 (Dawn Solitude)</option>
+                    <option value="rainy">비 오는 창가 (Rainy Window)</option>
+                    <option value="focus">깊은 몰입과 집중 (Deep Focus)</option>
+                    <option value="dreamy">몽환적인 우주 (Cosmic Dream)</option>
+                    <option value="warm">따뜻한 위로 (Warm Solace)</option>
+                    <option value="nostalgia">아련한 그리움 (Nostalgia)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <label for="lunaTopicInput"><i class="fa-solid fa-feather-pointed"></i> 곡 테마 & 스토리 (선택)</label>
+                <input type="text" id="lunaTopicInput" class="form-control" placeholder="예: 비 오는 밤 도심 카페의 창가에서 듣는 따뜻한 피아노와 로파이 비트">
+              </div>
+
+              <div class="control-row">
+                <div class="control-group half">
+                  <label for="lunaDurationSelect"><i class="fa-solid fa-clock"></i> 음원 길이</label>
+                  <select id="lunaDurationSelect" class="form-select">
+                    <option value="180" selected>3분 완곡 (180초, 유튜브 권장)</option>
+                    <option value="120">2분 (120초)</option>
+                    <option value="60">1분 (60초, 숏클립)</option>
+                  </select>
+                </div>
+                <div class="control-group half">
+                  <label for="lunaVideoQualitySelect"><i class="fa-solid fa-display"></i> 영상 화질</label>
+                  <select id="lunaVideoQualitySelect" class="form-select">
+                    <option value="1080p" selected>1080p Full HD (최고화질)</option>
+                    <option value="720p">720p HD (빠른 렌더)</option>
+                  </select>
+                </div>
+              </div>
+
+              <button type="submit" id="btnRunLunaGen" class="btn btn-primary btn-block" style="margin-top: 14px; background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); border: none;">
+                <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 1. 완곡 작곡 & 앨범아트 생성 (Lyria 3)</span>
+                <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 루나 완곡 작곡 & 앨범아트 생성 중...</span>
+              </button>
+            </form>
+
+            <!-- 루나 최근 생성 히스토리 -->
+            <div style="margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);"><i class="fa-solid fa-box-archive"></i> 루나 발매 음원 보관함</span>
+                <button type="button" id="btnRefreshLunaHistory" class="btn btn-xs btn-outline"><i class="fa-solid fa-rotate-right"></i> 새로고침</button>
+              </div>
+              <div id="lunaHistoryList" style="display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto;">
+                <div style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 12px;">저장된 루나 음원이 없습니다.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 우측: 생성된 음원 플레이어, 비디오 렌더러, 유튜브 업로드 -->
+          <div class="card">
+            <div class="panel-header" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-play" style="color: #38bdf8;"></i>
+                <h3 style="margin: 0;">스튜디오 프리뷰 & 유튜브 업로더</h3>
+              </div>
+              <span id="lunaStatusBadge" class="badge badge-subtle">대기 중</span>
+            </div>
+
+            <!-- 미생성 상태 안내 -->
+            <div id="lunaEmptyState" class="empty-state-box" style="padding: 48px 20px;">
+              <i class="fa-solid fa-music fa-3x" style="color: #a855f7; margin-bottom: 14px;"></i>
+              <h4 style="margin: 0 0 8px 0; font-size: 1.05rem;">루나의 새로운 음악을 기획하세요</h4>
+              <p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.5; margin: 0;">
+                좌측에서 장르와 무드를 고르고 <strong>[완곡 작곡 & 앨범아트 생성]</strong>을 클릭하면<br>
+                Lyria 3 Pro 고음질 완곡 음원과 감성 앨범 커버가 여기에 로드됩니다.
+              </p>
+            </div>
+
+            <!-- 활성화된 결과 뷰 -->
+            <div id="lunaActiveView" style="display: none;">
+              <!-- 1. 곡 기본 정보 및 앨범 커버 / 플레이어 -->
+              <div style="display: flex; gap: 16px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <img id="lunaCoverImg" src="" alt="Album Cover" style="width: 140px; height: 140px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-color); flex-shrink: 0;">
+                <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between;">
+                  <div>
+                    <span id="lunaGenreBadge" class="badge badge-accent" style="font-size: 11px;">Lo-Fi</span>
+                    <h3 id="lunaTrackTitle" style="margin: 6px 0 4px 0; font-size: 1.15rem; color: #c084fc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></h3>
+                    <p id="lunaTrackStory" style="margin: 0; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;"></p>
+                  </div>
+                  <!-- 오디오 플레이어 -->
+                  <div style="margin-top: 10px;">
+                    <audio id="lunaAudioPlayer" controls style="width: 100%; height: 36px;"></audio>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. 영상 렌더링 액션 바 -->
+              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;">
+                <div>
+                  <strong style="font-size: 0.85rem;"><i class="fa-solid fa-video"></i> 2. 감성 켄번즈 음악 영상 렌더링</strong>
+                  <div style="font-size: 0.75rem; color: var(--text-secondary);">시네마틱 줌인 + 타이포그래피 자막 합성</div>
+                </div>
+                <button type="button" id="btnRenderLunaVideo" class="btn btn-sm btn-accent" style="background: #6366f1; border: none;">
+                  <span class="btn-text"><i class="fa-solid fa-clapperboard"></i> 비디오 렌더링 시작</span>
+                  <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 렌더링 중...</span>
+                </button>
+              </div>
+
+              <!-- 렌더링된 비디오 플레이어 영역 -->
+              <div id="lunaVideoPlayerBox" style="display: none; margin-bottom: 16px;">
+                <video id="lunaVideoPlayer" controls style="width: 100%; border-radius: 6px; max-height: 240px; background: #000; border: 1px solid var(--border-color);"></video>
+                <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+                  <a id="lunaVideoDownloadBtn" href="#" download class="btn btn-xs btn-outline"><i class="fa-solid fa-download"></i> 완성 비디오 MP4 다운로드</a>
+                </div>
+              </div>
+
+              <!-- 3. 루나 공식 유튜브 업로드 섹션 -->
+              <div style="background: rgba(244, 63, 94, 0.05); border: 1px solid rgba(244, 63, 94, 0.2); border-radius: 8px; padding: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: #f43f5e;">
+                    <i class="fa-brands fa-youtube"></i> 3. 루나 채널 원클릭 업로드 (@음악에이전트-c3j)
+                  </span>
+                  <select id="lunaPrivacySelect" class="form-select" style="width: auto; padding: 4px 8px; font-size: 0.8rem;">
+                    <option value="public" selected>공개 (Public)</option>
+                    <option value="unlisted">일부공개 (Unlisted)</option>
+                    <option value="private">비공개 (Private)</option>
+                  </select>
+                </div>
+
+                <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 10px;">
+                  <div><strong>제목:</strong> <span id="lunaYtTitlePreview" style="color: #fff;"></span></div>
+                  <div style="margin-top: 4px;"><strong>태그:</strong> <span id="lunaYtTagsPreview" style="color: #a78bfa;"></span></div>
+                </div>
+
+                <button type="button" id="btnUploadLunaYt" class="btn btn-primary btn-block" style="background: #e11d48; border: none;">
+                  <span class="btn-text"><i class="fa-solid fa-cloud-arrow-up"></i> 🚀 루나 유튜브 채널에 즉시 업로드</span>
+                  <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 유튜브 업로드 중...</span>
+                </button>
+                <div id="lunaUploadResultBadge" style="display: none; margin-top: 8px; text-align: center;"></div>
               </div>
             </div>
           </div>

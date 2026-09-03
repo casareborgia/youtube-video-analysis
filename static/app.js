@@ -458,26 +458,29 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==============================================================
   // 11. AI 프롬프트 스튜디오 & 8초 씬 비디오 기획 로직
   // ==============================================================
-  // 5대 통합 탭 네비게이션 & 뷰 스위처
+  // 6대 통합 탭 네비게이션 & 뷰 스위처
   // ==============================================================
   const navTabAnalysis = document.getElementById('navTabAnalysis');
   const navTabChannel = document.getElementById('navTabChannel');
   const navTabPromptStudio = document.getElementById('navTabPromptStudio');
   const navTabProducer = document.getElementById('navTabProducer');
   const navTabMarketing = document.getElementById('navTabMarketing');
+  const navTabMusic = document.getElementById('navTabMusic');
 
   const viewAnalysis = document.getElementById('viewAnalysis');
   const viewChannel = document.getElementById('viewChannel');
   const viewPromptStudio = document.getElementById('viewPromptStudio');
   const viewProducer = document.getElementById('viewProducer');
   const viewMarketing = document.getElementById('viewMarketing');
+  const viewMusic = document.getElementById('viewMusic');
 
   const allNavTabs = [
     { tab: navTabAnalysis, view: viewAnalysis, id: 'analysis' },
     { tab: navTabChannel, view: viewChannel, id: 'channel' },
     { tab: navTabPromptStudio, view: viewPromptStudio, id: 'promptStudio' },
     { tab: navTabProducer, view: viewProducer, id: 'producer' },
-    { tab: navTabMarketing, view: viewMarketing, id: 'marketing' }
+    { tab: navTabMarketing, view: viewMarketing, id: 'marketing' },
+    { tab: navTabMusic, view: viewMusic, id: 'music' }
   ];
 
   function switchMainView(targetId) {
@@ -505,6 +508,8 @@ document.addEventListener('DOMContentLoaded', () => {
       checkYoutubeStatus();
     } else if (targetId === 'marketing') {
       loadMarketingHistory();
+    } else if (targetId === 'music') {
+      loadLunaHistory();
     }
   }
 
@@ -513,6 +518,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (navTabPromptStudio) navTabPromptStudio.addEventListener('click', () => switchMainView('promptStudio'));
   if (navTabProducer) navTabProducer.addEventListener('click', () => switchMainView('producer'));
   if (navTabMarketing) navTabMarketing.addEventListener('click', () => switchMainView('marketing'));
+  if (navTabMusic) navTabMusic.addEventListener('click', () => switchMainView('music'));
 
   const promptTopicInput = document.getElementById('promptTopicInput');
   const promptTargetModel = document.getElementById('promptTargetModel');
@@ -2009,7 +2015,311 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // ==============================================================
+  // 17. [Phase 6] 에이전트 루나(Agent Luna) AI 음악 자동화 스튜디오
+  // ==============================================================
+  const lunaMusicForm = document.getElementById('lunaMusicForm');
+  const lunaGenreSelect = document.getElementById('lunaGenreSelect');
+  const lunaMoodSelect = document.getElementById('lunaMoodSelect');
+  const lunaTopicInput = document.getElementById('lunaTopicInput');
+  const lunaDurationSelect = document.getElementById('lunaDurationSelect');
+  const lunaVideoQualitySelect = document.getElementById('lunaVideoQualitySelect');
+  const btnRunLunaGen = document.getElementById('btnRunLunaGen');
+
+  const lunaEmptyState = document.getElementById('lunaEmptyState');
+  const lunaActiveView = document.getElementById('lunaActiveView');
+  const lunaStatusBadge = document.getElementById('lunaStatusBadge');
+
+  const lunaCoverImg = document.getElementById('lunaCoverImg');
+  const lunaGenreBadge = document.getElementById('lunaGenreBadge');
+  const lunaTrackTitle = document.getElementById('lunaTrackTitle');
+  const lunaTrackStory = document.getElementById('lunaTrackStory');
+  const lunaAudioPlayer = document.getElementById('lunaAudioPlayer');
+
+  const btnRenderLunaVideo = document.getElementById('btnRenderLunaVideo');
+  const lunaVideoPlayerBox = document.getElementById('lunaVideoPlayerBox');
+  const lunaVideoPlayer = document.getElementById('lunaVideoPlayer');
+  const lunaVideoDownloadBtn = document.getElementById('lunaVideoDownloadBtn');
+
+  const lunaPrivacySelect = document.getElementById('lunaPrivacySelect');
+  const lunaYtTitlePreview = document.getElementById('lunaYtTitlePreview');
+  const lunaYtTagsPreview = document.getElementById('lunaYtTagsPreview');
+  const btnUploadLunaYt = document.getElementById('btnUploadLunaYt');
+  const lunaUploadResultBadge = document.getElementById('lunaUploadResultBadge');
+
+  const btnRefreshLunaHistory = document.getElementById('btnRefreshLunaHistory');
+  const lunaHistoryList = document.getElementById('lunaHistoryList');
+
+  let currentLunaTrack = null;
+
+  if (lunaMusicForm) {
+    lunaMusicForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const genre = lunaGenreSelect ? lunaGenreSelect.value : 'lofi';
+      const mood = lunaMoodSelect ? lunaMoodSelect.value : 'dawn';
+      const customTopic = lunaTopicInput ? lunaTopicInput.value.trim() : '';
+      const duration = lunaDurationSelect ? parseInt(lunaDurationSelect.value, 10) : 180;
+
+      btnRunLunaGen.disabled = true;
+      btnRunLunaGen.querySelector('.btn-text').style.display = 'none';
+      btnRunLunaGen.querySelector('.spinner').style.display = 'inline-block';
+      if (lunaStatusBadge) {
+        lunaStatusBadge.className = 'badge badge-accent';
+        lunaStatusBadge.textContent = '작곡 & 앨범아트 생성 중...';
+      }
+
+      try {
+        const res = await fetch('/api/luna/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            genre: genre,
+            mood: mood,
+            custom_topic: customTopic,
+            duration_seconds: duration
+          })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || '음원 생성 실패');
+        }
+
+        const track = await res.json();
+        currentLunaTrack = track;
+        renderLunaTrackView(track);
+        loadLunaHistory();
+        showAlert(`'${track.title}' 완곡 음원과 앨범아트가 성공적으로 생성되었습니다!`, 'success');
+      } catch (err) {
+        showAlert('루나 음원 생성 실패: ' + err.message, 'error');
+        if (lunaStatusBadge) {
+          lunaStatusBadge.className = 'badge badge-danger';
+          lunaStatusBadge.textContent = '생성 오류';
+        }
+      } finally {
+        btnRunLunaGen.disabled = false;
+        btnRunLunaGen.querySelector('.btn-text').style.display = 'inline-block';
+        btnRunLunaGen.querySelector('.spinner').style.display = 'none';
+      }
+    });
+  }
+
+  function renderLunaTrackView(track) {
+    if (!track) return;
+    if (lunaEmptyState) lunaEmptyState.style.display = 'none';
+    if (lunaActiveView) lunaActiveView.style.display = 'block';
+
+    if (lunaCoverImg) lunaCoverImg.src = track.cover_url || '';
+    if (lunaGenreBadge) lunaGenreBadge.textContent = `${track.genre} • ${track.mood}`;
+    if (lunaTrackTitle) lunaTrackTitle.textContent = track.title || 'Untitled Track';
+    if (lunaTrackStory) lunaTrackStory.textContent = track.story || '';
+    if (lunaAudioPlayer) {
+      lunaAudioPlayer.src = track.audio_url || '';
+      lunaAudioPlayer.load();
+    }
+
+    const meta = track.metadata || {};
+    if (lunaYtTitlePreview) lunaYtTitlePreview.textContent = meta.youtube_title || track.title;
+    if (lunaYtTagsPreview) lunaYtTagsPreview.textContent = (meta.youtube_tags || []).slice(0, 5).join(', ') + '...';
+
+    if (track.video_url) {
+      if (lunaVideoPlayerBox) lunaVideoPlayerBox.style.display = 'block';
+      if (lunaVideoPlayer) {
+        lunaVideoPlayer.src = track.video_url;
+        lunaVideoPlayer.load();
+      }
+      if (lunaVideoDownloadBtn) lunaVideoDownloadBtn.href = track.video_url;
+      if (lunaStatusBadge) {
+        lunaStatusBadge.className = 'badge badge-success';
+        lunaStatusBadge.textContent = '영상 렌더링 완료';
+      }
+    } else {
+      if (lunaVideoPlayerBox) lunaVideoPlayerBox.style.display = 'none';
+      if (lunaStatusBadge) {
+        lunaStatusBadge.className = 'badge badge-accent';
+        lunaStatusBadge.textContent = '음원 준비 완료';
+      }
+    }
+
+    if (lunaUploadResultBadge) {
+      if (track.uploaded_video_id) {
+        lunaUploadResultBadge.style.display = 'block';
+        lunaUploadResultBadge.innerHTML = `
+          <a href="https://youtu.be/${track.uploaded_video_id}" target="_blank" class="badge badge-success" style="font-size:12px; padding:6px 12px; text-decoration:none;">
+            <i class="fa-brands fa-youtube"></i> 유튜브 업로드 완료 (youtu.be/${track.uploaded_video_id})
+          </a>
+        `;
+      } else {
+        lunaUploadResultBadge.style.display = 'none';
+      }
+    }
+  }
+
+  // 2. 비디오 렌더링
+  if (btnRenderLunaVideo) {
+    btnRenderLunaVideo.addEventListener('click', async () => {
+      if (!currentLunaTrack || !currentLunaTrack.track_id) {
+        showAlert('먼저 음원을 생성해주세요.', 'error');
+        return;
+      }
+
+      btnRenderLunaVideo.disabled = true;
+      btnRenderLunaVideo.querySelector('.btn-text').style.display = 'none';
+      btnRenderLunaVideo.querySelector('.spinner').style.display = 'inline-block';
+      if (lunaStatusBadge) {
+        lunaStatusBadge.className = 'badge badge-accent';
+        lunaStatusBadge.textContent = '시네마틱 영상 렌더링 중...';
+      }
+
+      const quality = lunaVideoQualitySelect ? lunaVideoQualitySelect.value : '1080p';
+
+      try {
+        const res = await fetch('/api/luna/render', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            track_id: currentLunaTrack.track_id,
+            quality: quality
+          })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || '영상 렌더링 실패');
+        }
+
+        const updated = await res.json();
+        currentLunaTrack = updated;
+        renderLunaTrackView(updated);
+        loadLunaHistory();
+        showAlert('에이전트 루나 감성 음악 비디오 렌더링이 완료되었습니다!', 'success');
+      } catch (err) {
+        showAlert('비디오 렌더링 오류: ' + err.message, 'error');
+      } finally {
+        btnRenderLunaVideo.disabled = false;
+        btnRenderLunaVideo.querySelector('.btn-text').style.display = 'inline-block';
+        btnRenderLunaVideo.querySelector('.spinner').style.display = 'none';
+      }
+    });
+  }
+
+  // 3. 루나 채널 유튜브 업로드
+  if (btnUploadLunaYt) {
+    btnUploadLunaYt.addEventListener('click', async () => {
+      if (!currentLunaTrack || !currentLunaTrack.track_id) {
+        showAlert('먼저 트랙을 선택하거나 생성해주세요.', 'error');
+        return;
+      }
+      if (!currentLunaTrack.video_file && !currentLunaTrack.video_url) {
+        showAlert('먼저 [2. 비디오 렌더링]을 완료해주세요.', 'error');
+        return;
+      }
+
+      if (!confirm(`'${currentLunaTrack.title}' 음악 영상을 루나 유튜브 채널에 즉시 업로드하시겠습니까?`)) {
+        return;
+      }
+
+      btnUploadLunaYt.disabled = true;
+      btnUploadLunaYt.querySelector('.btn-text').style.display = 'none';
+      btnUploadLunaYt.querySelector('.spinner').style.display = 'inline-block';
+
+      const privacy = lunaPrivacySelect ? lunaPrivacySelect.value : 'public';
+
+      try {
+        const res = await fetch('/api/luna/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            track_id: currentLunaTrack.track_id,
+            privacy_status: privacy
+          })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || '유튜브 업로드 실패');
+        }
+
+        const data = await res.json();
+        showAlert(`루나 유튜브 채널에 성공적으로 업로드되었습니다! (${data.url || ''})`, 'success');
+        if (currentLunaTrack) {
+          currentLunaTrack.uploaded_video_id = data.video_id;
+        }
+        renderLunaTrackView(currentLunaTrack);
+        loadLunaHistory();
+      } catch (err) {
+        showAlert('유튜브 업로드 실패: ' + err.message + '\n(YouTube 계정 연결 상태를 확인해주세요)', 'error');
+      } finally {
+        btnUploadLunaYt.disabled = false;
+        btnUploadLunaYt.querySelector('.btn-text').style.display = 'inline-block';
+        btnUploadLunaYt.querySelector('.spinner').style.display = 'none';
+      }
+    });
+  }
+
+  // 4. 루나 히스토리 로드
+  async function loadLunaHistory() {
+    if (!lunaHistoryList) return;
+    try {
+      const res = await fetch('/api/luna/history');
+      if (!res.ok) return;
+      const tracks = await res.json();
+
+      if (!tracks || tracks.length === 0) {
+        lunaHistoryList.innerHTML = '<div style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 12px;">저장된 루나 음원이 없습니다.</div>';
+        return;
+      }
+
+      lunaHistoryList.innerHTML = tracks.map(t => {
+        const isRendered = !!t.video_url;
+        const isUploaded = !!t.uploaded_video_id;
+        return `
+          <div class="luna-track-card" data-id="${escapeHtml(t.track_id)}" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; padding:8px 10px; cursor:pointer; transition:background 0.2s;">
+            <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+              <img src="${t.cover_url || '/static/favicon.ico'}" style="width:36px; height:36px; border-radius:4px; object-fit:cover;">
+              <div style="min-width:0;">
+                <div style="font-size:0.85rem; font-weight:600; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(t.title || 'Untitled')}</div>
+                <div style="font-size:0.75rem; color:var(--text-secondary);">${escapeHtml(t.genre || '')} • ${escapeHtml(t.mood || '')}</div>
+              </div>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+              ${isUploaded ? '<span class="badge badge-success" style="font-size:10px;"><i class="fa-brands fa-youtube"></i> 업로드됨</span>' : ''}
+              ${isRendered ? '<span class="badge badge-accent" style="font-size:10px;"><i class="fa-solid fa-film"></i> 영상완료</span>' : '<span class="badge badge-subtle" style="font-size:10px;">음원만</span>'}
+              <button class="btn btn-xs btn-outline btn-load-luna-track" data-id="${escapeHtml(t.track_id)}"><i class="fa-solid fa-play"></i></button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lunaHistoryList.querySelectorAll('.btn-load-luna-track, .luna-track-card').forEach(elem => {
+        elem.addEventListener('click', async (e) => {
+          const id = elem.dataset.id || elem.closest('.luna-track-card')?.dataset.id;
+          if (!id) return;
+          try {
+            const trackRes = await fetch(`/api/luna/history`);
+            const allT = await trackRes.json();
+            const found = allT.find(x => x.track_id === id);
+            if (found) {
+              currentLunaTrack = found;
+              renderLunaTrackView(found);
+              showAlert(`'${found.title}' 트랙을 로드했습니다.`, 'success');
+            }
+          } catch (err) {
+            console.warn('트랙 로드 실패:', err);
+          }
+        });
+      });
+    } catch (err) {
+      console.warn('루나 히스토리 로드 실패:', err);
+    }
+  }
+
+  if (btnRefreshLunaHistory) {
+    btnRefreshLunaHistory.addEventListener('click', loadLunaHistory);
+  }
+
   // 초기 데이터 로드
   loadHistory();
   loadTrends();
 });
+
