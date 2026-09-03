@@ -934,6 +934,22 @@
             <div id="marketingResultBody">
               <!-- 스레드 탭 -->
               <div id="tabThreads" class="tab-pane active">
+                <!-- Threads 실시간 자동 발행 컨트롤 바 -->
+                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-brands fa-threads" style="font-size: 1.1rem; color: #fff;"></i>
+                    <span style="font-size: 0.85rem; font-weight: 600; color: #fff;">Meta Threads 공식 연동</span>
+                    <span id="marketingThreadsStatusBadge" class="badge badge-subtle" style="font-size: 10px;">확인 중...</span>
+                  </div>
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <button type="button" id="btnPublishThreadsLive" class="btn btn-sm" style="background: #000; border: 1px solid #fff; color: #fff; font-weight: 600;">
+                      <span class="btn-text"><i class="fa-brands fa-threads"></i> 🚀 Threads에 5개 타래 즉시 자동 발행</span>
+                      <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 타래 연쇄 발행 중...</span>
+                    </button>
+                  </div>
+                </div>
+                <div id="threadsPublishResultBox" style="display: none; margin-bottom: 12px;"></div>
+
                 <div id="threadsPostList" style="display: flex; flex-direction: column; gap: 10px;">
                   <div class="empty-state-box" style="padding: 30px;">
                     <i class="fa-brands fa-threads fa-2x"></i>
@@ -1268,7 +1284,34 @@
             </div>
           </div>
 
-          <!-- 3. 시스템 엔진 및 렌더러 상태 -->
+          <!-- 3. Meta Threads API 설정 -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div>
+                <strong style="font-size: 0.95rem; color: #fff;"><i class="fa-brands fa-threads" style="color: #fff;"></i> Meta Threads API 연동</strong>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">스레드 5개 바이럴 타래 순차 연쇄 자동 발행</div>
+              </div>
+              <span id="envThreadsBadge" class="badge badge-subtle">확인 중...</span>
+            </div>
+
+            <div style="margin-top: 10px;">
+              <label style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">
+                <strong>Threads User Access Token 입력</strong> (Meta for Developers 발급)
+              </label>
+              <div style="display: flex; gap: 8px;">
+                <input type="password" id="envThreadsTokenInput" class="form-control" placeholder="THQW... (User Access Token)" style="flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                <input type="text" id="envThreadsUserIdInput" class="form-control" placeholder="User ID (선택)" style="width: 140px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                <button type="button" id="btnSaveThreadsToken" class="btn btn-sm" style="background: #000; border: 1px solid #fff; color: #fff;"><i class="fa-solid fa-floppy-disk"></i> 저장</button>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 0.75rem;">
+              <span id="envThreadsAccountInfo" style="color: #38bdf8;">연결된 계정 없음</span>
+              <button type="button" id="btnDisconnectThreads" class="btn btn-xs btn-outline" style="color: #f43f5e;">연결 해제</button>
+            </div>
+          </div>
+
+          <!-- 4. 시스템 엔진 및 렌더러 상태 -->
           <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px;">
             <strong style="font-size: 0.9rem; color: #fff;"><i class="fa-solid fa-server"></i> 로컬 AI & 미디어 렌더러 엔진</strong>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 0.8rem;">

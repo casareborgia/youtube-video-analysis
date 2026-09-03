@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, UploadFile, File, Form, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 import pandas as pd
 import yt_dlp
@@ -32,6 +32,7 @@ import marketing
 import producer
 import uploader
 import luna_engine
+import threads_client
 
 app = FastAPI(title="TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오")
 
@@ -1006,6 +1007,72 @@ async def import_luna_keys():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"루나 키 연동 실패: {e}")
 
+
+# ==========================================
+# Phase 8: Meta Threads API 연동 & 자동 발행
+# ==========================================
+class ThreadsSettingsRequest(BaseModel):
+    access_token: Optional[str] = None
+    user_id: Optional[str] = None
+    app_id: Optional[str] = None
+    app_secret: Optional[str] = None
+
+class ThreadsPublishRequest(BaseModel):
+    posts: List[str]
+    delay_seconds: Optional[float] = 2.0
+
+@app.get("/api/threads/status")
+async def get_threads_status():
+    """Threads 연동 상태 및 계정 정보 확인"""
+    return threads_client.get_status()
+
+@app.post("/api/threads/settings")
+async def update_threads_settings(req: ThreadsSettingsRequest):
+    """Threads 액세스 토큰 또는 App 자격증명 저장"""
+    updates = {}
+    if req.access_token is not None:
+        updates["access_token"] = req.access_token.strip()
+    if req.user_id is not None:
+        updates["user_id"] = req.user_id.strip()
+    if req.app_id is not None:
+        updates["app_id"] = req.app_id.strip()
+    if req.app_secret is not None:
+        updates["app_secret"] = req.app_secret.strip()
+
+    threads_client.save_config(updates)
+    return threads_client.get_status()
+
+@app.get("/api/threads/auth/login")
+async def threads_oauth_login():
+    """Threads OAuth 웹 로그인 창으로 리다이렉트"""
+    try:
+        url = threads_client.get_oauth_authorization_url()
+        return RedirectResponse(url=url)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"OAuth 로그인 URL 생성 실패: {e}")
+
+@app.get("/api/threads/auth/callback")
+async def threads_oauth_callback(code: str = Query(...)):
+    """Threads OAuth 콜백 수신 및 60일 장기 토큰 저장"""
+    try:
+        threads_client.handle_oauth_callback(code)
+        return RedirectResponse(url="/?threads_connected=1")
+    except Exception as e:
+        return PlainTextResponse(f"Threads 계정 연동 실패: {e}", status_code=400)
+
+@app.post("/api/threads/publish")
+async def publish_threads_series(req: ThreadsPublishRequest):
+    """생성된 스레드 5개 타래를 Threads 실제 피드에 순차 연쇄 발행"""
+    try:
+        res = threads_client.publish_thread_sequence(req.posts, delay_seconds=req.delay_seconds or 2.0)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Threads 발행 실패: {e}")
+
+@app.post("/api/threads/auth/disconnect")
+async def disconnect_threads():
+    """Threads 계정 연동 해제"""
+    return threads_client.disconnect()
 
 
 # ==========================================

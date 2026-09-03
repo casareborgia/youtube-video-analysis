@@ -2491,10 +2491,190 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ==============================================================
+  // 19. [Phase 8] Meta Threads API 연동 & 실시간 타래 자동 발행
+  // ==============================================================
+  const envThreadsBadge = document.getElementById('envThreadsBadge');
+  const envThreadsTokenInput = document.getElementById('envThreadsTokenInput');
+  const envThreadsUserIdInput = document.getElementById('envThreadsUserIdInput');
+  const btnSaveThreadsToken = document.getElementById('btnSaveThreadsToken');
+  const envThreadsAccountInfo = document.getElementById('envThreadsAccountInfo');
+  const btnDisconnectThreads = document.getElementById('btnDisconnectThreads');
+
+  const marketingThreadsStatusBadge = document.getElementById('marketingThreadsStatusBadge');
+  const btnPublishThreadsLive = document.getElementById('btnPublishThreadsLive');
+  const threadsPublishResultBox = document.getElementById('threadsPublishResultBox');
+
+  async function loadThreadsStatus() {
+    try {
+      const res = await fetch('/api/threads/status');
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const isConn = data.connected;
+      const uname = data.username ? `@${data.username}` : '';
+
+      // 1. 설정 모달 배지
+      if (envThreadsBadge) {
+        if (isConn) {
+          envThreadsBadge.className = 'badge badge-success';
+          envThreadsBadge.innerHTML = `<i class="fa-brands fa-threads"></i> 연결됨 (${escapeHtml(uname)})`;
+        } else {
+          envThreadsBadge.className = 'badge badge-subtle';
+          envThreadsBadge.innerHTML = '미등록';
+        }
+      }
+
+      if (envThreadsAccountInfo) {
+        envThreadsAccountInfo.textContent = isConn 
+          ? `✅ 연결된 계정: ${uname} (토큰: ${data.masked_token || '***'})` 
+          : '연결된 계정 없음 (토큰 입력 필요)';
+      }
+
+      // 2. 마케팅 탭 배지
+      if (marketingThreadsStatusBadge) {
+        if (isConn) {
+          marketingThreadsStatusBadge.className = 'badge badge-success';
+          marketingThreadsStatusBadge.innerHTML = `<i class="fa-solid fa-circle-check"></i> ${escapeHtml(uname)} 계정 준비됨`;
+        } else {
+          marketingThreadsStatusBadge.className = 'badge badge-subtle';
+          marketingThreadsStatusBadge.innerHTML = '키 미설정 (설정 모달에서 등록)';
+        }
+      }
+    } catch (err) {
+      console.warn('Threads 상태 조회 실패:', err);
+    }
+  }
+
+  // Threads 토큰 저장
+  if (btnSaveThreadsToken) {
+    btnSaveThreadsToken.addEventListener('click', async () => {
+      const token = envThreadsTokenInput ? envThreadsTokenInput.value.trim() : '';
+      const uid = envThreadsUserIdInput ? envThreadsUserIdInput.value.trim() : '';
+
+      if (!token) {
+        showAlert('Threads User Access Token을 입력해주세요.', 'error');
+        return;
+      }
+
+      btnSaveThreadsToken.disabled = true;
+      btnSaveThreadsToken.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 저장 중...';
+
+      try {
+        const res = await fetch('/api/threads/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ access_token: token, user_id: uid })
+        });
+
+        const data = await res.json();
+        if (data.connected) {
+          showAlert(`Threads @${data.username} 계정에 성공적으로 연결되었습니다!`, 'success');
+        } else {
+          showAlert(data.message || '토큰이 저장되었으나 인증을 확인해주세요.', 'error');
+        }
+        if (envThreadsTokenInput) envThreadsTokenInput.value = '';
+        loadThreadsStatus();
+      } catch (err) {
+        showAlert('Threads 설정 저장 실패: ' + err.message, 'error');
+      } finally {
+        btnSaveThreadsToken.disabled = false;
+        btnSaveThreadsToken.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> 저장';
+      }
+    });
+  }
+
+  // Threads 연결 해제
+  if (btnDisconnectThreads) {
+    btnDisconnectThreads.addEventListener('click', async () => {
+      if (!confirm('Threads 계정 연결을 해제하시겠습니까?')) return;
+      try {
+        await fetch('/api/threads/auth/disconnect', { method: 'POST' });
+        showAlert('Threads 계정 연결이 해제되었습니다.', 'success');
+        loadThreadsStatus();
+      } catch (err) {
+        showAlert('연결 해제 오류: ' + err.message, 'error');
+      }
+    });
+  }
+
+  // Threads에 5개 타래 즉시 자동 연쇄 발행
+  if (btnPublishThreadsLive) {
+    btnPublishThreadsLive.addEventListener('click', async () => {
+      // 현재 생성된 스레드 텍스트 추출
+      let posts = [];
+      if (currentMarketingResult && currentMarketingResult.threads && currentMarketingResult.threads.posts) {
+        posts = currentMarketingResult.threads.posts;
+      } else {
+        // DOM에서 텍스트 수집
+        const postBoxes = document.querySelectorAll('#threadsPostList .market-content-box');
+        postBoxes.forEach(box => {
+          const t = box.textContent.trim();
+          if (t) posts.push(t);
+        });
+      }
+
+      if (!posts || posts.length === 0) {
+        showAlert('먼저 좌측에서 마케팅 자산(스레드 타래)을 생성해주세요.', 'error');
+        return;
+      }
+
+      if (!confirm(`총 ${posts.length}개의 스레드 타래를 실제 Threads 계정에 순차 연쇄 발행하시겠습니까?`)) {
+        return;
+      }
+
+      btnPublishThreadsLive.disabled = true;
+      btnPublishThreadsLive.querySelector('.btn-text').style.display = 'none';
+      btnPublishThreadsLive.querySelector('.spinner').style.display = 'inline-block';
+      if (threadsPublishResultBox) threadsPublishResultBox.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/threads/publish', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ posts: posts, delay_seconds: 2.0 })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Threads 자동 발행 실패');
+        }
+
+        const data = await res.json();
+        showAlert(`🎉 ${data.total_published}개 스레드 타래가 실제 Threads에 성공적으로 연쇄 발행되었습니다!`, 'success');
+
+        if (threadsPublishResultBox) {
+          threadsPublishResultBox.style.display = 'block';
+          threadsPublishResultBox.innerHTML = `
+            <div style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <strong style="color: #4ade80; font-size: 0.9rem;"><i class="fa-solid fa-circle-check"></i> ${data.total_published}개 타래 발행 완료!</strong>
+                <div style="color: var(--text-secondary); font-size: 0.8rem; margin-top: 2px;">모든 답글이 정상적으로 체이닝되어 Threads 피드에 등록되었습니다.</div>
+              </div>
+              ${data.thread_url ? `
+                <a href="${data.thread_url}" target="_blank" class="btn btn-xs btn-primary" style="background: #000; border: 1px solid #fff; color: #fff; text-decoration: none;">
+                  <i class="fa-brands fa-threads"></i> 실시간 스레드 보기 <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 10px;"></i>
+                </a>
+              ` : ''}
+            </div>
+          `;
+        }
+      } catch (err) {
+        showAlert('Threads 자동 발행 오류: ' + err.message + '\n(API 설정 모달에서 토큰 연결 상태를 확인해주세요)', 'error');
+      } finally {
+        btnPublishThreadsLive.disabled = false;
+        btnPublishThreadsLive.querySelector('.btn-text').style.display = 'inline-block';
+        btnPublishThreadsLive.querySelector('.spinner').style.display = 'none';
+      }
+    });
+  }
+
   // 초기 데이터 로드
   loadHistory();
   loadTrends();
   loadEnvSettings();
+  loadThreadsStatus();
 });
+
 
 

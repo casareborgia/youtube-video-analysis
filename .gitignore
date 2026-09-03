@@ -98,4 +98,6 @@ data/luna_music/*
 client_secret.json
 token.pickle
 token.json
+data/threads_config.json
+threads_config.json
 
