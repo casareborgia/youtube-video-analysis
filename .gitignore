@@ -85,9 +85,17 @@ tmp/
 output/*
 !output/.gitkeep
 
-# Generated Renders, Marketing, Channels, Trends
 data/trends/*
 data/marketing/*
 data/renders/*
 data/channels/*
 data/youtube/*
+data/luna_music/*
+
+# Credentials & Secrets
+.env
+*.env
+client_secret.json
+token.pickle
+token.json
+

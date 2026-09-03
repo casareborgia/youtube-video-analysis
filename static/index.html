@@ -56,6 +56,9 @@
           <span id="llmModelBadge" class="llm-model-sub"></span>
         </div>
 
+        <button id="btnOpenEnvSettingsModal" class="btn btn-outline" style="border-color: #a855f7; color: #c084fc;" title="Gemini API 키 및 유튜브 인증 환경설정">
+          <i class="fa-solid fa-key"></i> API 설정
+        </button>
         <button id="btnOpenFolder" class="btn btn-outline" title="Finder에서 data 폴더 열기">
           <i class="fa-regular fa-folder-open"></i> 저장 폴더
         </button>
@@ -1198,6 +1201,87 @@
           <div id="tabAiReport" class="tab-pane"></div>
           <div id="tabChapters" class="tab-pane"></div>
           <div id="tabRawJson" class="tab-pane"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⚙️ API 키 및 환경설정 통합 관리 모달창 -->
+    <div id="envSettingsModal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="max-width: 620px;">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-key" style="color: #c084fc;"></i>
+            <h3 style="margin: 0;">API 키 & 시스템 환경설정 통합 관리</h3>
+          </div>
+          <button class="modal-close" id="btnCloseEnvSettingsModal"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="modal-body" style="padding: 20px;">
+          <!-- 1. Google Gemini API 키 설정 -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div>
+                <strong style="font-size: 0.95rem; color: #fff;"><i class="fa-brands fa-google" style="color: #4285F4;"></i> Google Gemini API 키</strong>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">나노바나나(이미지) • Gemini Omni(영상) • 루나(Lyria 3 음악) 공통 키</div>
+              </div>
+              <span id="envGeminiKeyBadge" class="badge badge-subtle">확인 중...</span>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 10px;">
+              <input type="password" id="envGeminiKeyInput" class="form-control" placeholder="AIzaSy... (Gemini API 키 입력)" style="flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">
+              <button type="button" id="btnToggleGeminiKeyVisibility" class="btn btn-outline" title="키 표시/숨김"><i class="fa-solid fa-eye"></i></button>
+              <button type="button" id="btnSaveGeminiKey" class="btn btn-primary" style="background: #a855f7; border: none;"><i class="fa-solid fa-floppy-disk"></i> .env 저장</button>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" style="font-size: 0.75rem; color: #38bdf8; text-decoration: none;">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i> Google AI Studio에서 무료 키 발급받기
+              </a>
+              <button type="button" id="btnImportLunaKeys" class="btn btn-xs btn-outline" style="border-color: #a855f7; color: #c084fc;">
+                <i class="fa-solid fa-bolt"></i> 기존 루나 키 자동 가져오기
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. YouTube Data API v3 OAuth 상태 -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div>
+                <strong style="font-size: 0.95rem; color: #fff;"><i class="fa-brands fa-youtube" style="color: #f43f5e;"></i> YouTube Data API v3 OAuth</strong>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">채널 브랜딩 자동 등록 • 완성 영상 & 루나 음악 자동 업로드</div>
+              </div>
+              <span id="envYtAuthBadge" class="badge badge-subtle">확인 중...</span>
+            </div>
+
+            <div style="font-size: 0.82rem; line-height: 1.6; color: var(--text-secondary); margin-top: 8px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px;">
+              <div>• <code>client_secret.json</code> 상태: <strong id="envClientSecretStatus" style="color: #fff;">확인 중</strong></div>
+              <div>• 연결된 채널: <strong id="envYtChannelName" style="color: #38bdf8;">없음</strong></div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+              <a href="/api/youtube/auth/login" id="btnConnectYoutube" class="btn btn-xs btn-accent" style="text-decoration: none;">
+                <i class="fa-brands fa-google"></i> 유튜브 계정 연결 / 갱신
+              </a>
+              <button type="button" id="btnDisconnectYoutube" class="btn btn-xs btn-outline" style="color: #f43f5e;">
+                <i class="fa-solid fa-link-slash"></i> 연결 해제
+              </button>
+            </div>
+          </div>
+
+          <!-- 3. 시스템 엔진 및 렌더러 상태 -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px;">
+            <strong style="font-size: 0.9rem; color: #fff;"><i class="fa-solid fa-server"></i> 로컬 AI & 미디어 렌더러 엔진</strong>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 0.8rem;">
+              <div style="background: rgba(0,0,0,0.2); padding: 8px 10px; border-radius: 6px;">
+                <span style="color: var(--text-secondary);">로컬 AI (기획/대본):</span>
+                <strong id="envLlmPreference" style="display: block; color: #34d399; margin-top: 2px;">Auto (자동 감지)</strong>
+              </div>
+              <div style="background: rgba(0,0,0,0.2); padding: 8px 10px; border-radius: 6px;">
+                <span style="color: var(--text-secondary);">ffmpeg (영상/음향 렌더러):</span>
+                <strong id="envFfmpegStatus" style="display: block; color: #34d399; margin-top: 2px;">설치됨</strong>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

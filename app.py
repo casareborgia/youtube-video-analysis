@@ -6,6 +6,7 @@ import gc
 import urllib.parse
 import asyncio
 import subprocess
+import shutil
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pathlib import Path
@@ -940,6 +941,71 @@ async def upload_luna_music_video(req: LunaUploadRequest):
 async def get_luna_history():
     """생성된 루나 음악 및 비디오 히스토리 목록"""
     return luna_engine.list_tracks()
+
+
+# ==========================================
+# Phase 7: API 키 및 환경설정 통합 관리 API
+# ==========================================
+class EnvSettingsUpdateRequest(BaseModel):
+    gemini_api_key: Optional[str] = None
+
+@app.get("/api/settings/env")
+async def get_env_settings():
+    """Gemini API 키, YouTube 인증, ffmpeg 등 시스템 통합 환경설정 상태 조회"""
+    k = producer.gemini_key()
+    has_key = bool(k)
+    masked_key = (k[:8] + "..." + k[-4:]) if has_key and len(k) > 12 else ("등록됨" if has_key else "")
+    
+    yt_status = uploader.status()
+    has_client_secret = os.path.exists(os.path.join(BASE_DIR, "client_secret.json"))
+    ffmpeg_ok = bool(shutil.which("ffmpeg"))
+
+    return {
+        "gemini_api_key_configured": has_key,
+        "gemini_api_key_masked": masked_key,
+        "has_client_secret": has_client_secret,
+        "youtube_authorized": yt_status.get("authorized", False),
+        "youtube_channel": yt_status.get("channel"),
+        "ffmpeg_installed": ffmpeg_ok,
+        "llm_preference": llm_client.get_preference()
+    }
+
+@app.post("/api/settings/env")
+async def update_env_settings(req: EnvSettingsUpdateRequest):
+    """Gemini API 키를 .env 파일 및 settings.json, 시스템 메모리에 안전하게 동기화 저장"""
+    try:
+        if req.gemini_api_key is not None:
+            producer.set_gemini_key(req.gemini_api_key.strip())
+        return {"status": "success", "message": "API 키가 .env 파일과 시스템 설정에 성공적으로 저장되었습니다."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"설정 저장 실패: {e}")
+
+@app.post("/api/settings/import-luna-keys")
+async def import_luna_keys():
+    """기존 루나 프로젝트(음악생성에이전트루나)에서 키와 인증 파일을 자동으로 동기화"""
+    try:
+        luna_dir = "/Users/leeseungjun/coding/음악생성에이전트루나"
+        imported = []
+        
+        # 1. .env 복사
+        luna_env = os.path.join(luna_dir, ".env")
+        if os.path.exists(luna_env):
+            shutil.copy2(luna_env, os.path.join(BASE_DIR, ".env"))
+            imported.append(".env (Gemini API 키)")
+            k = producer.gemini_key()
+            if k:
+                os.environ["GEMINI_API_KEY"] = k
+
+        # 2. client_secret.json 복사
+        luna_secret = os.path.join(luna_dir, "client_secret.json")
+        if os.path.exists(luna_secret):
+            shutil.copy2(luna_secret, os.path.join(BASE_DIR, "client_secret.json"))
+            imported.append("client_secret.json (유튜브 OAuth 클라이언트)")
+
+        return {"status": "success", "imported": imported}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"루나 키 연동 실패: {e}")
+
 
 
 # ==========================================

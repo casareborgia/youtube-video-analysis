@@ -2318,8 +2318,183 @@ document.addEventListener('DOMContentLoaded', () => {
     btnRefreshLunaHistory.addEventListener('click', loadLunaHistory);
   }
 
+  // ==============================================================
+  // 18. [Phase 7] API 키 및 시스템 환경설정 통합 관리 모달
+  // ==============================================================
+  const btnOpenEnvSettingsModal = document.getElementById('btnOpenEnvSettingsModal');
+  const envSettingsModal = document.getElementById('envSettingsModal');
+  const btnCloseEnvSettingsModal = document.getElementById('btnCloseEnvSettingsModal');
+
+  const envGeminiKeyBadge = document.getElementById('envGeminiKeyBadge');
+  const envGeminiKeyInput = document.getElementById('envGeminiKeyInput');
+  const btnToggleGeminiKeyVisibility = document.getElementById('btnToggleGeminiKeyVisibility');
+  const btnSaveGeminiKey = document.getElementById('btnSaveGeminiKey');
+  const btnImportLunaKeys = document.getElementById('btnImportLunaKeys');
+
+  const envYtAuthBadge = document.getElementById('envYtAuthBadge');
+  const envClientSecretStatus = document.getElementById('envClientSecretStatus');
+  const envYtChannelName = document.getElementById('envYtChannelName');
+  const btnDisconnectYoutube = document.getElementById('btnDisconnectYoutube');
+
+  const envLlmPreference = document.getElementById('envLlmPreference');
+  const envFfmpegStatus = document.getElementById('envFfmpegStatus');
+
+  async function loadEnvSettings() {
+    try {
+      const res = await fetch('/api/settings/env');
+      if (!res.ok) return;
+      const data = await res.json();
+
+      // 1. Gemini Key 상태
+      if (envGeminiKeyBadge) {
+        if (data.gemini_api_key_configured) {
+          envGeminiKeyBadge.className = 'badge badge-success';
+          envGeminiKeyBadge.innerHTML = `<i class="fa-solid fa-check"></i> 등록됨 (${escapeHtml(data.gemini_api_key_masked)})`;
+        } else {
+          envGeminiKeyBadge.className = 'badge badge-subtle';
+          envGeminiKeyBadge.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> 미등록';
+        }
+      }
+
+      // 2. YouTube 상태
+      if (envClientSecretStatus) {
+        envClientSecretStatus.innerHTML = data.has_client_secret 
+          ? '<span style="color:#34d399;"><i class="fa-solid fa-check"></i> 루트 폴더에 정상 배치됨</span>' 
+          : '<span style="color:#f43f5e;"><i class="fa-solid fa-xmark"></i> client_secret.json 파일 없음</span>';
+      }
+
+      if (envYtAuthBadge) {
+        if (data.youtube_authorized) {
+          envYtAuthBadge.className = 'badge badge-success';
+          envYtAuthBadge.innerHTML = '<i class="fa-solid fa-circle-check"></i> 인증 완료';
+        } else {
+          envYtAuthBadge.className = 'badge badge-subtle';
+          envYtAuthBadge.innerHTML = '미인증';
+        }
+      }
+
+      if (envYtChannelName) {
+        if (data.youtube_channel) {
+          envYtChannelName.textContent = `${data.youtube_channel.title} (${data.youtube_channel.custom_url || ''})`;
+        } else {
+          envYtChannelName.textContent = '연결된 계정 없음 (인증 필요)';
+        }
+      }
+
+      // 3. 엔진 상태
+      if (envLlmPreference) {
+        const prefMap = { auto: 'Auto (자동 감지)', lmstudio: 'LM Studio (로컬)', ollama: 'Ollama (로컬)' };
+        envLlmPreference.textContent = prefMap[data.llm_preference] || data.llm_preference;
+      }
+
+      if (envFfmpegStatus) {
+        envFfmpegStatus.innerHTML = data.ffmpeg_installed 
+          ? '<span style="color:#34d399;"><i class="fa-solid fa-check"></i> 정상 설치 및 사용 가능</span>' 
+          : '<span style="color:#f43f5e;"><i class="fa-solid fa-xmark"></i> 시스템 미설치</span>';
+      }
+    } catch (err) {
+      console.warn('환경설정 조회 실패:', err);
+    }
+  }
+
+  if (btnOpenEnvSettingsModal && envSettingsModal) {
+    btnOpenEnvSettingsModal.addEventListener('click', () => {
+      envSettingsModal.style.display = 'flex';
+      loadEnvSettings();
+    });
+  }
+
+  if (btnCloseEnvSettingsModal && envSettingsModal) {
+    btnCloseEnvSettingsModal.addEventListener('click', () => {
+      envSettingsModal.style.display = 'none';
+    });
+  }
+
+  // 키 표시/숨김 토글
+  if (btnToggleGeminiKeyVisibility && envGeminiKeyInput) {
+    btnToggleGeminiKeyVisibility.addEventListener('click', () => {
+      const isPwd = envGeminiKeyInput.type === 'password';
+      envGeminiKeyInput.type = isPwd ? 'text' : 'password';
+      btnToggleGeminiKeyVisibility.innerHTML = isPwd ? '<i class="fa-solid fa-eye-slash"></i>' : '<i class="fa-solid fa-eye"></i>';
+    });
+  }
+
+  // 키 저장 버튼
+  if (btnSaveGeminiKey && envGeminiKeyInput) {
+    btnSaveGeminiKey.addEventListener('click', async () => {
+      const keyVal = envGeminiKeyInput.value.trim();
+      if (!keyVal) {
+        showAlert('Gemini API 키를 입력해주세요.', 'error');
+        return;
+      }
+
+      btnSaveGeminiKey.disabled = true;
+      btnSaveGeminiKey.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 저장 중...';
+
+      try {
+        const res = await fetch('/api/settings/env', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ gemini_api_key: keyVal })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || '저장 실패');
+        }
+
+        envGeminiKeyInput.value = '';
+        showAlert('Gemini API 키가 .env 파일에 안전하게 저장되었습니다!', 'success');
+        loadEnvSettings();
+      } catch (err) {
+        showAlert('API 키 저장 실패: ' + err.message, 'error');
+      } finally {
+        btnSaveGeminiKey.disabled = false;
+        btnSaveGeminiKey.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> .env 저장';
+      }
+    });
+  }
+
+  // 기존 루나 키 자동 가져오기
+  if (btnImportLunaKeys) {
+    btnImportLunaKeys.addEventListener('click', async () => {
+      btnImportLunaKeys.disabled = true;
+      btnImportLunaKeys.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 연동 중...';
+
+      try {
+        const res = await fetch('/api/settings/import-luna-keys', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || '연동 실패');
+
+        showAlert(`기존 루나 키와 인증 파일이 성공적으로 동기화되었습니다!\n(${data.imported.join(', ')})`, 'success');
+        loadEnvSettings();
+      } catch (err) {
+        showAlert('루나 키 연동 실패: ' + err.message, 'error');
+      } finally {
+        btnImportLunaKeys.disabled = false;
+        btnImportLunaKeys.innerHTML = '<i class="fa-solid fa-bolt"></i> 기존 루나 키 자동 가져오기';
+      }
+    });
+  }
+
+  // 유튜브 연결 해제
+  if (btnDisconnectYoutube) {
+    btnDisconnectYoutube.addEventListener('click', async () => {
+      if (!confirm('유튜브 계정 연결을 해제하시겠습니까?')) return;
+      try {
+        await fetch('/api/youtube/auth/disconnect', { method: 'POST' });
+        showAlert('유튜브 계정 연결이 해제되었습니다.', 'success');
+        loadEnvSettings();
+      } catch (err) {
+        showAlert('연결 해제 오류: ' + err.message, 'error');
+      }
+    });
+  }
+
   // 초기 데이터 로드
   loadHistory();
   loadTrends();
+  loadEnvSettings();
 });
+
 
