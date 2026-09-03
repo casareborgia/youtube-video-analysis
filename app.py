@@ -2,6 +2,8 @@ import os
 import re
 import sys
 import json
+import gc
+import urllib.parse
 import asyncio
 import subprocess
 from datetime import datetime
@@ -273,20 +275,62 @@ async def download_ai_report(video_id: str):
 @app.delete("/api/metadata/{video_id}")
 async def delete_metadata(video_id: str):
     """영상 및 연관 파일 완전 삭제"""
+    clean_vid = urllib.parse.unquote(video_id).strip()
+    safe_vid = re.sub(r'[^A-Za-z0-9_-]', '', clean_vid)
+
+    if not clean_vid and not safe_vid:
+        raise HTTPException(status_code=400, detail="유효하지 않은 영상 ID입니다.")
+
+    gc.collect()
+
     deleted_files = []
-    for p in DATA_DIR.glob(f"*{video_id}*"):
+    failed_files = []
+
+    # DATA_DIR 전체 하위 경로(rglob) 대상 검색
+    targets = set()
+    for p in DATA_DIR.rglob("*"):
         if p.is_file():
-            try:
-                p.unlink()
-                deleted_files.append(p.name)
-            except Exception as e:
-                print("[Delete Error]", str(e))
+            name = p.name
+            if (clean_vid and clean_vid in name) or (safe_vid and safe_vid in name):
+                targets.add(p)
 
-    index = load_index()
-    index = [item for item in index if item.get('id') != video_id]
-    save_index(index)
+    for p in targets:
+        try:
+            p.unlink()
+            deleted_files.append(str(p.relative_to(DATA_DIR)))
+        except Exception as e:
+            print(f"[Delete Error] Failed to remove {p}: {e}")
+            failed_files.append(str(p.relative_to(DATA_DIR)))
 
-    return {"status": "success", "deleted_files": deleted_files}
+    # metadata_index.json에서 삭제 대상 항목 확실하게 제거
+    raw_index = []
+    if INDEX_FILE.exists():
+        try:
+            with open(INDEX_FILE, "r", encoding="utf-8") as f:
+                raw_index = json.load(f)
+        except Exception as e:
+            print(f"[Index Load Error] {e}")
+
+    new_index = [
+        item for item in raw_index 
+        if item.get('id') != clean_vid and item.get('id') != safe_vid
+    ]
+    save_index(new_index)
+
+    # 핵심 메타데이터 파일 삭제 실패 시 500 에러 처리
+    meta_file1 = DATA_DIR / f"{clean_vid}_metadata.json"
+    meta_file2 = DATA_DIR / f"{safe_vid}_metadata.json"
+    if meta_file1.exists() or meta_file2.exists():
+        raise HTTPException(
+            status_code=500,
+            detail=f"영상 데이터 파일 삭제에 실패했습니다. (오류 파일: {', '.join(failed_files)})"
+        )
+
+    return {
+        "status": "success",
+        "deleted_files": deleted_files,
+        "failed_files": failed_files
+    }
 
 # ==========================================
 # AI 프롬프트 스튜디오 API

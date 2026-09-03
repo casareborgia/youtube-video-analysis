@@ -429,15 +429,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const delBtn = e.target.closest('.btn-delete-item');
     if (delBtn) {
       const vid = delBtn.dataset.id;
+      if (!vid) return;
       if (confirm(`영상(${vid}) 데이터와 관련 파일을 완전히 삭제하시겠습니까?`)) {
         try {
-          const res = await fetch(`/api/metadata/${vid}`, { method: 'DELETE' });
-          if (res.ok) {
+          const res = await fetch(`/api/metadata/${encodeURIComponent(vid)}`, { method: 'DELETE' });
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.status === 'success') {
             showAlert('영상이 성공적으로 삭제되었습니다.', 'success');
+            if (typeof detailModal !== 'undefined' && detailModal.style.display !== 'none') {
+              detailModal.style.display = 'none';
+            }
             loadHistory();
+          } else {
+            showAlert('삭제 실패: ' + (data.detail || data.message || res.statusText || '서버 오류가 발생했습니다.'), 'error');
           }
         } catch (err) {
-          showAlert('삭제 실패: ' + err.message);
+          showAlert('삭제 실패: ' + err.message, 'error');
         }
       }
     }

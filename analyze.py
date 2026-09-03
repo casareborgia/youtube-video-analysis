@@ -35,7 +35,8 @@ def parse_subtitles_with_timestamps(filepath: str) -> str:
     if not os.path.exists(filepath):
         return ""
 
-    content = open(filepath, encoding="utf-8", errors="ignore").read()
+    with open(filepath, encoding="utf-8", errors="ignore") as f:
+        content = f.read()
 
     cue_blocks = re.findall(
         r'(\d{2}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3}) --> (?:\d{2}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3})[^\n]*\n([\s\S]*?)(?=\n(?:\d{2}:\d{2}:\d{2}\.\d{3}|\d{2}:\d{2}\.\d{3})|\Z)',
@@ -185,7 +186,8 @@ def analyze_video(url: str, progress_callback=None) -> dict:
     comments_file = DATA_DIR / f"{vid}_c.info.json"
     if comments_file.exists():
         try:
-            cs = json.load(open(comments_file, encoding="utf-8")).get("comments") or []
+            with open(comments_file, encoding="utf-8") as f:
+                cs = json.load(f).get("comments") or []
             cs.sort(key=lambda c: c.get("like_count") or 0, reverse=True)
             comments = [{
                 "text": c.get("text", ""),
