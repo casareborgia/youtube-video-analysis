@@ -101,3 +101,7 @@ token.json
 data/threads_config.json
 threads_config.json
 
+# Legacy Archive
+.archive/
+
+
