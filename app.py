@@ -33,6 +33,7 @@ import producer
 import uploader
 import luna_engine
 import threads_client
+import capcut_builder
 
 app = FastAPI(title="TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오")
 
@@ -1073,6 +1074,70 @@ async def publish_threads_series(req: ThreadsPublishRequest):
 async def disconnect_threads():
     """Threads 계정 연동 해제"""
     return threads_client.disconnect()
+
+
+# ==========================================
+# Phase 9: 캡컷(CapCut) 타임라인 완전 자동화
+# ==========================================
+class CapCutExportRequest(BaseModel):
+    plan_id: Optional[str] = None
+    project_name: Optional[str] = None
+    scenes: Optional[List[Dict[str, Any]]] = None
+    transition_type: Optional[str] = "dissolve"
+    aspect_ratio: Optional[str] = "16:9"
+    bgm_path: Optional[str] = None
+
+@app.get("/api/capcut/status")
+async def get_capcut_status():
+    """캡컷 앱 설치 여부 및 프로젝트 저장소 상태 조회"""
+    return capcut_builder.get_capcut_status()
+
+@app.post("/api/capcut/export")
+async def export_to_capcut(req: CapCutExportRequest):
+    """현재 씬 기획안/음성/자막을 캡컷 프로젝트로 즉시 자동 조립하여 내보내기"""
+    try:
+        scenes_data = []
+        name = req.project_name or "TubeInsight_AI_Video"
+
+        if req.plan_id:
+            plan = producer.get_plan(req.plan_id)
+            if not plan:
+                raise HTTPException(status_code=404, detail="지정한 플랜을 찾을 수 없습니다.")
+            name = req.project_name or plan.get("topic") or plan.get("title") or "TubeInsight_Project"
+            for s in plan.get("scenes", []):
+                m_path = s.get("video_file") or s.get("image_file") or s.get("media_file") or ""
+                a_path = s.get("audio_file") or ""
+                sub_txt = s.get("narration") or s.get("subtitle") or s.get("text") or ""
+                scenes_data.append({
+                    "scene_idx": s.get("scene_idx", 1),
+                    "media_file": m_path,
+                    "audio_file": a_path,
+                    "subtitle": sub_txt
+                })
+        elif req.scenes:
+            scenes_data = req.scenes
+
+        if not scenes_data:
+            raise HTTPException(status_code=400, detail="내보낼 씬 데이터가 없습니다.")
+
+        res = capcut_builder.create_capcut_project(
+            project_name=name,
+            scenes=scenes_data,
+            transition_type=req.transition_type or "dissolve",
+            aspect_ratio=req.aspect_ratio or "16:9",
+            bgm_path=req.bgm_path
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"캡컷 프로젝트 생성 실패: {e}")
+
+@app.post("/api/capcut/open")
+async def open_capcut():
+    """macOS 캡컷 앱 실행"""
+    try:
+        return capcut_builder.open_in_capcut()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"캡컷 실행 실패: {e}")
 
 
 # ==========================================

@@ -2669,12 +2669,128 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ==============================================================
+  // 20. [Phase 10] 캡컷(CapCut) 타임라인 완전 자동 조립
+  // ==============================================================
+  const capcutAppBadge = document.getElementById('capcutAppBadge');
+  const capcutTransitionSelect = document.getElementById('capcutTransitionSelect');
+  const capcutRatioSelect = document.getElementById('capcutRatioSelect');
+  const btnExportToCapCut = document.getElementById('btnExportToCapCut');
+  const btnLaunchCapCutApp = document.getElementById('btnLaunchCapCutApp');
+  const capcutExportResultBox = document.getElementById('capcutExportResultBox');
+
+  async function loadCapcutStatus() {
+    try {
+      const res = await fetch('/api/capcut/status');
+      if (!res.ok) return;
+      const data = await res.json();
+
+      if (capcutAppBadge) {
+        if (data.app_installed) {
+          capcutAppBadge.className = 'badge badge-success';
+          capcutAppBadge.innerHTML = '<i class="fa-solid fa-check"></i> CapCut 설치됨';
+        } else {
+          capcutAppBadge.className = 'badge badge-subtle';
+          capcutAppBadge.innerHTML = 'CapCut 미설치';
+        }
+      }
+    } catch (err) {
+      console.warn('CapCut 상태 조회 실패:', err);
+    }
+  }
+
+  // 캡컷 프로젝트 자동 조립 실행
+  if (btnExportToCapCut) {
+    btnExportToCapCut.addEventListener('click', async () => {
+      const planId = producerPlanSelect ? producerPlanSelect.value : '';
+      if (!planId) {
+        showAlert('먼저 상단에서 캡컷으로 내보낼 [영상 기획서]를 선택해주세요.', 'error');
+        return;
+      }
+
+      btnExportToCapCut.disabled = true;
+      btnExportToCapCut.querySelector('.btn-text').style.display = 'none';
+      btnExportToCapCut.querySelector('.spinner').style.display = 'inline-block';
+      if (capcutExportResultBox) capcutExportResultBox.style.display = 'none';
+
+      const trans = capcutTransitionSelect ? capcutTransitionSelect.value : 'dissolve';
+      const ratio = capcutRatioSelect ? capcutRatioSelect.value : '16:9';
+
+      try {
+        const res = await fetch('/api/capcut/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan_id: planId,
+            transition_type: trans,
+            aspect_ratio: ratio
+          })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || '캡컷 프로젝트 생성 실패');
+        }
+
+        const data = await res.json();
+        showAlert(`🎉 캡컷 프로젝트 '${data.project_name}' 생성이 완료되었습니다!`, 'success');
+
+        if (capcutExportResultBox) {
+          capcutExportResultBox.style.display = 'block';
+          capcutExportResultBox.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <strong style="color: #38bdf8;"><i class="fa-solid fa-circle-check"></i> 캡컷 타임라인 조립 완료!</strong>
+                <div style="color: var(--text-secondary); margin-top: 2px;">
+                  • <strong>${data.total_scenes}개 씬</strong> 클립 + 대사 나레이션 싱크<br>
+                  • <strong>전환 이펙트</strong>: ${data.transition_applied} (${data.total_duration_seconds}초 영상)
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm btn-primary btn-open-capcut-now" style="background: #38bdf8; border: none; color: #000; font-weight: 700;">
+                <i class="fa-solid fa-play"></i> CapCut 지금 열기
+              </button>
+            </div>
+          `;
+
+          capcutExportResultBox.querySelector('.btn-open-capcut-now')?.addEventListener('click', async () => {
+            try {
+              await fetch('/api/capcut/open', { method: 'POST' });
+              showAlert('CapCut 앱을 실행했습니다.', 'success');
+            } catch (err) {
+              showAlert('CapCut 실행 실패: ' + err.message, 'error');
+            }
+          });
+        }
+      } catch (err) {
+        showAlert('캡컷 조립 실패: ' + err.message, 'error');
+      } finally {
+        btnExportToCapCut.disabled = false;
+        btnExportToCapCut.querySelector('.btn-text').style.display = 'inline-block';
+        btnExportToCapCut.querySelector('.spinner').style.display = 'none';
+      }
+    });
+  }
+
+  // 캡컷 앱 열기 버튼
+  if (btnLaunchCapCutApp) {
+    btnLaunchCapCutApp.addEventListener('click', async () => {
+      try {
+        await fetch('/api/capcut/open', { method: 'POST' });
+        showAlert('CapCut 앱을 실행했습니다.', 'success');
+      } catch (err) {
+        showAlert('CapCut 실행 오류: ' + err.message, 'error');
+      }
+    });
+  }
+
   // 초기 데이터 로드
   loadHistory();
   loadTrends();
   loadEnvSettings();
   loadThreadsStatus();
+  loadCapcutStatus();
 });
+
 
 
 

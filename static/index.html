@@ -776,6 +776,51 @@
                 <span class="btn-text"><i class="fa-solid fa-play"></i> 🎬 영상 합성 렌더링 시작</span>
                 <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 렌더링 중...</span>
               </button>
+
+              <!-- 캡컷(CapCut) 타임라인 완전 자동 조립 섹션 -->
+              <div style="margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--border-color);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <div style="display: flex; align-items: center; gap: 6px;">
+                    <i class="fa-solid fa-scissors" style="color: #38bdf8;"></i>
+                    <strong style="font-size: 0.9rem; color: #fff;">캡컷(CapCut) 타임라인 자동 조립</strong>
+                  </div>
+                  <span id="capcutAppBadge" class="badge badge-subtle" style="font-size: 10px;">CapCut 확인 중...</span>
+                </div>
+
+                <div class="control-row" style="margin-bottom: 8px;">
+                  <div class="control-group half">
+                    <label for="capcutTransitionSelect" style="font-size: 0.75rem;"><i class="fa-solid fa-wand-magic-sparkles"></i> 컷 전환 이펙트</label>
+                    <select id="capcutTransitionSelect" class="form-select" style="font-size: 0.8rem; padding: 6px 10px;">
+                      <option value="dissolve" selected>디졸브 (자연스러운 전환)</option>
+                      <option value="zoom_in">줌 인 (빨려 들어가는 효과)</option>
+                      <option value="white_flash">화이트 플래시 (반전/임팩트)</option>
+                      <option value="fade_black">페이드 블랙 (암전)</option>
+                      <option value="glitch">글리치 (테크/왜곡)</option>
+                      <option value="none">전환 없음 (단순 컷)</option>
+                    </select>
+                  </div>
+                  <div class="control-group half">
+                    <label for="capcutRatioSelect" style="font-size: 0.75rem;"><i class="fa-solid fa-mobile-screen"></i> 화면 비율</label>
+                    <select id="capcutRatioSelect" class="form-select" style="font-size: 0.8rem; padding: 6px 10px;">
+                      <option value="16:9" selected>16:9 와이드 (일반 유튜브)</option>
+                      <option value="9:16">9:16 세로형 (유튜브 쇼츠)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" id="btnExportToCapCut" class="btn btn-block" style="background: linear-gradient(135deg, #0284c7, #06b6d4); border: none; color: #fff; font-weight: 600;">
+                    <span class="btn-text"><i class="fa-solid fa-file-export"></i> 🎬 캡컷(CapCut) 프로젝트로 자동 조립</span>
+                    <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 조립 중...</span>
+                  </button>
+                  <button type="button" id="btnLaunchCapCutApp" class="btn btn-outline" style="white-space: nowrap; border-color: #38bdf8; color: #38bdf8;" title="Mac 캡컷 앱 즉시 실행">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> 캡컷 열기
+                  </button>
+                </div>
+
+                <div id="capcutExportResultBox" style="display: none; margin-top: 10px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 10px; font-size: 0.8rem;">
+                </div>
+              </div>
             </form>
 
             <!-- 렌더링 진행률 표시 바 -->
