@@ -603,10 +603,18 @@ async def analyze_trends(req: TrendAnalyzeRequest):
 # ==========================================
 class ChannelGenRequest(BaseModel):
     topic: str
+    lang: str = "ko"
+    audio_lang: Optional[str] = None
+    audience: Optional[str] = ""
+    tone: Optional[str] = ""
+    persona_type: Optional[str] = "character"
     concept: Optional[str] = ""
-    target_audience: Optional[str] = ""
-    language: Optional[str] = "ko"
-    category_id: Optional[int] = 28
+    category_id: Optional[int] = 27
+
+class ChannelBrandingApplyRequest(BaseModel):
+    description: Optional[str] = None
+    keywords: Optional[List[str]] = None
+    default_language: Optional[str] = "ko"
 
 @app.get("/api/channel/check-handle")
 async def check_handle(handle: str = Query(...)):
@@ -616,18 +624,32 @@ async def check_handle(handle: str = Query(...)):
 
 @app.post("/api/channel/generate")
 async def generate_channel(req: ChannelGenRequest):
-    """8대 채널 세팅 AI 기획 자동 생성"""
+    """8대 채널 세팅 AI 기획 자동 생성 (명세서 8대 규격 준수)"""
     try:
-        plan = channel_builder.generate_channel_settings(
+        plan = channel_builder.generate_channel_setup(
             topic=req.topic,
-            concept=req.concept or "",
-            target_audience=req.target_audience or "",
-            category_id=req.category_id or 28,
-            language=req.language or "ko"
+            lang=req.lang or "ko",
+            audience=req.audience or req.concept or "",
+            tone=req.tone or "",
+            persona_type=req.persona_type or "character",
+            audio_lang=req.audio_lang or req.lang or "ko"
         )
         return plan
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"채널 기획 실패: {e}")
+
+@app.post("/api/channel/apply-branding")
+async def apply_channel_branding(req: ChannelBrandingApplyRequest):
+    """YouTube Data API channels.update 를 통한 채널 설명란 및 키워드 원클릭 자동 등록"""
+    try:
+        res = uploader.update_channel_branding(
+            description=req.description,
+            keywords=req.keywords,
+            default_language=req.default_language or "ko"
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"채널 브랜딩 등록 실패: {e}")
 
 @app.get("/api/channel/my-status")
 async def get_channel_diagnostics():

@@ -166,10 +166,17 @@ def generate_channel_setup(topic, lang="ko", audience=None, tone=None, persona_t
     topic = (topic or "").strip()
     if not topic:
         raise ValueError("채널 주제(topic)를 입력해주세요.")
-    lang = (lang or "ko").strip().lower()
+    
+    # BCP-47 언어 코드 필수 검증 (명세: 기본값을 두지 않는다)
+    lang = (lang or "").strip().lower()
+    if not lang:
+        raise ValueError("언어 코드(lang, BCP-47 예: ko, en, ja, es)를 필수로 선택해주세요.")
+    if not re.match(r"^[a-z]{2}(-[a-z]{2,4})?$", lang):
+        raise ValueError(f"유효하지 않은 BCP-47 언어 코드 형식입니다: '{lang}'. (예: ko, en, ja, es, zh)")
+    
     audio_lang = (audio_lang or lang).strip().lower()
 
-    step(15, f"'{topic}' 채널 브랜딩 및 8대 세팅 생성 중 (로컬 AI)...")
+    step(15, f"'{topic}' ({lang}) 채널 브랜딩 및 8대 세팅 생성 중 (로컬 AI)...")
     prompt = _build_channel_prompt(topic, lang, audience, tone, persona_type, audio_lang)
     
     messages = [
@@ -213,10 +220,12 @@ def generate_channel_setup(topic, lang="ko", audience=None, tone=None, persona_t
             "url": f"https://www.youtube.com/@{h}"
         })
 
-    # 만약 사용 가능한 핸들이 하나도 없다면 변형 핸들 추가 생성
+    # 만약 사용 가능한 핸들이 하나도 없다면 변형 핸들 추가 생성 (비영어권 안전 변환)
     if not any(item["available"] for item in checked_handles):
-        base_h = re.sub(r"[^a-z0-9]", "", cleaned["channel_name"].lower())[:10] or "channel"
-        fallbacks = [f"{base_h}-official", f"{base_h}-tv", f"{base_h}-lab", f"{base_h}2026"]
+        base_h = re.sub(r"[^a-z0-9]", "", cleaned["channel_name"].lower())[:10]
+        if not base_h or len(base_h) < 3:
+            base_h = "tube" + str(int(time.time()) % 1000)
+        fallbacks = [f"{base_h}-official", f"{base_h}-tv", f"{base_h}-lab", f"{base_h}2026", f"the-{base_h}"]
         for fb in fallbacks:
             avail, reason = check_handle_availability(fb)
             checked_handles.append({
@@ -232,7 +241,7 @@ def generate_channel_setup(topic, lang="ko", audience=None, tone=None, persona_t
     cleaned["handle_candidates"] = checked_handles
     cleaned["channel_description"] = cleaned.get("description", "")
     cleaned["channel_keywords"] = cleaned.get("keywords", [])
-    cleaned["channel_language"] = cleaned.get("lang", "ko")
+    cleaned["channel_language"] = cleaned.get("lang", lang)
 
     # 채널 ID 생성 및 저장
     channel_id = f"channel_{int(time.time())}_{re.sub(r'[^a-zA-Z0-9가-힣]', '_', topic)[:20]}"
@@ -290,9 +299,15 @@ def validate_and_clean_channel_data(data, topic, lang, audio_lang):
             cleaned_kws.append(k_str)
             total_len += len(k_str) + 2
 
-    # 5. avatar_prompt & banner_prompt
-    avatar_prompt = str(data.get("avatar_prompt") or f"A minimalist modern iconic avatar for {topic}, centered subject, vibrant colors, solid background, high resolution, 8k, no text").strip()
-    banner_prompt = str(data.get("banner_prompt") or f"YouTube channel banner for {topic}, all key elements centered within horizontal middle strip, clean background on left and right, cinematic lighting, 8k, ultra-detailed, no text").strip()
+    # 키워드 포맷팅: 공백 있는 키워드는 큰따옴표 감싸기 (YouTube Data API 표준)
+    formatted_kws = [f'"{k}"' if ' ' in k and not (k.startswith('"') and k.endswith('"')) else k for k in cleaned_kws]
+
+    # 5. avatar_prompt & banner_prompt (일반 텍스트 포함형 vs no text 순수 배경/심볼형 분리 제공)
+    avatar_prompt = str(data.get("avatar_prompt") or f"A minimalist modern iconic avatar for {topic}, centered subject, vibrant colors, solid background, high resolution, 8k").strip()
+    avatar_prompt_no_text = re.sub(r"(?i)with\s+text[^,.]*", "", avatar_prompt).strip(" ,.") + ", absolutely no text, no letters, no typography, clean minimal graphic symbol, 8k"
+
+    banner_prompt = str(data.get("banner_prompt") or f"YouTube channel banner for {topic}, all key elements centered within horizontal middle strip, clean background on left and right, cinematic lighting, 8k, ultra-detailed").strip()
+    banner_prompt_no_text = re.sub(r"(?i)with\s+text[^,.]*", "", banner_prompt).strip(" ,.") + ", absolutely no text, no words, blank graphic background banner, safe zone composition, 8k"
 
     # 6. upload_defaults
     ud = data.get("upload_defaults") or {}
@@ -330,14 +345,14 @@ def validate_and_clean_channel_data(data, topic, lang, audio_lang):
 
     # 7. setup_steps
     steps = data.get("setup_steps") or [
-        "1. 구글 로그인 → 유튜브 스튜디오 → 채널 만들기",
-        "2. 채널 이름 및 확정된 사용 가능 핸들 등록",
-        "3. AI 생성 프로필 이미지 업로드 (800x800)",
-        "4. AI 생성 배너 이미지 업로드 (2048x1152, 중앙 안전영역 확인)",
-        "5. 설정 → 채널 → 기능 사용 자격에서 전화번호 인증",
+        "1. 구글 로그인 → YouTube → 프로필 → 채널 전환 → 모든 채널 보기 → 채널 만들기",
+        "2. 이름과 사용 가능한 핸들 등록 (available: true 확인)",
+        "3. AI 생성 프로필 이미지 업로드 (800x800, 4MB 이하)",
+        "4. AI 생성 배너 이미지 업로드 (2048x1152, 모바일 중앙 안전영역 1235x338 확인)",
+        "5. 유튜브 스튜디오 설정 → 채널 → 기능 사용 자격에서 전화번호 인증 (15분 초과 영상 & 커스텀 썸네일 해금)",
         "6. 설정 → 채널 → 기본 정보에서 거주 국가 및 채널 키워드 등록",
         "7. 설정 → 업로드 기본설정에서 제목/설명란/기본 태그 등록",
-        "8. (선택) 고급 기능 신분증 인증 완료"
+        "8. (선택) 고급 기능 신분증 인증 완료 (승인 1~2일)"
     ]
 
     return {
@@ -348,8 +363,11 @@ def validate_and_clean_channel_data(data, topic, lang, audio_lang):
         "raw_handles": raw_handles,
         "description": desc,
         "keywords": cleaned_kws,
+        "keywords_formatted": formatted_kws,
         "avatar_prompt": avatar_prompt,
+        "avatar_prompt_no_text": avatar_prompt_no_text,
         "banner_prompt": banner_prompt,
+        "banner_prompt_no_text": banner_prompt_no_text,
         "upload_defaults": upload_defaults,
         "setup_steps": steps
     }
@@ -621,4 +639,10 @@ def get_my_channel_diagnostics() -> dict:
         },
         "diagnosis": parsed
     }
+
+
+# 호환성을 위한 별칭 등록
+generate_channel_settings = generate_channel_setup
+list_plans = list_channels
+
 

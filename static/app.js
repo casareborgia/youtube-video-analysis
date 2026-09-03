@@ -1288,22 +1288,38 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==============================================================
   // 14. [Phase 1] 채널 빌더 & 레오의 알고리즘 진단
   // ==============================================================
+  // 14. [Phase 1] 채널 빌더 & 레오의 알고리즘 진단
+  // ==============================================================
   const channelHandleInput = document.getElementById('channelHandleInput');
   const btnCheckHandle = document.getElementById('btnCheckHandle');
   const handleCheckResult = document.getElementById('handleCheckResult');
 
   const channelGenForm = document.getElementById('channelGenForm');
   const channelTopicInput = document.getElementById('channelTopicInput');
-  const channelConceptInput = document.getElementById('channelConceptInput');
+  const channelLangSelect = document.getElementById('channelLangSelect');
+  const channelPersonaSelect = document.getElementById('channelPersonaSelect');
+  const channelToneSelect = document.getElementById('channelToneSelect');
   const channelAudienceInput = document.getElementById('channelAudienceInput');
   const channelCategorySelect = document.getElementById('channelCategorySelect');
+  const channelAudioLangSelect = document.getElementById('channelAudioLangSelect');
   const btnRunChannelGen = document.getElementById('btnRunChannelGen');
+
   const channelGenResultBox = document.getElementById('channelGenResultBox');
-  const resChannelNames = document.getElementById('resChannelNames');
-  const resChannelHandles = document.getElementById('resChannelHandles');
+  const btnApplyChannelBranding = document.getElementById('btnApplyChannelBranding');
+  const resChannelNameText = document.getElementById('resChannelNameText');
+  const btnCopyChannelName = document.getElementById('btnCopyChannelName');
+  const resChannelHandlesList = document.getElementById('resChannelHandlesList');
   const resChannelDesc = document.getElementById('resChannelDesc');
+  const btnCopyChannelDesc = document.getElementById('btnCopyChannelDesc');
+  const resChannelKeywordsList = document.getElementById('resChannelKeywordsList');
+  const btnCopyChannelKeywords = document.getElementById('btnCopyChannelKeywords');
   const btnCopyAvatarPrompt = document.getElementById('btnCopyAvatarPrompt');
+  const btnCopyAvatarPromptNoText = document.getElementById('btnCopyAvatarPromptNoText');
   const btnCopyBannerPrompt = document.getElementById('btnCopyBannerPrompt');
+  const btnCopyBannerPromptNoText = document.getElementById('btnCopyBannerPromptNoText');
+  const resUploadDefaultsCard = document.getElementById('resUploadDefaultsCard');
+  const btnCopyUploadDefaults = document.getElementById('btnCopyUploadDefaults');
+  const resSetupStepsList = document.getElementById('resSetupStepsList');
 
   const btnRefreshChannelDiag = document.getElementById('btnRefreshChannelDiag');
   const diagSubsCount = document.getElementById('diagSubsCount');
@@ -1350,7 +1366,15 @@ document.addEventListener('DOMContentLoaded', () => {
     channelGenForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const topic = (channelTopicInput ? channelTopicInput.value : '').trim();
-      if (!topic) return;
+      const lang = channelLangSelect ? channelLangSelect.value : '';
+      if (!topic) {
+        showAlert('채널 주제를 입력해주세요.', 'error');
+        return;
+      }
+      if (!lang) {
+        showAlert('채널 언어(BCP-47)를 필수로 선택해주세요.', 'error');
+        return;
+      }
 
       btnRunChannelGen.disabled = true;
       btnRunChannelGen.querySelector('.btn-text').style.display = 'none';
@@ -1362,24 +1386,24 @@ document.addEventListener('DOMContentLoaded', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             topic: topic,
-            concept: channelConceptInput ? channelConceptInput.value.trim() : '',
-            target_audience: channelAudienceInput ? channelAudienceInput.value.trim() : '',
-            category_id: channelCategorySelect ? parseInt(channelCategorySelect.value, 10) : 28
+            lang: lang,
+            persona_type: channelPersonaSelect ? channelPersonaSelect.value : 'character',
+            tone: channelToneSelect ? channelToneSelect.value : '',
+            audience: channelAudienceInput ? channelAudienceInput.value.trim() : '',
+            category_id: channelCategorySelect ? parseInt(channelCategorySelect.value, 10) : 27,
+            audio_lang: channelAudioLangSelect ? channelAudioLangSelect.value : ''
           })
         });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || '기획 생성 실패');
+        }
+
         const plan = await res.json();
         currentChannelPlan = plan;
-
-        if (channelGenResultBox) channelGenResultBox.style.display = 'block';
-        if (resChannelNames) {
-          resChannelNames.innerHTML = (plan.channel_names || []).map(n => `<span class="badge badge-accent">${escapeHtml(n)}</span>`).join('');
-        }
-        if (resChannelHandles) {
-          resChannelHandles.innerHTML = (plan.handles || []).map(h => `<span class="badge badge-subtle">${escapeHtml(h)}</span>`).join('');
-        }
-        if (resChannelDesc) resChannelDesc.value = plan.description || '';
-
-        showAlert('8대 채널 세팅 기획서가 생성되었습니다!', 'success');
+        renderChannelSetupResult(plan);
+        showAlert('유튜브 채널 8대 세팅 기획이 완벽하게 생성되었습니다!', 'success');
       } catch (err) {
         showAlert('채널 기획 생성 실패: ' + err.message, 'error');
       } finally {
@@ -1390,22 +1414,176 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  function renderChannelSetupResult(plan) {
+    if (!channelGenResultBox) return;
+    channelGenResultBox.style.display = 'block';
+
+    // ① 채널 이름
+    if (resChannelNameText) resChannelNameText.textContent = plan.channel_name || plan.topic;
+
+    // ② 핸들 후보 목록
+    if (resChannelHandlesList) {
+      const handles = plan.handles || [];
+      resChannelHandlesList.innerHTML = handles.map(h => {
+        const isAvail = h.available;
+        const handleName = h.handle;
+        const url = h.url || `https://www.youtube.com/@${handleName}`;
+        return `
+          <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:6px; padding:6px 10px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge ${isAvail ? 'badge-success' : 'badge-danger'}" style="${isAvail ? '' : 'text-decoration:line-through;'}">
+                <i class="fa-solid ${isAvail ? 'fa-check' : 'fa-xmark'}"></i> @${escapeHtml(handleName)}
+              </span>
+              <span style="font-size:0.75rem; color:${isAvail ? '#34d399' : '#f43f5e'};">${escapeHtml(h.status_text || (isAvail ? '사용 가능' : '선점됨'))}</span>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <a href="${escapeHtml(url)}" target="_blank" class="btn btn-xs btn-outline" title="채널 링크 열기"><i class="fa-brands fa-youtube"></i> 확인</a>
+              <button class="btn btn-xs btn-outline btn-copy-handle" data-handle="@${escapeHtml(handleName)}"><i class="fa-solid fa-copy"></i> 복사</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      resChannelHandlesList.querySelectorAll('.btn-copy-handle').forEach(b => {
+        b.addEventListener('click', () => {
+          navigator.clipboard.writeText(b.dataset.handle).then(() => showAlert(`${b.dataset.handle} 핸들이 복사되었습니다!`, 'success'));
+        });
+      });
+    }
+
+    // ③ 채널 설명란
+    if (resChannelDesc) resChannelDesc.value = plan.description || '';
+
+    // ④ 채널 키워드
+    if (resChannelKeywordsList) {
+      const kws = plan.keywords || [];
+      resChannelKeywordsList.innerHTML = kws.map(k => `<span class="badge badge-accent">${escapeHtml(k)}</span>`).join('');
+    }
+
+    // ⑦ 업로드 기본값
+    if (resUploadDefaultsCard) {
+      const ud = plan.upload_defaults || {};
+      resUploadDefaultsCard.innerHTML = `
+        <div><strong>제목 템플릿:</strong> <code style="color:#38bdf8;">${escapeHtml(ud.title_template || '')}</code></div>
+        <div style="margin-top:4px;"><strong>카테고리 ID:</strong> ${ud.category_id || 27} | <strong>공개 상태:</strong> ${ud.privacy_status || 'private'} | <strong>아동용:</strong> ${ud.made_for_kids ? '예' : '아니오'}</div>
+        <div style="margin-top:4px;"><strong>기본 언어:</strong> ${ud.default_language || plan.lang} (음성: ${ud.default_audio_language || plan.audio_lang})</div>
+        <div style="margin-top:4px;"><strong>기본 태그:</strong> ${(ud.tags || []).map(t => `<span class="badge badge-subtle" style="font-size:10px;">${escapeHtml(t)}</span>`).join(' ')}</div>
+      `;
+    }
+
+    // ⑧ 개설 8단계 체크리스트
+    if (resSetupStepsList) {
+      const steps = plan.setup_steps || [];
+      resSetupStepsList.innerHTML = steps.map((s, idx) => `
+        <label class="checkbox-label" style="background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; padding:6px 10px; font-size:0.8rem;">
+          <input type="checkbox" id="chkStep_${idx}">
+          <span class="custom-checkbox"></span>
+          <span>${escapeHtml(s)}</span>
+        </label>
+      `).join('');
+    }
+  }
+
+  // 복사 버튼들 바인딩
+  if (btnCopyChannelName) {
+    btnCopyChannelName.addEventListener('click', () => {
+      const text = resChannelNameText?.textContent || '';
+      if (text) navigator.clipboard.writeText(text).then(() => showAlert('채널 이름이 복사되었습니다!', 'success'));
+    });
+  }
+
+  if (btnCopyChannelDesc) {
+    btnCopyChannelDesc.addEventListener('click', () => {
+      const text = resChannelDesc?.value || '';
+      if (text) navigator.clipboard.writeText(text).then(() => showAlert('채널 설명이 복사되었습니다!', 'success'));
+    });
+  }
+
+  if (btnCopyChannelKeywords) {
+    btnCopyChannelKeywords.addEventListener('click', () => {
+      if (currentChannelPlan && currentChannelPlan.keywords_formatted) {
+        const text = currentChannelPlan.keywords_formatted.join(', ');
+        navigator.clipboard.writeText(text).then(() => showAlert('채널 키워드가 복사되었습니다! (유튜브 스튜디오 붙여넣기 가능)', 'success'));
+      }
+    });
+  }
+
   if (btnCopyAvatarPrompt) {
     btnCopyAvatarPrompt.addEventListener('click', () => {
-      if (currentChannelPlan && currentChannelPlan.avatar_prompt) {
-        navigator.clipboard.writeText(currentChannelPlan.avatar_prompt).then(() => {
-          showAlert('프로필 아바타 프롬프트가 복사되었습니다!', 'success');
-        });
+      if (currentChannelPlan?.avatar_prompt) {
+        navigator.clipboard.writeText(currentChannelPlan.avatar_prompt).then(() => showAlert('프로필 아바타 기본 프롬프트가 복사되었습니다!', 'success'));
+      }
+    });
+  }
+
+  if (btnCopyAvatarPromptNoText) {
+    btnCopyAvatarPromptNoText.addEventListener('click', () => {
+      if (currentChannelPlan?.avatar_prompt_no_text) {
+        navigator.clipboard.writeText(currentChannelPlan.avatar_prompt_no_text).then(() => showAlert('프로필 아바타 (no text 순수 심볼) 프롬프트가 복사되었습니다!', 'success'));
       }
     });
   }
 
   if (btnCopyBannerPrompt) {
     btnCopyBannerPrompt.addEventListener('click', () => {
-      if (currentChannelPlan && currentChannelPlan.banner_prompt) {
-        navigator.clipboard.writeText(currentChannelPlan.banner_prompt).then(() => {
-          showAlert('채널 배너 프롬프트가 복사되었습니다!', 'success');
+      if (currentChannelPlan?.banner_prompt) {
+        navigator.clipboard.writeText(currentChannelPlan.banner_prompt).then(() => showAlert('채널 배너 기본 프롬프트가 복사되었습니다!', 'success'));
+      }
+    });
+  }
+
+  if (btnCopyBannerPromptNoText) {
+    btnCopyBannerPromptNoText.addEventListener('click', () => {
+      if (currentChannelPlan?.banner_prompt_no_text) {
+        navigator.clipboard.writeText(currentChannelPlan.banner_prompt_no_text).then(() => showAlert('채널 배너 (no text 순수 배경) 프롬프트가 복사되었습니다!', 'success'));
+      }
+    });
+  }
+
+  if (btnCopyUploadDefaults) {
+    btnCopyUploadDefaults.addEventListener('click', () => {
+      const descTmpl = currentChannelPlan?.upload_defaults?.description_template || currentChannelPlan?.description || '';
+      if (descTmpl) navigator.clipboard.writeText(descTmpl).then(() => showAlert('업로드 설명란 템플릿이 복사되었습니다!', 'success'));
+    });
+  }
+
+  // 유튜브 채널에 설명 & 키워드 원클릭 자동 등록 API 통신
+  if (btnApplyChannelBranding) {
+    btnApplyChannelBranding.addEventListener('click', async () => {
+      if (!currentChannelPlan) {
+        showAlert('먼저 채널 세팅을 생성해주세요.', 'error');
+        return;
+      }
+
+      if (!confirm(`'${currentChannelPlan.channel_name}'의 설명란과 키워드를 현재 연결된 유튜브 채널에 즉시 등록하시겠습니까?\n(API 할당량 50포인트 소모)`)) {
+        return;
+      }
+
+      btnApplyChannelBranding.disabled = true;
+      btnApplyChannelBranding.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 유튜브 채널에 등록 중...';
+
+      try {
+        const res = await fetch('/api/channel/apply-branding', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            description: currentChannelPlan.description,
+            keywords: currentChannelPlan.keywords,
+            default_language: currentChannelPlan.lang || 'ko'
+          })
         });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.detail || '채널 등록 실패');
+        }
+
+        showAlert('유튜브 채널의 설명란 및 키워드가 성공적으로 자동 등록되었습니다!', 'success');
+      } catch (err) {
+        showAlert('채널 등록 실패: ' + err.message + '\n(유튜브 계정 연결 상태를 확인해주세요)', 'error');
+      } finally {
+        btnApplyChannelBranding.disabled = false;
+        btnApplyChannelBranding.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> 내 채널에 설명·키워드 원클릭 자동 등록';
       }
     });
   }

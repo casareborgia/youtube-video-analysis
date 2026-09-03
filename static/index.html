@@ -495,56 +495,165 @@
             <!-- 채널 기획 폼 -->
             <form id="channelGenForm">
               <div class="control-group">
-                <label for="channelTopicInput"><i class="fa-solid fa-lightbulb"></i> 채널 주제 / 틈새시장 (Niche) <span class="text-danger">*</span></label>
-                <input type="text" id="channelTopicInput" class="form-control" placeholder="예: 로컬 AI 1인 미디어 제작 / 지식 다큐멘터리" required>
+                <label for="channelTopicInput"><i class="fa-solid fa-lightbulb"></i> 채널 주제 한 줄 (Topic) <span class="text-danger">*</span></label>
+                <input type="text" id="channelTopicInput" class="form-control" placeholder="예: 50대 은퇴자를 위한 AI 활용법 / 로컬 AI 1인 미디어" required>
               </div>
-              <div class="control-group">
-                <label for="channelConceptInput"><i class="fa-solid fa-compass"></i> 브랜딩 컨셉 & 페르소나</label>
-                <input type="text" id="channelConceptInput" class="form-control" placeholder="예: 차분하고 신뢰감 넘치는 미래 기술 스토리텔러">
-              </div>
+
               <div class="control-row">
                 <div class="control-group half">
-                  <label for="channelAudienceInput"><i class="fa-solid fa-users"></i> 타겟 독자</label>
-                  <input type="text" id="channelAudienceInput" class="form-control" placeholder="예: 30~50대 직장인, 크리에이터">
+                  <label for="channelLangSelect"><i class="fa-solid fa-language"></i> 채널 언어 (lang, BCP-47) <span class="text-danger">*</span></label>
+                  <select id="channelLangSelect" class="form-select" required>
+                    <option value="" disabled selected>언어를 선택하세요 (필수)...</option>
+                    <option value="ko">한국어 (ko)</option>
+                    <option value="en">English (en)</option>
+                    <option value="ja">日本語 (ja)</option>
+                    <option value="es">Español (es)</option>
+                    <option value="zh">中文 (zh)</option>
+                    <option value="fr">Français (fr)</option>
+                    <option value="de">Deutsch (de)</option>
+                  </select>
                 </div>
                 <div class="control-group half">
-                  <label for="channelCategorySelect"><i class="fa-solid fa-list"></i> 카테고리</label>
-                  <select id="channelCategorySelect" class="form-select">
-                    <option value="28" selected>과학기술 (28)</option>
-                    <option value="24">엔터테인먼트 (24)</option>
-                    <option value="27">교육 (27)</option>
-                    <option value="20">게임 (20)</option>
-                    <option value="25">뉴스/정치 (25)</option>
+                  <label for="channelPersonaSelect"><i class="fa-solid fa-masks-theater"></i> 페르소나 유형 (persona_type)</label>
+                  <select id="channelPersonaSelect" class="form-select">
+                    <option value="character" selected>캐릭터 (친근한 마스코트/3D)</option>
+                    <option value="person">실사 (전문 크리에이터/인물)</option>
+                    <option value="symbol">심볼 (미니멀 로고/기하학 그래픽)</option>
                   </select>
                 </div>
               </div>
+
+              <div class="control-row">
+                <div class="control-group half">
+                  <label for="channelToneSelect"><i class="fa-solid fa-comment-dots"></i> 말투와 분위기 (Tone)</label>
+                  <select id="channelToneSelect" class="form-select">
+                    <option value="차분하고 신뢰감 있는 전문가 톤" selected>차분하고 신뢰감 있는 전문가</option>
+                    <option value="유쾌하고 에너지 넘치는 친근한 톤">유쾌하고 에너지 넘치는 톤</option>
+                    <option value="몰입감 넘치고 지적인 다큐멘터리 톤">몰입감 넘치는 지적 다큐</option>
+                    <option value="쉽고 따뜻한 초보자 맞춤 멘토 톤">쉽고 따뜻한 초보자 멘토</option>
+                  </select>
+                </div>
+                <div class="control-group half">
+                  <label for="channelAudienceInput"><i class="fa-solid fa-users"></i> 타겟 독자 (Audience)</label>
+                  <input type="text" id="channelAudienceInput" class="form-control" placeholder="비우면 주제에서 자동 추론">
+                </div>
+              </div>
+
+              <div class="control-row">
+                <div class="control-group half">
+                  <label for="channelCategorySelect"><i class="fa-solid fa-list"></i> 카테고리 (Category)</label>
+                  <select id="channelCategorySelect" class="form-select">
+                    <option value="27" selected>교육 (27)</option>
+                    <option value="28">과학기술 (28)</option>
+                    <option value="22">인물/블로그 (22)</option>
+                    <option value="26">하우투/스타일 (26)</option>
+                    <option value="24">엔터테인먼트 (24)</option>
+                    <option value="20">게임 (20)</option>
+                  </select>
+                </div>
+                <div class="control-group half">
+                  <label for="channelAudioLangSelect"><i class="fa-solid fa-microphone-lines"></i> 음성 언어 (audio_lang)</label>
+                  <select id="channelAudioLangSelect" class="form-select">
+                    <option value="" selected>채널 언어와 동일</option>
+                    <option value="ko">한국어 (ko)</option>
+                    <option value="en">English (en)</option>
+                    <option value="ja">日本語 (ja)</option>
+                    <option value="es">Español (es)</option>
+                  </select>
+                </div>
+              </div>
+
               <button type="submit" id="btnRunChannelGen" class="btn btn-primary btn-block" style="margin-top: 14px;">
                 <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 8대 채널 세팅 AI 자동 생성</span>
-                <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 기획서 생성 중...</span>
+                <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 8대 채널 기획서 작성 중...</span>
               </button>
             </form>
 
-            <!-- 채널 기획 결과 표시 -->
+            <!-- 채널 기획 8대 항목 전체 결과 표시 -->
             <div id="channelGenResultBox" style="display: none; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
-              <h4 style="margin: 0 0 12px 0; color: #38bdf8;"><i class="fa-solid fa-clipboard-check"></i> 채널 세팅 기획 결과</h4>
-              <div style="margin-bottom: 12px;">
-                <strong>추천 채널명:</strong>
-                <div id="resChannelNames" class="badge-group" style="margin-top: 4px;"></div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                <h4 style="margin: 0; color: #38bdf8;"><i class="fa-solid fa-clipboard-check"></i> 채널 개설 8대 세팅 완성 결과</h4>
+                <button type="button" id="btnApplyChannelBranding" class="btn btn-sm btn-accent">
+                  <i class="fa-solid fa-cloud-arrow-up"></i> 내 채널에 설명·키워드 원클릭 자동 등록
+                </button>
               </div>
-              <div style="margin-bottom: 12px;">
-                <strong>추천 핸들:</strong>
-                <div id="resChannelHandles" class="badge-group" style="margin-top: 4px;"></div>
-              </div>
-              <div style="margin-bottom: 12px;">
-                <strong>채널 설명란:</strong>
-                <textarea id="resChannelDesc" class="form-control" rows="3" readonly style="margin-top: 4px; font-size: 0.85rem;"></textarea>
-              </div>
-              <div style="margin-bottom: 12px;">
-                <strong>AI 프로필 & 배너 프롬프트:</strong>
-                <div style="display: flex; gap: 8px; margin-top: 4px;">
-                  <button id="btnCopyAvatarPrompt" class="btn btn-xs btn-outline"><i class="fa-solid fa-image"></i> 프로필 아바타(1:1) 프롬프트 복사</button>
-                  <button id="btnCopyBannerPrompt" class="btn btn-xs btn-outline"><i class="fa-solid fa-panorama"></i> 채널 배너(16:9) 프롬프트 복사</button>
+
+              <!-- ① 채널 이름 -->
+              <div style="margin-bottom: 14px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">① 채널 이름 (50자 이내)</span>
+                  <button id="btnCopyChannelName" class="btn btn-xs btn-outline"><i class="fa-solid fa-copy"></i> 복사</button>
                 </div>
+                <h3 id="resChannelNameText" style="margin: 6px 0 0 0; color: #38bdf8; font-size: 1.15rem;"></h3>
+              </div>
+
+              <!-- ② 핸들 후보 목록 -->
+              <div style="margin-bottom: 14px;">
+                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">② 핸들 후보 (실시간 중복 확인 결과)</span>
+                <div id="resChannelHandlesList" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;"></div>
+              </div>
+
+              <!-- ③ 채널 설명란 -->
+              <div style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">③ 채널 설명 (1,000자 이내)</span>
+                  <button id="btnCopyChannelDesc" class="btn btn-xs btn-outline"><i class="fa-solid fa-copy"></i> 복사</button>
+                </div>
+                <textarea id="resChannelDesc" class="form-control" rows="3" readonly style="font-size: 0.85rem;"></textarea>
+              </div>
+
+              <!-- ④ 채널 검색 키워드 -->
+              <div style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">④ 채널 검색 키워드 (8~15개, 500자 이내)</span>
+                  <button id="btnCopyChannelKeywords" class="btn btn-xs btn-outline"><i class="fa-solid fa-copy"></i> 키워드 일괄 복사</button>
+                </div>
+                <div id="resChannelKeywordsList" class="badge-group" style="margin-top: 4px;"></div>
+              </div>
+
+              <!-- ⑤ & ⑥ AI 프로필 & 배너 프롬프트 (일반 vs no text 분리) -->
+              <div style="margin-bottom: 14px;">
+                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">⑤ & ⑥ AI 이미지 생성 프롬프트</span>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px;">
+                  <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.8rem; font-weight: 600; margin-bottom: 4px; color: #a78bfa;">프로필 아바타 (800×800)</div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      <button id="btnCopyAvatarPrompt" class="btn btn-xs btn-outline"><i class="fa-solid fa-image"></i> 기본 프롬프트 복사</button>
+                      <button id="btnCopyAvatarPromptNoText" class="btn btn-xs btn-outline"><i class="fa-solid fa-ban"></i> no text 순수 심볼 복사</button>
+                    </div>
+                  </div>
+                  <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.8rem; font-weight: 600; margin-bottom: 4px; color: #34d399;">채널 배너 (2048×1152, 16:9)</div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      <button id="btnCopyBannerPrompt" class="btn btn-xs btn-outline"><i class="fa-solid fa-panorama"></i> 기본 배너 프롬프트 복사</button>
+                      <button id="btnCopyBannerPromptNoText" class="btn btn-xs btn-outline"><i class="fa-solid fa-ban"></i> no text 배경 배너 복사</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ⑦ 업로드 기본값 카드 -->
+              <div style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">⑦ 업로드 기본값 (Upload Defaults)</span>
+                  <button id="btnCopyUploadDefaults" class="btn btn-xs btn-outline"><i class="fa-solid fa-copy"></i> 설명란 템플릿 복사</button>
+                </div>
+                <div id="resUploadDefaultsCard" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; font-size: 0.8rem; line-height: 1.5;"></div>
+              </div>
+
+              <!-- ⑧ 개설 8단계 체크리스트 -->
+              <div style="margin-bottom: 16px;">
+                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">⑧ 유튜브 스튜디오 실전 개설 8단계 체크리스트</span>
+                <div id="resSetupStepsList" style="margin-top: 6px; display: flex; flex-direction: column; gap: 6px;"></div>
+              </div>
+
+              <!-- 할당량 및 주의사항 안내 배너 -->
+              <div style="padding: 10px 12px; background: rgba(245, 158, 11, 0.08); border-left: 3px solid #f59e0b; border-radius: 6px; font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5;">
+                <i class="fa-solid fa-circle-info" style="color: #f59e0b; margin-right: 4px;"></i>
+                <strong>유튜브 Data API 할당량 & 검증 정책 안내:</strong><br>
+                • 채널 브랜딩 업데이트(channels.update)는 50포인트 소모 (일일 10,000 기준 충분)<br>
+                • 영상 업로드(videos.insert)는 1건당 1,600포인트 소모 (일일 최대 약 6편 가능)<br>
+                • Google OAuth 앱 검증 전에는 업로드된 영상이 '비공개(Private)'로 안전하게 보호됩니다.
               </div>
             </div>
           </div>
