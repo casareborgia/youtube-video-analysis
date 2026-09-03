@@ -151,12 +151,23 @@ def probe_all():
     return {"lmstudio": lms, "ollama": oll}
 
 
-def call_llm(messages, max_tokens: int = 4096, temperature: float = 0.7, max_continues: int = 3) -> str:
+def get_active_backend(force=None):
+    return detect_backend(force=force)
+
+
+def call_llm(
+    messages: list,
+    max_tokens: int = 4096,
+    temperature: float = 0.7,
+    max_continues: int = 2,
+    json_mode: bool = False,
+) -> str:
     """
-    감지된 백엔드의 OpenAI 호환 API(/v1/chat/completions) 또는 Ollama API로 대화를 요청합니다.
-    응답이 길이 제한(finish_reason == "length")으로 끊기면 자동으로 이어서 작성합니다.
+    사용 가능한 로컬 LLM(LM Studio 또는 Ollama)으로 메시지를 전송합니다.
+    - finish_reason == 'length' 시 자동으로 이어쓰기를 수행합니다.
     """
     backend = detect_backend()
+
     if backend is None:
         if _preference != "auto":
             name = "LM Studio" if _preference == "lmstudio" else "Ollama"
@@ -184,6 +195,8 @@ def call_llm(messages, max_tokens: int = 4096, temperature: float = 0.7, max_con
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
 
         # Ollama /v1 호환 엔드포인트 또는 LM Studio /v1/chat/completions
         endpoint_url = backend["base"] + "/v1/chat/completions"
@@ -206,6 +219,8 @@ def call_llm(messages, max_tokens: int = 4096, temperature: float = 0.7, max_con
                         "options": {"num_predict": max_tokens, "temperature": temperature, "num_ctx": 16384},
                         "stream": False,
                     }
+                    if json_mode:
+                        native_payload["format"] = "json"
                     n_req = urllib.request.Request(
                         backend["base"] + "/api/chat",
                         data=json.dumps(native_payload).encode("utf-8"),
@@ -235,3 +250,95 @@ def call_llm(messages, max_tokens: int = 4096, temperature: float = 0.7, max_con
         })
 
     return full_content.strip()
+
+
+def _strip_fences(text: str) -> str:
+    """마크다운 ```json ... ``` 코드블록 태그 제거"""
+    m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
+    return m.group(1) if m else text
+
+
+def _balanced_json_span(text: str) -> str:
+    """첫 { 또는 [ 부터 짝이 맞는 지점까지 잘라냅니다 (앞뒤 불필요한 텍스트 제거)."""
+    start = None
+    for i, ch in enumerate(text):
+        if ch in "{[":
+            start = i
+            break
+    if start is None:
+        return ""
+    stack = []
+    in_str = False
+    esc = False
+    for i in range(start, len(text)):
+        ch = text[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append(ch)
+        elif ch in "}]":
+            if stack:
+                stack.pop()
+            if not stack:
+                return text[start:i + 1]
+    return text[start:]
+
+
+def _repair_json(s: str) -> str:
+    """끝 쉼표·제어문자 제거 후, 잘린 응답이면 열린 문자열/괄호를 올바른 순서로 닫습니다."""
+    s = re.sub(r",\s*([}\]])", r"\1", s)
+    s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", s)
+    stack = []
+    in_str = False
+    esc = False
+    for ch in s:
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch in "{[":
+            stack.append("}" if ch == "{" else "]")
+        elif ch in "}]" and stack:
+            stack.pop()
+    if in_str:
+        s += '"'
+    s = re.sub(r",\s*$", "", s)
+    s = re.sub(r':\s*$', ': null', s)
+    return s + "".join(reversed(stack))
+
+
+def extract_json(text: str):
+    """LLM 응답에서 JSON 객체/배열을 최대한 복원해 반환합니다. 실패 시 None."""
+    if not text:
+        return None
+    candidates = [text.strip(), _strip_fences(text).strip()]
+    span = _balanced_json_span(_strip_fences(text))
+    if span:
+        candidates.append(span)
+    for cand in candidates:
+        for fixer in (lambda s: s, _repair_json):
+            try:
+                return json.loads(fixer(cand))
+            except Exception:
+                continue
+    return None
+
+
+def call_llm_json(messages: list, max_tokens: int = 4096, temperature: float = 0.5, max_continues: int = 2):
+    """JSON 응답을 요구하고 파싱까지 마친 결과를 반환합니다. 파싱 실패 시 (None, raw_text)."""
+    raw = call_llm(messages, max_tokens=max_tokens, temperature=temperature, max_continues=max_continues, json_mode=True)
+    return extract_json(raw), raw

@@ -458,10 +458,61 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==============================================================
   // 11. AI 프롬프트 스튜디오 & 8초 씬 비디오 기획 로직
   // ==============================================================
+  // 5대 통합 탭 네비게이션 & 뷰 스위처
+  // ==============================================================
   const navTabAnalysis = document.getElementById('navTabAnalysis');
+  const navTabChannel = document.getElementById('navTabChannel');
   const navTabPromptStudio = document.getElementById('navTabPromptStudio');
+  const navTabProducer = document.getElementById('navTabProducer');
+  const navTabMarketing = document.getElementById('navTabMarketing');
+
   const viewAnalysis = document.getElementById('viewAnalysis');
+  const viewChannel = document.getElementById('viewChannel');
   const viewPromptStudio = document.getElementById('viewPromptStudio');
+  const viewProducer = document.getElementById('viewProducer');
+  const viewMarketing = document.getElementById('viewMarketing');
+
+  const allNavTabs = [
+    { tab: navTabAnalysis, view: viewAnalysis, id: 'analysis' },
+    { tab: navTabChannel, view: viewChannel, id: 'channel' },
+    { tab: navTabPromptStudio, view: viewPromptStudio, id: 'promptStudio' },
+    { tab: navTabProducer, view: viewProducer, id: 'producer' },
+    { tab: navTabMarketing, view: viewMarketing, id: 'marketing' }
+  ];
+
+  function switchMainView(targetId) {
+    allNavTabs.forEach(item => {
+      if (!item.tab || !item.view) return;
+      if (item.id === targetId) {
+        item.tab.classList.add('active');
+        item.view.style.display = 'block';
+        item.view.classList.add('active');
+      } else {
+        item.tab.classList.remove('active');
+        item.view.style.display = 'none';
+        item.view.classList.remove('active');
+      }
+    });
+
+    if (targetId === 'analysis') {
+      loadTrends();
+    } else if (targetId === 'channel') {
+      loadChannelDiagnostics();
+    } else if (targetId === 'promptStudio') {
+      loadTTSVoices();
+    } else if (targetId === 'producer') {
+      loadProducerPlans();
+      checkYoutubeStatus();
+    } else if (targetId === 'marketing') {
+      loadMarketingHistory();
+    }
+  }
+
+  if (navTabAnalysis) navTabAnalysis.addEventListener('click', () => switchMainView('analysis'));
+  if (navTabChannel) navTabChannel.addEventListener('click', () => switchMainView('channel'));
+  if (navTabPromptStudio) navTabPromptStudio.addEventListener('click', () => switchMainView('promptStudio'));
+  if (navTabProducer) navTabProducer.addEventListener('click', () => switchMainView('producer'));
+  if (navTabMarketing) navTabMarketing.addEventListener('click', () => switchMainView('marketing'));
 
   const promptTopicInput = document.getElementById('promptTopicInput');
   const promptTargetModel = document.getElementById('promptTargetModel');
@@ -497,24 +548,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentGeneratedBatch = null;
   let availableVoices = [];
-
-  function switchMainView(viewName) {
-    if (viewName === 'promptStudio') {
-      navTabPromptStudio.classList.add('active');
-      navTabAnalysis.classList.remove('active');
-      viewPromptStudio.style.display = 'block';
-      viewAnalysis.style.display = 'none';
-      loadTTSVoices();
-    } else {
-      navTabAnalysis.classList.add('active');
-      navTabPromptStudio.classList.remove('active');
-      viewAnalysis.style.display = 'block';
-      viewPromptStudio.style.display = 'none';
-    }
-  }
-
-  navTabAnalysis.addEventListener('click', () => switchMainView('analysis'));
-  navTabPromptStudio.addEventListener('click', () => switchMainView('promptStudio'));
 
   document.querySelectorAll('.btn-topic-chip').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -655,6 +688,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       currentGeneratedBatch = await res.json();
       renderThumbnailRedline(currentGeneratedBatch);
+      renderEngagementCard(currentGeneratedBatch);
       renderStudioScenes(currentGeneratedBatch);
     } catch (err) {
       alert('기획 생성 오류: ' + err.message);
@@ -1069,5 +1103,729 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // ==============================================================
+  // 12. 에이전트 레오의 인게이지먼트 해킹 & 추천 고정 댓글
+  // ==============================================================
+  const engagementSection = document.getElementById('engagementSection');
+  const engagementQuestionText = document.getElementById('engagementQuestionText');
+  const pinnedCommentText = document.getElementById('pinnedCommentText');
+  const btnCopyEngagementQ = document.getElementById('btnCopyEngagementQ');
+  const btnCopyPinnedComment = document.getElementById('btnCopyPinnedComment');
+
+  function renderEngagementCard(batchData) {
+    if (!engagementSection) return;
+    const q = batchData?.engagement_question;
+    const c = batchData?.pinned_comment;
+    if (q || c) {
+      engagementSection.style.display = 'block';
+      if (engagementQuestionText) engagementQuestionText.textContent = q || '등록된 오픈 퀘스천이 없습니다.';
+      if (pinnedCommentText) pinnedCommentText.textContent = c || '등록된 추천 고정 댓글이 없습니다.';
+    } else {
+      engagementSection.style.display = 'none';
+    }
+  }
+
+  if (btnCopyEngagementQ) {
+    btnCopyEngagementQ.addEventListener('click', () => {
+      const text = engagementQuestionText?.textContent || '';
+      if (text) {
+        navigator.clipboard.writeText(text).then(() => {
+          showAlert('도발적 오픈 퀘스천이 복사되었습니다!', 'success');
+        });
+      }
+    });
+  }
+
+  if (btnCopyPinnedComment) {
+    btnCopyPinnedComment.addEventListener('click', () => {
+      const text = pinnedCommentText?.textContent || '';
+      if (text) {
+        navigator.clipboard.writeText(text).then(() => {
+          showAlert('추천 고정 댓글이 복사되었습니다!', 'success');
+        });
+      }
+    });
+  }
+
+  // ==============================================================
+  // 13. [Phase 1] 트렌드 스카우터 (Top 20 & 알고리즘 트렌드 리포트)
+  // ==============================================================
+  const trendCategorySelect = document.getElementById('trendCategorySelect');
+  const btnFetchTrends = document.getElementById('btnFetchTrends');
+  const btnAnalyzeTrends = document.getElementById('btnAnalyzeTrends');
+  const trendReportBox = document.getElementById('trendReportBox');
+  const trendReportDate = document.getElementById('trendReportDate');
+  const trendKeywordsList = document.getElementById('trendKeywordsList');
+  const trendHookPatterns = document.getElementById('trendHookPatterns');
+  const trendAudienceTriggers = document.getElementById('trendAudienceTriggers');
+  const trendRecommendedTopics = document.getElementById('trendRecommendedTopics');
+  const trendLeoTip = document.getElementById('trendLeoTip');
+  const trendItemsCount = document.getElementById('trendItemsCount');
+  const trendSourceBadge = document.getElementById('trendSourceBadge');
+  const trendItemsGrid = document.getElementById('trendItemsGrid');
+
+  let currentTrendsData = null;
+
+  async function loadTrends() {
+    const catId = trendCategorySelect ? trendCategorySelect.value : '0';
+    if (trendItemsGrid) {
+      trendItemsGrid.innerHTML = `
+        <div style="grid-column: 1/-1; text-align: center; padding: 24px; color: var(--text-muted);">
+          <i class="fa-solid fa-circle-notch fa-spin"></i> 실시간 트렌드 목록을 불러오는 중...
+        </div>
+      `;
+    }
+
+    try {
+      const res = await fetch(`/api/trends/top20?category_id=${catId}&region_code=KR`);
+      const data = await res.json();
+      currentTrendsData = data;
+
+      if (trendItemsCount) trendItemsCount.textContent = data.total_items || (data.items || []).length;
+      if (trendSourceBadge) {
+        trendSourceBadge.textContent = `출처: ${data.source === 'youtube_api' ? 'YouTube API v3' : '실시간 피드'}`;
+      }
+
+      renderTrendItems(data.items || []);
+    } catch (err) {
+      if (trendItemsGrid) {
+        trendItemsGrid.innerHTML = `<div style="grid-column: 1/-1; text-align:center; color:#f43f5e; padding:20px;">트렌드 조회 오류: ${escapeHtml(err.message)}</div>`;
+      }
+    }
+  }
+
+  function renderTrendItems(items) {
+    if (!trendItemsGrid) return;
+    if (!items || items.length === 0) {
+      trendItemsGrid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding:20px; color:var(--text-muted);">조회된 급상승 영상이 없습니다.</div>';
+      return;
+    }
+
+    trendItemsGrid.innerHTML = items.map(item => `
+      <div class="trend-item-card">
+        <span class="trend-rank-badge">#${item.rank}</span>
+        <div class="trend-thumb-wrap">
+          <img src="${item.thumbnail || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400'}" alt="thumb" loading="lazy" onerror="this.src='https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400'">
+        </div>
+        <h4 class="trend-card-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</h4>
+        <div class="trend-card-meta">
+          <span><i class="fa-solid fa-tv"></i> ${escapeHtml(item.channel_title)}</span>
+          <span><i class="fa-solid fa-eye"></i> ${(item.view_count || 0).toLocaleString()}회</span>
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 4px;">
+          <a href="${escapeHtml(item.url)}" target="_blank" class="btn btn-xs btn-outline" style="flex: 1; text-align: center;">
+            <i class="fa-brands fa-youtube"></i> 영상보기
+          </a>
+          <button class="btn btn-xs btn-primary btn-trend-analyze" data-url="${escapeHtml(item.url)}" style="flex: 1;">
+            <i class="fa-solid fa-magnifying-glass-chart"></i> 즉시분석
+          </button>
+        </div>
+      </div>
+    `).join('');
+
+    trendItemsGrid.querySelectorAll('.btn-trend-analyze').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const url = btn.dataset.url;
+        const input = document.getElementById('videoUrl');
+        if (input) {
+          input.value = url;
+          input.scrollIntoView({ behavior: 'smooth' });
+          const form = document.getElementById('analyzeForm');
+          if (form) form.dispatchEvent(new Event('submit'));
+        }
+      });
+    });
+  }
+
+  if (trendCategorySelect) trendCategorySelect.addEventListener('change', loadTrends);
+  if (btnFetchTrends) btnFetchTrends.addEventListener('click', loadTrends);
+
+  if (btnAnalyzeTrends) {
+    btnAnalyzeTrends.addEventListener('click', async () => {
+      btnAnalyzeTrends.disabled = true;
+      btnAnalyzeTrends.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 분석 중...';
+
+      try {
+        const catId = trendCategorySelect ? trendCategorySelect.value : '0';
+        const res = await fetch('/api/trends/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category_id: catId, trends_payload: currentTrendsData })
+        });
+        const data = await res.json();
+        const a = data.analysis || {};
+
+        if (trendReportBox) trendReportBox.style.display = 'block';
+        if (trendReportDate) trendReportDate.textContent = data.generated_at || '';
+        if (trendKeywordsList) {
+          trendKeywordsList.innerHTML = (a.top_keywords || []).map(k => `<span class="badge badge-accent">${escapeHtml(k)}</span>`).join('');
+        }
+        if (trendHookPatterns) {
+          trendHookPatterns.innerHTML = (a.hook_patterns || []).map(p => `<div><strong>• ${escapeHtml(p.pattern || '')}:</strong> ${escapeHtml(p.description || '')}</div>`).join('');
+        }
+        if (trendAudienceTriggers) trendAudienceTriggers.textContent = a.audience_triggers || '';
+        if (trendRecommendedTopics) {
+          trendRecommendedTopics.innerHTML = (a.recommended_topics || []).map(t => `<div><strong>• ${escapeHtml(t.topic || '')}</strong><br><span class="text-muted" style="font-size:0.8rem;">${escapeHtml(t.angle || '')}</span></div>`).join('');
+        }
+        if (trendLeoTip) trendLeoTip.textContent = a.leo_algorithm_tip || '';
+
+        showAlert('트렌드 인사이트 리포트가 생성되었습니다!', 'success');
+      } catch (err) {
+        showAlert('트렌드 분석 오류: ' + err.message, 'error');
+      } finally {
+        btnAnalyzeTrends.disabled = false;
+        btnAnalyzeTrends.innerHTML = '<i class="fa-solid fa-brain"></i> AI 트렌드 리포트 생성';
+      }
+    });
+  }
+
+  // ==============================================================
+  // 14. [Phase 1] 채널 빌더 & 레오의 알고리즘 진단
+  // ==============================================================
+  const channelHandleInput = document.getElementById('channelHandleInput');
+  const btnCheckHandle = document.getElementById('btnCheckHandle');
+  const handleCheckResult = document.getElementById('handleCheckResult');
+
+  const channelGenForm = document.getElementById('channelGenForm');
+  const channelTopicInput = document.getElementById('channelTopicInput');
+  const channelConceptInput = document.getElementById('channelConceptInput');
+  const channelAudienceInput = document.getElementById('channelAudienceInput');
+  const channelCategorySelect = document.getElementById('channelCategorySelect');
+  const btnRunChannelGen = document.getElementById('btnRunChannelGen');
+  const channelGenResultBox = document.getElementById('channelGenResultBox');
+  const resChannelNames = document.getElementById('resChannelNames');
+  const resChannelHandles = document.getElementById('resChannelHandles');
+  const resChannelDesc = document.getElementById('resChannelDesc');
+  const btnCopyAvatarPrompt = document.getElementById('btnCopyAvatarPrompt');
+  const btnCopyBannerPrompt = document.getElementById('btnCopyBannerPrompt');
+
+  const btnRefreshChannelDiag = document.getElementById('btnRefreshChannelDiag');
+  const diagSubsCount = document.getElementById('diagSubsCount');
+  const diagViewsCount = document.getElementById('diagViewsCount');
+  const diagVideosCount = document.getElementById('diagVideosCount');
+  const diagAvgViews = document.getElementById('diagAvgViews');
+  const diagStageText = document.getElementById('diagStageText');
+  const diagHealthScore = document.getElementById('diagHealthScore');
+  const diagBottleneck = document.getElementById('diagBottleneck');
+  const diagActionPlans = document.getElementById('diagActionPlans');
+  const diagMilestoneTip = document.getElementById('diagMilestoneTip');
+
+  let currentChannelPlan = null;
+
+  if (btnCheckHandle) {
+    btnCheckHandle.addEventListener('click', async () => {
+      const handle = (channelHandleInput ? channelHandleInput.value : '').trim();
+      if (!handle) {
+        showAlert('핸들을 입력해주세요 (예: @MyName)', 'error');
+        return;
+      }
+      btnCheckHandle.disabled = true;
+      btnCheckHandle.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 확인 중...';
+      try {
+        const res = await fetch(`/api/channel/check-handle?handle=${encodeURIComponent(handle)}`);
+        const data = await res.json();
+        if (handleCheckResult) {
+          if (data.available) {
+            handleCheckResult.innerHTML = `<span style="color:#34d399; font-weight:600;"><i class="fa-solid fa-check"></i> ${escapeHtml(data.message)}</span>`;
+          } else {
+            handleCheckResult.innerHTML = `<span style="color:#f43f5e; font-weight:600;"><i class="fa-solid fa-xmark"></i> ${escapeHtml(data.message)}</span>`;
+          }
+        }
+      } catch (err) {
+        if (handleCheckResult) handleCheckResult.textContent = '확인 오류: ' + err.message;
+      } finally {
+        btnCheckHandle.disabled = false;
+        btnCheckHandle.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> 중복검사';
+      }
+    });
+  }
+
+  if (channelGenForm) {
+    channelGenForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const topic = (channelTopicInput ? channelTopicInput.value : '').trim();
+      if (!topic) return;
+
+      btnRunChannelGen.disabled = true;
+      btnRunChannelGen.querySelector('.btn-text').style.display = 'none';
+      btnRunChannelGen.querySelector('.spinner').style.display = 'inline-block';
+
+      try {
+        const res = await fetch('/api/channel/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic: topic,
+            concept: channelConceptInput ? channelConceptInput.value.trim() : '',
+            target_audience: channelAudienceInput ? channelAudienceInput.value.trim() : '',
+            category_id: channelCategorySelect ? parseInt(channelCategorySelect.value, 10) : 28
+          })
+        });
+        const plan = await res.json();
+        currentChannelPlan = plan;
+
+        if (channelGenResultBox) channelGenResultBox.style.display = 'block';
+        if (resChannelNames) {
+          resChannelNames.innerHTML = (plan.channel_names || []).map(n => `<span class="badge badge-accent">${escapeHtml(n)}</span>`).join('');
+        }
+        if (resChannelHandles) {
+          resChannelHandles.innerHTML = (plan.handles || []).map(h => `<span class="badge badge-subtle">${escapeHtml(h)}</span>`).join('');
+        }
+        if (resChannelDesc) resChannelDesc.value = plan.description || '';
+
+        showAlert('8대 채널 세팅 기획서가 생성되었습니다!', 'success');
+      } catch (err) {
+        showAlert('채널 기획 생성 실패: ' + err.message, 'error');
+      } finally {
+        btnRunChannelGen.disabled = false;
+        btnRunChannelGen.querySelector('.btn-text').style.display = 'inline-block';
+        btnRunChannelGen.querySelector('.spinner').style.display = 'none';
+      }
+    });
+  }
+
+  if (btnCopyAvatarPrompt) {
+    btnCopyAvatarPrompt.addEventListener('click', () => {
+      if (currentChannelPlan && currentChannelPlan.avatar_prompt) {
+        navigator.clipboard.writeText(currentChannelPlan.avatar_prompt).then(() => {
+          showAlert('프로필 아바타 프롬프트가 복사되었습니다!', 'success');
+        });
+      }
+    });
+  }
+
+  if (btnCopyBannerPrompt) {
+    btnCopyBannerPrompt.addEventListener('click', () => {
+      if (currentChannelPlan && currentChannelPlan.banner_prompt) {
+        navigator.clipboard.writeText(currentChannelPlan.banner_prompt).then(() => {
+          showAlert('채널 배너 프롬프트가 복사되었습니다!', 'success');
+        });
+      }
+    });
+  }
+
+  async function loadChannelDiagnostics() {
+    if (btnRefreshChannelDiag) {
+      btnRefreshChannelDiag.disabled = true;
+      btnRefreshChannelDiag.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i>';
+    }
+    try {
+      const res = await fetch('/api/channel/my-status');
+      const data = await res.json();
+      const m = data.metrics || {};
+      const d = data.diagnosis || {};
+
+      if (diagSubsCount) diagSubsCount.textContent = (m.subscribers || 0).toLocaleString() + '명';
+      if (diagViewsCount) diagViewsCount.textContent = (m.views || 0).toLocaleString() + '회';
+      if (diagVideosCount) diagVideosCount.textContent = (m.videos || 0) + '개';
+      if (diagAvgViews) diagAvgViews.textContent = (m.avg_views || 0).toLocaleString() + '회';
+
+      if (diagStageText) diagStageText.textContent = m.stage || d.growth_stage || '';
+      if (diagHealthScore) diagHealthScore.textContent = `건강도: ${d.health_score || 80}점`;
+      if (diagBottleneck) diagBottleneck.textContent = d.bottleneck || '';
+      if (diagActionPlans) {
+        diagActionPlans.innerHTML = (d.action_plans || []).map(p => `<li>${escapeHtml(p)}</li>`).join('');
+      }
+      if (diagMilestoneTip) diagMilestoneTip.textContent = d.next_milestone_tip || '';
+    } catch (err) {
+      console.warn('채널 진단 실패:', err);
+    } finally {
+      if (btnRefreshChannelDiag) {
+        btnRefreshChannelDiag.disabled = false;
+        btnRefreshChannelDiag.innerHTML = '<i class="fa-solid fa-rotate"></i> 새로고침';
+      }
+    }
+  }
+  if (btnRefreshChannelDiag) btnRefreshChannelDiag.addEventListener('click', loadChannelDiagnostics);
+
+  // ==============================================================
+  // 15. [Phase 4] 영상 자동 제작 (Producer) & 유튜브 업로더
+  // ==============================================================
+  const producerPlanSelect = document.getElementById('producerPlanSelect');
+  const producerResSelect = document.getElementById('producerResSelect');
+  const producerTransitionSelect = document.getElementById('producerTransitionSelect');
+  const producerBurnSubtitles = document.getElementById('producerBurnSubtitles');
+  const producerFitNarration = document.getElementById('producerFitNarration');
+  const producerBuildForm = document.getElementById('producerBuildForm');
+  const btnStartRender = document.getElementById('btnStartRender');
+  const producerProgressBox = document.getElementById('producerProgressBox');
+  const producerStepText = document.getElementById('producerStepText');
+  const producerPercentText = document.getElementById('producerPercentText');
+  const producerProgressBar = document.getElementById('producerProgressBar');
+  const producerPlayerBox = document.getElementById('producerPlayerBox');
+  const producerVideoPlayer = document.getElementById('producerVideoPlayer');
+  const btnDownloadRenderedVideo = document.getElementById('btnDownloadRenderedVideo');
+
+  const ytAuthBadge = document.getElementById('ytAuthBadge');
+  const youtubeUploadForm = document.getElementById('youtubeUploadForm');
+  const ytUploadVideoPath = document.getElementById('ytUploadVideoPath');
+  const ytUploadTitle = document.getElementById('ytUploadTitle');
+  const ytUploadDesc = document.getElementById('ytUploadDesc');
+  const ytUploadPrivacy = document.getElementById('ytUploadPrivacy');
+  const ytUploadCategory = document.getElementById('ytUploadCategory');
+  const ytUploadPinnedComment = document.getElementById('ytUploadPinnedComment');
+  const btnSubmitYoutubeUpload = document.getElementById('btnSubmitYoutubeUpload');
+
+  async function loadProducerPlans() {
+    if (!producerPlanSelect) return;
+    try {
+      const res = await fetch('/api/channel/history');
+      const list = await res.json();
+      producerPlanSelect.innerHTML = '<option value="">기획서를 선택하세요...</option>';
+      if (Array.isArray(list) && list.length > 0) {
+        list.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = `[${p.id}] ${p.topic || '채널 기획서'}`;
+          producerPlanSelect.appendChild(opt);
+        });
+      }
+      if (currentGeneratedBatch) {
+        const opt = document.createElement('option');
+        opt.value = currentGeneratedBatch.topic;
+        opt.textContent = `[현재 기획] ${currentGeneratedBatch.recommended_title || currentGeneratedBatch.topic}`;
+        opt.selected = true;
+        producerPlanSelect.appendChild(opt);
+      }
+    } catch (err) {
+      console.warn('플랜 목록 로드 실패:', err);
+    }
+  }
+
+  async function checkYoutubeStatus() {
+    if (!ytAuthBadge) return;
+    try {
+      const res = await fetch('/api/youtube/status');
+      const st = await res.json();
+      if (st.authorized && st.channel) {
+        ytAuthBadge.className = 'badge badge-accent';
+        ytAuthBadge.textContent = `인증됨: ${st.channel.title || '내 채널'}`;
+      } else {
+        ytAuthBadge.className = 'badge badge-subtle';
+        ytAuthBadge.textContent = 'OAuth 인증 필요';
+      }
+    } catch (err) {
+      ytAuthBadge.textContent = '상태 확인 불가';
+    }
+  }
+
+  if (producerBuildForm) {
+    producerBuildForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const planId = producerPlanSelect ? producerPlanSelect.value : '';
+      if (!planId) {
+        showAlert('합성할 기획서를 선택해주세요.', 'error');
+        return;
+      }
+
+      btnStartRender.disabled = true;
+      btnStartRender.querySelector('.btn-text').style.display = 'none';
+      btnStartRender.querySelector('.spinner').style.display = 'inline-block';
+
+      if (producerProgressBox) producerProgressBox.style.display = 'block';
+      if (producerProgressBar) producerProgressBar.style.width = '5%';
+
+      try {
+        const res = await fetch('/api/producer/build', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan_id: planId,
+            resolution: producerResSelect ? producerResSelect.value : '1080p',
+            burn_subtitles: producerBurnSubtitles ? producerBurnSubtitles.checked : true,
+            fit_narration: producerFitNarration ? producerFitNarration.checked : true,
+            transition: producerTransitionSelect ? producerTransitionSelect.value : 'fade'
+          })
+        });
+
+        const data = await res.json();
+        const jobId = data.job_id;
+        pollProducerJob(jobId);
+      } catch (err) {
+        showAlert('합성 시작 실패: ' + err.message, 'error');
+        btnStartRender.disabled = false;
+        btnStartRender.querySelector('.btn-text').style.display = 'inline-block';
+        btnStartRender.querySelector('.spinner').style.display = 'none';
+      }
+    });
+  }
+
+  function pollProducerJob(jobId) {
+    const timer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/producer/status/${jobId}`);
+        const job = await res.json();
+        const pct = job.percent || 0;
+
+        if (producerProgressBar) producerProgressBar.style.width = pct + '%';
+        if (producerPercentText) producerPercentText.textContent = pct + '%';
+        if (producerStepText) producerStepText.textContent = job.message || '렌더링 중...';
+
+        if (job.status === 'completed') {
+          clearInterval(timer);
+          btnStartRender.disabled = false;
+          btnStartRender.querySelector('.btn-text').style.display = 'inline-block';
+          btnStartRender.querySelector('.spinner').style.display = 'none';
+
+          const r = job.result || {};
+          if (producerPlayerBox) producerPlayerBox.style.display = 'block';
+          if (producerVideoPlayer && r.video_url) producerVideoPlayer.src = r.video_url;
+          if (btnDownloadRenderedVideo && r.video_url) btnDownloadRenderedVideo.href = r.video_url;
+          if (ytUploadVideoPath && r.video_file) ytUploadVideoPath.value = r.video_file;
+
+          showAlert('영상 렌더링 합성이 성공적으로 완료되었습니다!', 'success');
+        } else if (job.status === 'failed') {
+          clearInterval(timer);
+          btnStartRender.disabled = false;
+          btnStartRender.querySelector('.btn-text').style.display = 'inline-block';
+          btnStartRender.querySelector('.spinner').style.display = 'none';
+          showAlert('영상 렌더링 실패: ' + job.message, 'error');
+        }
+      } catch (err) {
+        clearInterval(timer);
+        btnStartRender.disabled = false;
+        btnStartRender.querySelector('.btn-text').style.display = 'inline-block';
+        btnStartRender.querySelector('.spinner').style.display = 'none';
+      }
+    }, 1500);
+  }
+
+  if (youtubeUploadForm) {
+    youtubeUploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const videoPath = ytUploadVideoPath ? ytUploadVideoPath.value.trim() : '';
+      const title = ytUploadTitle ? ytUploadTitle.value.trim() : '';
+      if (!videoPath || !title) {
+        showAlert('비디오 파일 경로와 제목은 필수입니다.', 'error');
+        return;
+      }
+
+      btnSubmitYoutubeUpload.disabled = true;
+      btnSubmitYoutubeUpload.querySelector('.btn-text').style.display = 'none';
+      btnSubmitYoutubeUpload.querySelector('.spinner').style.display = 'inline-block';
+
+      try {
+        const res = await fetch('/api/youtube/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            video_file: videoPath,
+            title: title,
+            description: ytUploadDesc ? ytUploadDesc.value : '',
+            privacy_status: ytUploadPrivacy ? ytUploadPrivacy.value : 'unlisted',
+            category_id: ytUploadCategory ? ytUploadCategory.value : '28',
+            pinned_comment: ytUploadPinnedComment ? ytUploadPinnedComment.value : ''
+          })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+          showAlert('유튜브 업로드가 성공적으로 완료되었습니다!', 'success');
+        } else {
+          showAlert('업로드 오류: ' + JSON.stringify(data), 'error');
+        }
+      } catch (err) {
+        showAlert('유튜브 업로드 실패: ' + err.message, 'error');
+      } finally {
+        btnSubmitYoutubeUpload.disabled = false;
+        btnSubmitYoutubeUpload.querySelector('.btn-text').style.display = 'inline-block';
+        btnSubmitYoutubeUpload.querySelector('.spinner').style.display = 'none';
+      }
+    });
+  }
+
+  // ==============================================================
+  // 16. [Phase 3] 원소스 멀티유즈(OSMU) 마케팅 엔진
+  // ==============================================================
+  const marketingTopicInput = document.getElementById('marketingTopicInput');
+  const marketingContextInput = document.getElementById('marketingContextInput');
+  const marketingModeSelect = document.getElementById('marketingModeSelect');
+  const marketingToneSelect = document.getElementById('marketingToneSelect');
+  const marketingAudienceInput = document.getElementById('marketingAudienceInput');
+  const marketingGenForm = document.getElementById('marketingGenForm');
+  const btnRunMarketingGen = document.getElementById('btnRunMarketingGen');
+  const btnImportFromScript = document.getElementById('btnImportFromScript');
+  const btnCopyCurrentMarketing = document.getElementById('btnCopyCurrentMarketing');
+
+  const threadsCountBadge = document.getElementById('threadsCountBadge');
+  const threadsPostList = document.getElementById('threadsPostList');
+  const blogPostContent = document.getElementById('blogPostContent');
+  const newsletterContent = document.getElementById('newsletterContent');
+  const marketingHistoryList = document.getElementById('marketingHistoryList');
+
+  let currentMarketingResult = null;
+  let currentMarketingActiveTab = 'tabThreads';
+
+  if (btnImportFromScript) {
+    btnImportFromScript.addEventListener('click', () => {
+      if (currentGeneratedBatch) {
+        if (marketingTopicInput) marketingTopicInput.value = currentGeneratedBatch.recommended_title || currentGeneratedBatch.topic || '';
+        const scriptText = (currentGeneratedBatch.scenes || []).map(s => `[씬 ${s.scene_num}] ${s.narration}`).join('\n');
+        if (marketingContextInput) marketingContextInput.value = scriptText;
+        showAlert('현재 기획서의 주제와 대본을 마케팅 폼으로 가져왔습니다!', 'success');
+      } else {
+        showAlert('가져올 활성 기획 대본이 없습니다. 먼저 씬 기획을 생성해주세요.', 'error');
+      }
+    });
+  }
+
+  document.querySelectorAll('[data-market-tab]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('[data-market-tab]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const target = btn.dataset.marketTab;
+      currentMarketingActiveTab = target;
+
+      ['tabThreads', 'tabBlog', 'tabNewsletter'].forEach(tId => {
+        const pane = document.getElementById(tId);
+        if (pane) pane.style.display = (tId === target) ? 'block' : 'none';
+      });
+    });
+  });
+
+  if (marketingGenForm) {
+    marketingGenForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const topic = (marketingTopicInput ? marketingTopicInput.value : '').trim();
+      if (!topic) return;
+
+      btnRunMarketingGen.disabled = true;
+      btnRunMarketingGen.querySelector('.btn-text').style.display = 'none';
+      btnRunMarketingGen.querySelector('.spinner').style.display = 'inline-block';
+
+      try {
+        const res = await fetch('/api/marketing/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            topic: topic,
+            context: marketingContextInput ? marketingContextInput.value : '',
+            mode: marketingModeSelect ? marketingModeSelect.value : 'all',
+            tone: marketingToneSelect ? marketingToneSelect.value : 'viral_hook',
+            audience: marketingAudienceInput ? marketingAudienceInput.value : '크리에이터, 직장인, 마케터'
+          })
+        });
+        const data = await res.json();
+        currentMarketingResult = data.result;
+        renderMarketingResult(data.result);
+        loadMarketingHistory();
+        showAlert('마케팅 콘텐츠 생성이 완료되었습니다!', 'success');
+      } catch (err) {
+        showAlert('마케팅 생성 오류: ' + err.message, 'error');
+      } finally {
+        btnRunMarketingGen.disabled = false;
+        btnRunMarketingGen.querySelector('.btn-text').style.display = 'inline-block';
+        btnRunMarketingGen.querySelector('.spinner').style.display = 'none';
+      }
+    });
+  }
+
+  function renderMarketingResult(result) {
+    if (!result) return;
+    const threads = result.threads_x || (result.posts ? result : null);
+    const blog = result.blog_post;
+    const nl = result.newsletter;
+
+    // Threads
+    if (threads && threads.posts && threadsPostList) {
+      if (threadsCountBadge) threadsCountBadge.textContent = threads.posts.length;
+      threadsPostList.innerHTML = threads.posts.map(p => `
+        <div class="threads-post-card">
+          <div class="threads-post-header">
+            <span class="threads-post-number">${p.index}/${threads.posts.length}</span>
+            <button class="btn btn-xs btn-outline btn-copy-single" data-text="${escapeHtml(p.content || '')}">
+              <i class="fa-solid fa-copy"></i>
+            </button>
+          </div>
+          <div class="threads-post-body">${escapeHtml(p.content || '')}</div>
+        </div>
+      `).join('');
+
+      threadsPostList.querySelectorAll('.btn-copy-single').forEach(b => {
+        b.addEventListener('click', () => {
+          navigator.clipboard.writeText(b.dataset.text || '').then(() => showAlert('포스트가 복사되었습니다!', 'success'));
+        });
+      });
+    }
+
+    // Blog
+    if (blog && blogPostContent) {
+      blogPostContent.innerHTML = `
+        <h2 style="margin-top:0; color:#38bdf8;">${escapeHtml(blog.title || '')}</h2>
+        <div style="color:var(--text-muted); font-size:0.8rem; margin-bottom:12px;"><strong>메타 설명:</strong> ${escapeHtml(blog.meta_description || '')}</div>
+        <div style="white-space: pre-wrap;">${escapeHtml(blog.content_markdown || '')}</div>
+      `;
+    }
+
+    // Newsletter
+    if (nl && newsletterContent) {
+      newsletterContent.innerHTML = `
+        <div style="background:rgba(255,255,255,0.04); padding:10px; border-radius:6px; margin-bottom:12px;">
+          <strong>제목 A/B 테스트:</strong><br>
+          • A: ${escapeHtml(nl.subject_line_a || '')}<br>
+          • B: ${escapeHtml(nl.subject_line_b || '')}
+        </div>
+        <div style="white-space: pre-wrap;">${escapeHtml(nl.body_markdown || '')}</div>
+      `;
+    }
+  }
+
+  if (btnCopyCurrentMarketing) {
+    btnCopyCurrentMarketing.addEventListener('click', () => {
+      let textToCopy = '';
+      if (currentMarketingActiveTab === 'tabThreads' && currentMarketingResult?.threads_x?.posts) {
+        textToCopy = currentMarketingResult.threads_x.posts.map(p => `[${p.index}/${currentMarketingResult.threads_x.posts.length}]\n${p.content}`).join('\n\n');
+      } else if (currentMarketingActiveTab === 'tabBlog' && currentMarketingResult?.blog_post) {
+        textToCopy = `# ${currentMarketingResult.blog_post.title}\n\n${currentMarketingResult.blog_post.content_markdown}`;
+      } else if (currentMarketingActiveTab === 'tabNewsletter' && currentMarketingResult?.newsletter) {
+        textToCopy = `[Subject] ${currentMarketingResult.newsletter.subject_line_a}\n\n${currentMarketingResult.newsletter.body_markdown}`;
+      }
+
+      if (textToCopy) {
+        navigator.clipboard.writeText(textToCopy).then(() => showAlert('현재 마케팅 콘텐츠가 복사되었습니다!', 'success'));
+      } else {
+        showAlert('복사할 콘텐츠가 없습니다.', 'error');
+      }
+    });
+  }
+
+  async function loadMarketingHistory() {
+    if (!marketingHistoryList) return;
+    try {
+      const res = await fetch('/api/marketing/history');
+      const list = await res.json();
+      if (Array.isArray(list) && list.length > 0) {
+        marketingHistoryList.innerHTML = list.map(item => `
+          <div class="card" style="padding:8px 12px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-entry-id="${item.id}">
+            <div>
+              <span style="font-weight:600; font-size:0.85rem;">${escapeHtml(item.topic || '무제')}</span>
+              <span class="badge badge-subtle" style="margin-left:6px; font-size:0.75rem;">${item.mode}</span>
+            </div>
+            <button class="btn btn-xs btn-outline btn-load-market" data-id="${item.id}"><i class="fa-solid fa-folder-open"></i> 열기</button>
+          </div>
+        `).join('');
+
+        marketingHistoryList.querySelectorAll('.btn-load-market').forEach(b => {
+          b.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            const id = b.dataset.id;
+            try {
+              const res2 = await fetch(`/api/marketing/${id}`);
+              const full = await res2.json();
+              currentMarketingResult = full.result;
+              renderMarketingResult(full.result);
+              showAlert('보관함에서 콘텐츠를 불러왔습니다.', 'success');
+            } catch (err) {
+              showAlert('로드 실패: ' + err.message, 'error');
+            }
+          });
+        });
+      }
+    } catch (err) {
+      console.warn('마케팅 히스토리 로드 실패:', err);
+    }
+  }
+
+  // 초기 데이터 로드
   loadHistory();
+  loadTrends();
 });

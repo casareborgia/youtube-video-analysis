@@ -84,3 +84,10 @@ tmp/
 # Generated Output Documents
 output/*
 !output/.gitkeep
+
+# Generated Renders, Marketing, Channels, Trends
+data/trends/*
+data/marketing/*
+data/renders/*
+data/channels/*
+data/youtube/*

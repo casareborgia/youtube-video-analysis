@@ -25,6 +25,11 @@ from prompt_generator import (
     SUPPORTED_MODELS,
     SUPPORTED_LANGUAGES
 )
+import trend_scout
+import channel_builder
+import marketing
+import producer
+import uploader
 
 app = FastAPI(title="TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오")
 
@@ -564,7 +569,284 @@ async def open_data_folder():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"폴더 열기 실패: {str(e)}")
 
-# 정적 파일 서빙
+# ==========================================
+# Phase 1: 트렌드 스카우터 API
+# ==========================================
+class TrendAnalyzeRequest(BaseModel):
+    category_id: str = "0"
+    trends_payload: Optional[Dict[str, Any]] = None
+
+@app.get("/api/trends/top20")
+async def get_trends_top20(category_id: str = Query("0"), region_code: str = Query("KR")):
+    """카테고리별 실시간 인기 급상승 영상 Top 20 조회"""
+    try:
+        data = trend_scout.fetch_top20_trends(category_id=category_id, region_code=region_code)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"트렌드 조회 실패: {e}")
+
+@app.post("/api/trends/analyze")
+async def analyze_trends(req: TrendAnalyzeRequest):
+    """실시간 급상승 Top 영상 기반 알고리즘 인사이트 리포트 생성"""
+    try:
+        payload = req.trends_payload
+        if not payload:
+            payload = trend_scout.fetch_top20_trends(category_id=req.category_id)
+        result = trend_scout.analyze_trends_with_llm(payload)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"트렌드 분석 실패: {e}")
+
+
+# ==========================================
+# Phase 1: 채널 빌더 & 레오의 채널 진단 API
+# ==========================================
+class ChannelGenRequest(BaseModel):
+    topic: str
+    concept: Optional[str] = ""
+    target_audience: Optional[str] = ""
+    language: Optional[str] = "ko"
+    category_id: Optional[int] = 28
+
+@app.get("/api/channel/check-handle")
+async def check_handle(handle: str = Query(...)):
+    """유튜브 실시간 핸들(@) 중복 확인"""
+    available, msg = channel_builder.check_handle_availability(handle)
+    return {"available": available, "message": msg, "handle": handle}
+
+@app.post("/api/channel/generate")
+async def generate_channel(req: ChannelGenRequest):
+    """8대 채널 세팅 AI 기획 자동 생성"""
+    try:
+        plan = channel_builder.generate_channel_settings(
+            topic=req.topic,
+            concept=req.concept or "",
+            target_audience=req.target_audience or "",
+            category_id=req.category_id or 28,
+            language=req.language or "ko"
+        )
+        return plan
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"채널 기획 실패: {e}")
+
+@app.get("/api/channel/my-status")
+async def get_channel_diagnostics():
+    """로그인된 내 채널 통계 및 에이전트 레오의 알고리즘 성장 진단"""
+    try:
+        diag = channel_builder.get_my_channel_diagnostics()
+        return diag
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"채널 진단 실패: {e}")
+
+@app.get("/api/channel/history")
+async def get_channel_history():
+    """저장된 채널 기획서 목록 조회"""
+    return channel_builder.list_plans()
+
+@app.get("/api/channel/plan/{plan_id}")
+async def get_channel_plan(plan_id: str):
+    """특정 채널 기획서 상세 조회"""
+    plan = channel_builder.get_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="채널 기획서를 찾을 수 없습니다.")
+    return plan
+
+
+# ==========================================
+# Phase 3: 원소스 멀티유즈(OSMU) 마케팅 엔진 API
+# ==========================================
+class MarketingGenRequest(BaseModel):
+    topic: str
+    context: Optional[str] = ""
+    mode: Optional[str] = "all"  # all | threads | blog | newsletter
+    tone: Optional[str] = "viral_hook"
+    audience: Optional[str] = "크리에이터, 직장인, 마케터"
+    platform: Optional[str] = "threads"
+    thread_count: Optional[int] = 5
+    blog_length: Optional[str] = "medium"
+    campaign_type: Optional[str] = "educational"
+
+@app.post("/api/marketing/generate")
+async def generate_marketing_content(req: MarketingGenRequest):
+    """멀티채널 마케팅(스레드, 블로그, 뉴스레터) 올인원 생성"""
+    try:
+        mode = req.mode or "all"
+        if mode == "threads":
+            res = marketing.generate_threads_x(
+                topic=req.topic,
+                context=req.context or "",
+                platform=req.platform or "threads",
+                tone=req.tone or "viral_hook",
+                count=req.thread_count or 5,
+                audience=req.audience or ""
+            )
+        elif mode == "blog":
+            res = marketing.generate_blog_post(
+                topic=req.topic,
+                context=req.context or "",
+                target_audience=req.audience or "",
+                length=req.blog_length or "medium",
+                tone=req.tone or "informative"
+            )
+        elif mode == "newsletter":
+            res = marketing.generate_newsletter(
+                topic=req.topic,
+                context=req.context or "",
+                campaign_type=req.campaign_type or "educational",
+                audience=req.audience or ""
+            )
+        else:
+            res = marketing.generate_omni_marketing(
+                topic=req.topic,
+                context=req.context or "",
+                tone=req.tone or "viral_hook",
+                audience=req.audience or ""
+            )
+
+        entry_id = marketing.save_entry(req.topic, mode, res)
+        return {"status": "success", "id": entry_id, "mode": mode, "result": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"마케팅 생성 실패: {e}")
+
+@app.get("/api/marketing/history")
+async def get_marketing_history():
+    """마케팅 보관함 목록"""
+    return marketing.list_marketing_history()
+
+@app.get("/api/marketing/{entry_id}")
+async def get_marketing_item(entry_id: str):
+    """마케팅 포스트 상세 조회"""
+    item = marketing.load_entry(entry_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="마케팅 문서를 찾을 수 없습니다.")
+    return item
+
+
+# ==========================================
+# Phase 4: 영상 자동 제작 (Producer) & 유튜브 업로더 API
+# ==========================================
+_producer_jobs: Dict[str, Dict[str, Any]] = {}
+
+class ProducerBuildRequest(BaseModel):
+    plan_id: str
+    resolution: Optional[str] = "1080p"
+    burn_subtitles: Optional[bool] = True
+    subtitle_style: Optional[str] = "clean"
+    fit_narration: Optional[bool] = True
+    transition: Optional[str] = "fade"
+    sfx_volume: Optional[float] = 0.35
+
+def _run_build_worker(job_id: str, plan_dict: dict, options: dict):
+    def on_progress(step, msg, pct):
+        _producer_jobs[job_id] = {
+            "status": "processing",
+            "step": step,
+            "message": msg,
+            "percent": pct
+        }
+
+    try:
+        res = producer.build_video(plan_dict, options=options, progress=on_progress)
+        _producer_jobs[job_id] = {
+            "status": "completed",
+            "percent": 100,
+            "message": "영상 합성이 완료되었습니다.",
+            "result": res
+        }
+    except Exception as e:
+        _producer_jobs[job_id] = {
+            "status": "failed",
+            "percent": 0,
+            "message": f"합성 실패: {str(e)}"
+        }
+
+@app.post("/api/producer/build")
+async def build_video_endpoint(req: ProducerBuildRequest, background_tasks: BackgroundTasks):
+    """ffmpeg 기반 영상 합성 작업 시작 (BackgroundTasks)"""
+    plan = channel_builder.get_plan(req.plan_id)
+    if not plan:
+        # 혹시 output 디렉토리의 기획서인지 확인
+        plan_file = OUTPUT_DIR / f"{req.plan_id}.json"
+        if plan_file.exists():
+            with open(plan_file, "r", encoding="utf-8") as f:
+                plan = json.load(f)
+
+    if not plan:
+        raise HTTPException(status_code=404, detail="합성할 기획서(plan_id)를 찾을 수 없습니다.")
+
+    job_id = f"job_{int(time.time() * 1000)}"
+    _producer_jobs[job_id] = {
+        "status": "queued",
+        "percent": 0,
+        "message": "영상 합성 대기 중..."
+    }
+
+    options = {
+        "resolution": req.resolution or "1080p",
+        "burn_subtitles": req.burn_subtitles,
+        "subtitle_style": req.subtitle_style or "clean",
+        "fit_narration": req.fit_narration,
+        "transition": req.transition or "fade",
+        "sfx_volume": req.sfx_volume or 0.35
+    }
+
+    background_tasks.add_task(_run_build_worker, job_id, plan, options)
+    return {"status": "success", "job_id": job_id}
+
+@app.get("/api/producer/status/{job_id}")
+async def get_producer_status(job_id: str):
+    """영상 합성 진행 상태 조회"""
+    job = _producer_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="작업 ID를 찾을 수 없습니다.")
+    return job
+
+@app.get("/api/youtube/status")
+async def get_youtube_status():
+    """유튜브 OAuth 인증 및 연동 채널 상태 조회"""
+    return uploader.status()
+
+class YoutubeUploadRequest(BaseModel):
+    video_file: str
+    title: str
+    description: Optional[str] = ""
+    tags: Optional[List[str]] = []
+    category_id: Optional[str] = "28"
+    privacy_status: Optional[str] = "unlisted"
+    thumbnail_file: Optional[str] = None
+    pinned_comment: Optional[str] = None
+
+@app.post("/api/youtube/upload")
+async def upload_youtube_video(req: YoutubeUploadRequest):
+    """YouTube Data API v3 원클릭 영상, 썸네일, 고정댓글 업로드"""
+    st = uploader.status()
+    if not st.get("authorized"):
+        raise HTTPException(status_code=401, detail="YouTube OAuth 계정 인증이 필요합니다.")
+
+    try:
+        res = uploader.upload_video(
+            video_file=req.video_file,
+            title=req.title,
+            description=req.description or "",
+            tags=req.tags or [],
+            category_id=req.category_id or "28",
+            privacy_status=req.privacy_status or "unlisted",
+            thumbnail_file=req.thumbnail_file,
+            pinned_comment=req.pinned_comment
+        )
+        return {"status": "success", "result": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"유튜브 업로드 실패: {e}")
+
+
+# ==========================================
+# 정적 파일 서빙 및 렌더 디렉토리 마운트
+# ==========================================
+if os.path.exists(producer.RENDERS_DIR):
+    app.mount("/data/renders", StaticFiles(directory=str(producer.RENDERS_DIR)), name="renders")
+if os.path.exists(channel_builder.CHANNELS_DIR):
+    app.mount("/data/channels", StaticFiles(directory=str(channel_builder.CHANNELS_DIR)), name="channels")
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/")

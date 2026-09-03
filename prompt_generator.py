@@ -469,6 +469,11 @@ class PromptGenerator:
 - 비주얼 화풍: {style_info['name']}
 - 전개 플롯: 5단계 마스터 플롯(도입 훅 -> 갈등/스케일 -> 공학적 난제 -> 해결 시도 -> 씁쓸한 현실과 깊은 여운)
 
+[★ 에이전트 레오의 알고리즘 인게이지먼트 해킹 절대 규칙]
+- engagement_question: 마지막 씬 종료 후 시청자가 댓글창으로 달려오게 만드는 도발적 양자택일 선택형 질문(오픈 퀘스천 / 밸런스 질문) 1문장.
+- pinned_comment: 영상 업로드 즉시 크리에이터가 댓글 최상단에 고정하여 시청자 반응을 폭발시킬 추천 고정 댓글 텍스트 (시청 감사 + 오픈 퀘스천 질문 제시 + 좋아요/구독 넛지).
+- 마지막 씬(Scene #{scene_count})의 나레이션: 맺음말에 시청자의 댓글 참여를 유도하는 여운을 35~45자 안에 자연스럽게 포함하세요.
+
 아래 JSON 포맷 규격에 맞추어 {scene_count}개 씬을 작성해주세요:
 ```json
 {{
@@ -479,6 +484,8 @@ class PromptGenerator:
   ],
   "recommended_title": "최종 추천 제목",
   "seo_description": "유튜브 설명란 3줄 요약 줄거리 및 CTA",
+  "engagement_question": "시청자의 댓글 논쟁을 유발하는 도발적 양자택일 오픈 퀘스천",
+  "pinned_comment": "📌 [고정 댓글] 영상 끝까지 봐주셔서 감사합니다! 여러분의 선택은 A인가요 B인가요? 댓글로 이유를 남겨주시면 하트를 달아드립니다!",
   "scenes": [
     {{
       "scene_num": 1,
@@ -537,6 +544,8 @@ class PromptGenerator:
                 "title_candidates": [f"{safe_topic}의 숨겨진 진실", f"아무도 몰랐던 {safe_topic}", f"{safe_topic} 프로젝트의 결말"],
                 "recommended_title": f"{safe_topic}: 숨겨진 진실과 냉혹한 현실",
                 "seo_description": f"{safe_topic}에 대한 심층 분석 다큐멘터리입니다.",
+                "engagement_question": f"과연 {safe_topic}의 미래는 혁신일까요, 아니면 돌이킬 수 없는 재앙일까요?",
+                "pinned_comment": f"📌 끝까지 시청해주셔서 감사합니다! 여러분은 {safe_topic}에 대해 어떻게 생각하시나요? 여러분의 생각을 댓글로 들려주세요!",
                 "scenes": scenes
             }
 
@@ -587,6 +596,10 @@ class PromptGenerator:
             if s_num in frame_map:
                 sc["first_frame_redline"] = frame_map[s_num]
 
+        # 에이전트 레오의 인게이지먼트 질문 및 추천 고정댓글 확보
+        engagement_q = parsed_data.get("engagement_question") or f"여러분의 선택은 무엇인가요? {safe_topic}에 대한 생각을 댓글로 남겨주세요."
+        pinned_c = parsed_data.get("pinned_comment") or f"📌 [고정 댓글] 영상 시청해주셔서 감사합니다! {engagement_q}"
+
         result_payload = {
             "status": "success",
             "topic": safe_topic,
@@ -596,6 +609,8 @@ class PromptGenerator:
             "title_candidates": parsed_data.get("title_candidates", []),
             "recommended_title": parsed_data.get("recommended_title", f"{safe_topic} 기획"),
             "seo_description": parsed_data.get("seo_description", ""),
+            "engagement_question": engagement_q,
+            "pinned_comment": pinned_c,
             "thumbnail_redline": thumbnail_redline,
             "scenes": scenes,
             "total_scenes": len(scenes)
@@ -639,12 +654,17 @@ class PromptGenerator:
             f"\n**최종 추천 제목**: {data.get('recommended_title')}",
             f"\n### SEO 디스크립션\n{data.get('seo_description')}",
             "",
-            "## 2. 🔴 나노바나나 레드라인 썸네일 이미지 프롬프트 (JSON)",
+            "## 2. 💬 에이전트 레오의 알고리즘 인게이지먼트 & 추천 고정 댓글",
+            f"- **도발적 선택형 질문 (오픈 퀘스천)**: {data.get('engagement_question', 'N/A')}",
+            "- **📌 추천 고정 댓글 (Pinned Comment)**:",
+            f"> {data.get('pinned_comment', 'N/A')}",
+            "",
+            "## 3. 🔴 나노바나나 레드라인 썸네일 이미지 프롬프트 (JSON)",
             "```json",
             json.dumps(data.get("thumbnail_redline", {}), ensure_ascii=False, indent=2),
             "```",
             "",
-            "## 3. 8초 씬별 대본 & 첫 프레임 레드라인 프롬프트",
+            "## 4. 8초 씬별 대본 & 첫 프레임 레드라인 프롬프트",
         ])
 
         for sc in data.get("scenes", []):
