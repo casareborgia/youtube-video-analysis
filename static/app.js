@@ -1050,6 +1050,78 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // [1순위 최적화] 3단계에서 캡컷으로 바로 직행하는 원클릭 조립
+  const btnDirectExportCapcut = document.getElementById('btnDirectExportCapcut');
+  if (btnDirectExportCapcut) {
+    btnDirectExportCapcut.addEventListener('click', async () => {
+      if (!currentGeneratedBatch || !currentGeneratedBatch.scenes || currentGeneratedBatch.scenes.length === 0) {
+        showAlert('먼저 좌측에서 씬을 생성해주세요.', 'error');
+        return;
+      }
+
+      btnDirectExportCapcut.disabled = true;
+      const originalHtml = btnDirectExportCapcut.innerHTML;
+      btnDirectExportCapcut.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 캡컷 조립 중...';
+
+      // 씬 데이터 수집
+      const scenes = (currentGeneratedBatch.scenes || []).map((s, idx) => {
+        let aud = s.audio_url || '';
+        if (aud.startsWith('/data/')) {
+          aud = aud.substring(1); // 'data/...'
+        }
+        return {
+          scene_idx: s.scene_idx || idx + 1,
+          media_file: s.image_url || s.video_url || '',
+          audio_file: aud,
+          subtitle: s.narration || s.script || ''
+        };
+      });
+
+      const topicName = currentGeneratedBatch.topic || 'TubeInsight_Project';
+
+      try {
+        const res = await fetch('/api/capcut/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            project_name: topicName,
+            scenes: scenes,
+            transition_type: 'dissolve',
+            aspect_ratio: currentGeneratedBatch.aspect_ratio || '16:9'
+          })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || '캡컷 조립 실패');
+        }
+
+        const data = await res.json();
+        const doOpen = confirm(`🎉 캡컷 프로젝트 '${data.project_name}' 조립이 완료되었습니다!\n\n총 ${data.total_scenes}개 씬의 대사와 자막, 컷 전환 디졸브가 캡컷 타임라인에 완벽히 동기화되었습니다.\n\n지금 바로 CapCut 앱을 실행하시겠습니까?`);
+        if (doOpen) {
+          await fetch('/api/capcut/open', { method: 'POST' });
+          showAlert('CapCut 앱을 실행했습니다.', 'success');
+        } else {
+          showAlert(`캡컷 프로젝트가 저장되었습니다: ${data.project_dir}`, 'success');
+        }
+      } catch (err) {
+        showAlert('캡컷 내보내기 오류: ' + err.message, 'error');
+      } finally {
+        btnDirectExportCapcut.disabled = false;
+        btnDirectExportCapcut.innerHTML = originalHtml;
+      }
+    });
+  }
+
+  // [1순위 최적화] 3단계에서 4단계 비디오 제작으로 플랜 가지고 직행
+  const btnGoToProducer = document.getElementById('btnGoToProducer');
+  if (btnGoToProducer) {
+    btnGoToProducer.addEventListener('click', () => {
+      switchMainView('producer');
+      showAlert('4단계 비디오 프로듀서로 이동했습니다.', 'success');
+    });
+  }
+
   // 전체 프롬프트 복사
   btnCopyAllPrompts.addEventListener('click', () => {
     if (!currentGeneratedBatch || !currentGeneratedBatch.scenes) {
