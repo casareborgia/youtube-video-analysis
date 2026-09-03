@@ -806,6 +806,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const beat = scene.dramatic_beat || scene.stage || '8초 씬';
       const camera = scene.camera || scene.inferred_angle || 'Cinematic Push-in';
       const lighting = scene.lighting || scene.inferred_lighting || 'Volumetric Lighting';
+      const sfx = scene.sfx || '';
       const firstFrameRedline = scene.first_frame_redline || null;
       const redlineJsonStr = firstFrameRedline ? JSON.stringify(firstFrameRedline, null, 2) : '';
 
@@ -852,8 +853,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
           <!-- 8초 비디오 생성용 영문 프롬프트 -->
           <div class="scene-prompt-editor-area">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <label><i class="fa-solid fa-video"></i> 8초 비디오 생성 프롬프트 (Runway / Kling / Sora / Flow):</label>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+              <label>
+                <i class="fa-solid fa-video"></i> 8초 비디오 생성 프롬프트:
+                <span class="badge badge-accent" style="font-size:10px; margin-left:6px;"><i class="fa-solid fa-volume-xmark"></i> BGM·대사 제외</span>
+                <span class="badge badge-subtle" style="font-size:10px;"><i class="fa-solid fa-waveform"></i> SFX 전용</span>
+              </label>
               <button class="btn btn-sm btn-outline btn-copy-single" data-index="${idx}" style="padding:2px 8px; font-size:11px;">
                 <i class="fa-solid fa-copy"></i> 비디오 프롬프트 복사
               </button>
@@ -882,6 +887,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="scene-modifiers-info">
               <span><i class="fa-solid fa-camera" style="color:#60a5fa;"></i> 카메라: ${escapeHtml(camera)}</span>
               <span><i class="fa-solid fa-sun" style="color:#f59e0b;"></i> 조명: ${escapeHtml(lighting)}</span>
+              ${sfx ? `<span><i class="fa-solid fa-volume-high" style="color:#34d399;"></i> 현장효과음(SFX): ${escapeHtml(sfx)}</span>` : ''}
             </div>
           </div>
         </div>

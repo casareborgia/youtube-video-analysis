@@ -126,6 +126,26 @@ def get_fixed_redline_constraints() -> List[str]:
     ]
 
 
+def clean_sfx_text(text: str) -> str:
+    """효과음 텍스트에서 BGM, 음악, 목소리, 대사 관련 키워드를 제거하고 순수 현장음/앰비언스만 유지"""
+    if not text:
+        return "ambient environmental room tone, subtle atmospheric wind"
+    cleaned = re.sub(
+        r"(?i)\b(?:absolutely\s+)?(?:zero|no)\s+(?:human\s+)?(?:voice|vocal|speech|talking|dialogue|singing|whispering|narration|bgm|music|soundtrack)[^.;,]*[.;,]?",
+        "",
+        str(text)
+    )
+    cleaned = re.sub(
+        r"(?i)\b(?:epic\s+|dramatic\s+|cinematic\s+)?(?:background\s+music|bgm|soundtrack|melody|music|song|tune|vocal|voice|speech|dialogue|singing|whispering|narration)\b",
+        "",
+        cleaned
+    )
+    cleaned = re.sub(r'[\r\n\t]+', ' ', cleaned)
+    cleaned = re.sub(r'\s*,\s*,\s*', ', ', cleaned)
+    cleaned = re.sub(r'\s{2,}', ' ', cleaned).strip(" .,;")
+    return cleaned or "ambient environmental room tone, subtle atmospheric wind"
+
+
 class PromptGenerator:
     """분석 데이터 공통 강점 추출 및 신규 주제 기반 AI 프롬프트 생성기"""
 
@@ -469,6 +489,13 @@ class PromptGenerator:
 - 비주얼 화풍: {style_info['name']}
 - 전개 플롯: 5단계 마스터 플롯(도입 훅 -> 갈등/스케일 -> 공학적 난제 -> 해결 시도 -> 씁쓸한 현실과 깊은 여운)
 
+[★ 비디오 생성 프롬프트 & 사운드(SFX) 절대 규칙 (BGM·대사 절대 배제)]
+- BGM·음악·보컬·대사 완전 배제: 영상 생성 프롬프트 및 사운드 묘사에 사람 목소리, 말소리, 대사, BGM, 음악, 멜로디 관련 단어를 절대 포함하지 마세요 (no music, no bgm, no voice, no speech, no singing, no dialogue).
+- 인물 무언(Silent) 연출: 인물이 등장할 경우 반드시 입을 닫고 말하지 않는 모습으로 묘사하세요 (silent characters, closed mouths, no talking heads).
+- sfx (현장 효과음 & 앰비언스): 씬의 시각적 장면에 어울리는 리얼 현장 폴리 효과음과 환경음(ambience)만 영문으로 구체적으로 기술하세요 (예: "high-altitude wind howling, distant metallic construction hum, heavy concrete footsteps").
+- prompt_en 포맷 규격:
+  "Hyperrealistic 8k cinematic footage of [구체적 시각 묘사, silent characters with closed mouths]. Audio: [현장 효과음 sfx]. (SFX and ambience only — no voice, no speech, no dialogue, no music, no BGM, no on-screen text) --ar {aspect_ratio} --no voice, speech, dialogue, singing, music, bgm, text, watermark"
+
 [★ 에이전트 레오의 알고리즘 인게이지먼트 해킹 절대 규칙]
 - engagement_question: 마지막 씬 종료 후 시청자가 댓글창으로 달려오게 만드는 도발적 양자택일 선택형 질문(오픈 퀘스천 / 밸런스 질문) 1문장.
 - pinned_comment: 영상 업로드 즉시 크리에이터가 댓글 최상단에 고정하여 시청자 반응을 폭발시킬 추천 고정 댓글 텍스트 (시청 감사 + 오픈 퀘스천 질문 제시 + 좋아요/구독 넛지).
@@ -495,7 +522,8 @@ class PromptGenerator:
       "camera": "Slow cinematic push-in shot (또는 Drone aerial top-down 등)",
       "lighting": "Moody volumetric mist with dramatic golden hour rim light",
       "visual_description_ko": "화면 구도 및 연출 핵심 한국어 설명",
-      "prompt_en": "Hyperrealistic 8k cinematic footage, [구체적 시각 묘사], photorealistic, masterpiece --ar {aspect_ratio}"
+      "sfx": "high-altitude wind howling, distant metallic drone, heavy concrete footsteps",
+      "prompt_en": "Hyperrealistic 8k cinematic footage of [구체적 시각 묘사, silent characters with closed mouths]. Audio: high-altitude wind howling, distant metallic drone, heavy concrete footsteps. (SFX and ambience only — no voice, no speech, no dialogue, no music, no BGM, no on-screen text) --ar {aspect_ratio} --no voice, speech, dialogue, singing, music, bgm, text, watermark"
     }}
   ]
 }}
@@ -503,7 +531,7 @@ class PromptGenerator:
 반드시 유효한 JSON 형식만 출력해주세요."""
 
         messages = [
-            {"role": "system", "content": "You are an expert cinematic storyboard and video prompt director. Always write narration dialogues tailored strictly to 8-second speech length (35-45 characters). Always reply in valid JSON format."},
+            {"role": "system", "content": "You are an expert cinematic storyboard and video prompt director. Always write narration dialogues tailored strictly to 8-second speech length (35-45 characters). Strictly exclude all BGM, music, and dialogues from video prompts, focusing solely on ambient sound effects (SFX). Always reply in valid JSON format."},
             {"role": "user", "content": prompt}
         ]
 
@@ -538,7 +566,8 @@ class PromptGenerator:
                     "camera": "Cinematic slow push-in shot",
                     "lighting": "Volumetric dramatic lighting",
                     "visual_description_ko": f"{safe_topic} 씬 {idx} 비주얼",
-                    "prompt_en": f"Cinematic documentary footage of {safe_topic}, 8k, photorealistic, cinematic lighting --ar {aspect_ratio}"
+                    "sfx": "ambient environmental room tone, subtle atmospheric wind",
+                    "prompt_en": f"Cinematic documentary footage of {safe_topic}, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no music, no BGM, no on-screen text) --ar {aspect_ratio} --no voice, speech, dialogue, singing, music, bgm, text, watermark"
                 })
             parsed_data = {
                 "title_candidates": [f"{safe_topic}의 숨겨진 진실", f"아무도 몰랐던 {safe_topic}", f"{safe_topic} 프로젝트의 결말"],
@@ -567,14 +596,34 @@ class PromptGenerator:
             sc["estimated_sec"] = est_duration
             sc["is_8s_optimized"] = (30 <= char_len <= 50)
 
-            base_prompt = sc.get("prompt_en", "")
+            # SFX(효과음) 정제 (BGM/대사 키워드 완전 배제)
+            sfx_text = clean_sfx_text(sc.get("sfx") or "")
+            sc["sfx"] = sfx_text
+
+            base_prompt = sc.get("prompt_en", "").strip()
+
+            # BGM/음악/대사 관련 단어가 기본 프롬프트에 섞여 있는 경우 제거
+            base_prompt = re.sub(
+                r"(?i)\b(?:with\s+)?(?:dramatic\s+|cinematic\s+|epic\s+)?(?:background\s+music|bgm|soundtrack|melody|music|song)\b",
+                "",
+                base_prompt
+            ).strip()
+
+            # 오디오 제약조건 및 네거티브 프롬프트 결합
+            if "audio:" not in base_prompt.lower():
+                base_prompt = f"{base_prompt}. Audio: {sfx_text}. (SFX and ambience only — no voice, no speech, no dialogue, no music, no BGM, no on-screen text)"
+
+            if "--no" not in base_prompt:
+                base_prompt = f"{base_prompt} --no voice, speech, dialogue, singing, music, bgm, text, watermark"
+
             if model == "midjourney":
                 if "--ar" not in base_prompt:
                     base_prompt += f" --ar {aspect_ratio} --v 6.1 --style raw"
             elif model == "google_flow":
                 if "4k" not in base_prompt.lower() and "8k" not in base_prompt.lower():
                     base_prompt = f"4k cinematic footage, {base_prompt}"
-            sc["prompt_en"] = base_prompt
+
+            sc["prompt_en"] = re.sub(r'\s{2,}', ' ', base_prompt).strip()
 
         # ==============================================================
         # 3. [파이프라인 마지막 단계] 나노바나나 레드라인 이미지 프롬프트 자동 생성
@@ -671,6 +720,7 @@ class PromptGenerator:
             s_num = sc.get("scene_num", 1)
             t_range = sc.get("time_range", "")
             narr = sc.get("narration", "")
+            sfx = sc.get("sfx", "ambient sound")
             p_en = sc.get("prompt_en", "")
             redline = sc.get("first_frame_redline", {})
 
@@ -678,6 +728,7 @@ class PromptGenerator:
                 f"### [Scene #{s_num}] {t_range} - {sc.get('dramatic_beat', '')}",
                 f"- **나레이션 자막 (8초)**: {narr}",
                 f"- **카메라 / 조명**: {sc.get('camera', '')} | {sc.get('lighting', '')}",
+                f"- **현장 효과음 (SFX, BGM·대사 제외)**: `{sfx}`",
                 f"- **비디오 생성 영문 프롬프트**: `{p_en}`",
                 f"- **첫 프레임 레드라인 프롬프트 (JSON)**:",
                 "```json",
@@ -705,7 +756,7 @@ class PromptGenerator:
     @staticmethod
     def export_csv_data(scenes: List[Dict[str, Any]], title: str = "video") -> str:
         """스마트 태스크 CSV 생성"""
-        lines = ["씬번호,타임스탬프,서사단계,나레이션대본,카메라무빙,조명,AI영상프롬프트,첫프레임레드라인JSON,한국어비주얼가이드"]
+        lines = ["씬번호,타임스탬프,서사단계,나레이션대본,카메라무빙,조명,현장효과음(SFX),AI영상프롬프트,첫프레임레드라인JSON,한국어비주얼가이드"]
         for s in scenes:
             num = s.get("scene_num") or s.get("scene_index", 1)
             time_range = s.get("time_range", "")
@@ -713,9 +764,10 @@ class PromptGenerator:
             narration = (s.get("narration") or s.get("subtitle") or "").replace(",", " ").replace("\n", " ")
             camera = s.get("camera", "").replace(",", " ")
             lighting = s.get("lighting", "").replace(",", " ")
+            sfx = (s.get("sfx") or "ambient sound").replace(",", " ").replace("\n", " ")
             prompt = s.get("prompt_en", "").replace(",", ";").replace("\n", " ")
             redline_json = json.dumps(s.get("first_frame_redline", {}), ensure_ascii=False).replace('"', '""')
             desc_ko = s.get("visual_description_ko", "").replace(",", " ")
-            lines.append(f'{num},"{time_range}","{beat}","{narration}","{camera}","{lighting}","{prompt}","{redline_json}","{desc_ko}"')
+            lines.append(f'{num},"{time_range}","{beat}","{narration}","{camera}","{lighting}","{sfx}","{prompt}","{redline_json}","{desc_ko}"')
         return "\n".join(lines)
 
