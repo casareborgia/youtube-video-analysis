@@ -2742,14 +2742,74 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==============================================================
-  // 20. [Phase 10] 캡컷(CapCut) 타임라인 완전 자동 조립
+  // 20. [Phase 10] 캡컷(CapCut) 타임라인 조립 & 렌더링 모드 양자택일
   // ==============================================================
+  const btnModeCapCut = document.getElementById('btnModeCapCut');
+  const btnModeFfmpeg = document.getElementById('btnModeFfmpeg');
+  const panelRenderCapCut = document.getElementById('panelRenderCapCut');
+  const panelRenderFfmpeg = document.getElementById('panelRenderFfmpeg');
+  const producerBgmSelect = document.getElementById('producerBgmSelect');
+
   const capcutAppBadge = document.getElementById('capcutAppBadge');
   const capcutTransitionSelect = document.getElementById('capcutTransitionSelect');
   const capcutRatioSelect = document.getElementById('capcutRatioSelect');
   const btnExportToCapCut = document.getElementById('btnExportToCapCut');
   const btnLaunchCapCutApp = document.getElementById('btnLaunchCapCutApp');
   const capcutExportResultBox = document.getElementById('capcutExportResultBox');
+
+  if (btnModeCapCut && btnModeFfmpeg) {
+    btnModeCapCut.addEventListener('click', () => {
+      btnModeCapCut.className = 'btn btn-sm btn-primary';
+      btnModeCapCut.style.background = 'linear-gradient(135deg, #0284c7, #06b6d4)';
+      btnModeCapCut.style.border = 'none';
+      btnModeFfmpeg.className = 'btn btn-sm btn-outline';
+      btnModeFfmpeg.style.background = 'transparent';
+      if (panelRenderCapCut) panelRenderCapCut.style.display = 'block';
+      if (panelRenderFfmpeg) panelRenderFfmpeg.style.display = 'none';
+    });
+
+    btnModeFfmpeg.addEventListener('click', () => {
+      btnModeFfmpeg.className = 'btn btn-sm btn-primary';
+      btnModeFfmpeg.style.background = 'var(--primary-color)';
+      btnModeFfmpeg.style.border = 'none';
+      btnModeCapCut.className = 'btn btn-sm btn-outline';
+      btnModeCapCut.style.background = 'transparent';
+      if (panelRenderCapCut) panelRenderCapCut.style.display = 'none';
+      if (panelRenderFfmpeg) panelRenderFfmpeg.style.display = 'block';
+    });
+  }
+
+  // 루나(Luna) 스튜디오 발매 음원 BGM 목록 동적 연동
+  async function loadLunaBgmOptions() {
+    if (!producerBgmSelect) return;
+    try {
+      const res = await fetch('/api/luna/history');
+      if (!res.ok) return;
+      const data = await res.json();
+      const tracks = data.tracks || [];
+
+      producerBgmSelect.innerHTML = `
+        <option value="">배경음악 없음 (대사 나레이션만)</option>
+        <option value="__default_lofi__">기본 잔잔한 앰비언트 로파이 (432Hz Soundscape)</option>
+      `;
+
+      if (tracks.length > 0) {
+        const group = document.createElement('optgroup');
+        group.label = '🎵 에이전트 루나 발매 음원 (스튜디오)';
+        tracks.forEach(t => {
+          if (t.audio_url) {
+            const opt = document.createElement('option');
+            opt.value = t.audio_url;
+            opt.textContent = `🎵 ${t.title} [${t.genre || 'Ambient'}] (${Math.round(t.duration_seconds || 180)}초)`;
+            group.appendChild(opt);
+          }
+        });
+        producerBgmSelect.appendChild(group);
+      }
+    } catch (err) {
+      console.warn('루나 BGM 목록 로드 실패:', err);
+    }
+  }
 
   async function loadCapcutStatus() {
     try {
@@ -2787,6 +2847,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const trans = capcutTransitionSelect ? capcutTransitionSelect.value : 'dissolve';
       const ratio = capcutRatioSelect ? capcutRatioSelect.value : '16:9';
+      let bgmPath = producerBgmSelect ? producerBgmSelect.value : '';
+      if (bgmPath.startsWith('/data/')) {
+        bgmPath = bgmPath.substring(1); // 'data/...'
+      }
 
       try {
         const res = await fetch('/api/capcut/export', {
@@ -2795,7 +2859,8 @@ document.addEventListener('DOMContentLoaded', () => {
           body: JSON.stringify({
             plan_id: planId,
             transition_type: trans,
-            aspect_ratio: ratio
+            aspect_ratio: ratio,
+            bgm_path: bgmPath
           })
         });
 
@@ -2861,6 +2926,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadEnvSettings();
   loadThreadsStatus();
   loadCapcutStatus();
+  loadLunaBgmOptions();
 });
 
 

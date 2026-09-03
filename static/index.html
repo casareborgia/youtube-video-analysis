@@ -748,54 +748,43 @@
               </div>
 
               <div class="control-row">
-                <div class="control-group half">
-                  <label for="producerResSelect"><i class="fa-solid fa-desktop"></i> 해상도</label>
-                  <select id="producerResSelect" class="form-select">
-                    <option value="1080p" selected>1080p (Full HD)</option>
-                    <option value="720p">720p (HD)</option>
-                    <option value="360p">360p (초고속 프리뷰)</option>
-                  </select>
+              <!-- 🎵 배경음악(BGM) 선택 (루나 스튜디오 음원 자동 연계) -->
+              <div class="control-group" style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label for="producerBgmSelect" style="margin: 0;"><i class="fa-solid fa-music" style="color: #ec4899;"></i> 배경음악 (BGM) 선택</label>
+                  <span style="font-size: 0.72rem; color: var(--text-secondary);"><i class="fa-solid fa-bolt"></i> 루나 발매 음원 자동 연동</span>
                 </div>
-                <div class="control-group half">
-                  <label for="producerTransitionSelect"><i class="fa-solid fa-film"></i> 씬 전환 효과</label>
-                  <select id="producerTransitionSelect" class="form-select">
-                    <option value="fade" selected>0.5초 크로스페이드 (권장)</option>
-                    <option value="none">컷 전환 (Cut)</option>
-                  </select>
+                <select id="producerBgmSelect" class="form-select">
+                  <option value="">배경음악 없음 (대사 나레이션만)</option>
+                  <option value="__default_lofi__">기본 잔잔한 앰비언트 로파이 (432Hz Soundscape)</option>
+                </select>
+              </div>
+
+              <!-- 🎬 최종 영상 제작 방식 양자택일 탭 -->
+              <div style="margin-bottom: 14px;">
+                <label style="font-size: 0.8rem; font-weight: 600; color: #fff; margin-bottom: 6px; display: block;">
+                  <i class="fa-solid fa-sliders"></i> 최종 영상 제작 방식 선택
+                </label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                  <button type="button" class="btn btn-sm btn-primary" id="btnModeCapCut" style="display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 700; background: linear-gradient(135deg, #0284c7, #06b6d4); border: none;">
+                    <i class="fa-solid fa-scissors"></i> 캡컷(CapCut) 조립 <span class="badge" style="background: rgba(255,255,255,0.25); font-size: 9px;">추천</span>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline" id="btnModeFfmpeg" style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                    <i class="fa-solid fa-bolt"></i> 즉시 MP4 렌더링
+                  </button>
                 </div>
               </div>
 
-              <div class="options-row" style="margin: 12px 0;">
-                <label class="checkbox-label">
-                  <input type="checkbox" id="producerBurnSubtitles" checked>
-                  <span class="custom-checkbox"></span>
-                  자막 번인 (반투명 밴드 자막 합성)
-                </label>
-                <label class="checkbox-label">
-                  <input type="checkbox" id="producerFitNarration" checked>
-                  <span class="custom-checkbox"></span>
-                  나레이션 발화시간 씬 길이 자동 싱크
-                </label>
-              </div>
-
-              <button type="submit" id="btnStartRender" class="btn btn-primary btn-block">
-                <span class="btn-text"><i class="fa-solid fa-play"></i> 🎬 영상 합성 렌더링 시작</span>
-                <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 렌더링 중...</span>
-              </button>
-
-              <!-- 캡컷(CapCut) 타임라인 완전 자동 조립 섹션 -->
-              <div style="margin-top: 18px; padding-top: 16px; border-top: 1px dashed var(--border-color);">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                  <div style="display: flex; align-items: center; gap: 6px;">
-                    <i class="fa-solid fa-scissors" style="color: #38bdf8;"></i>
-                    <strong style="font-size: 0.9rem; color: #fff;">캡컷(CapCut) 타임라인 자동 조립</strong>
-                  </div>
+              <!-- [패널 A] 캡컷(CapCut) 타임라인 조립 모드 -->
+              <div id="panelRenderCapCut" style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <span style="font-size: 0.85rem; font-weight: 700; color: #38bdf8;"><i class="fa-solid fa-wand-magic-sparkles"></i> 캡컷 고품질 타임라인 내보내기</span>
                   <span id="capcutAppBadge" class="badge badge-subtle" style="font-size: 10px;">CapCut 확인 중...</span>
                 </div>
 
-                <div class="control-row" style="margin-bottom: 8px;">
+                <div class="control-row" style="margin-bottom: 10px;">
                   <div class="control-group half">
-                    <label for="capcutTransitionSelect" style="font-size: 0.75rem;"><i class="fa-solid fa-wand-magic-sparkles"></i> 컷 전환 이펙트</label>
+                    <label for="capcutTransitionSelect" style="font-size: 0.75rem;"><i class="fa-solid fa-film"></i> 컷 전환 이펙트</label>
                     <select id="capcutTransitionSelect" class="form-select" style="font-size: 0.8rem; padding: 6px 10px;">
                       <option value="dissolve" selected>디졸브 (자연스러운 전환)</option>
                       <option value="zoom_in">줌 인 (빨려 들어가는 효과)</option>
@@ -815,7 +804,7 @@
                 </div>
 
                 <div style="display: flex; gap: 8px;">
-                  <button type="button" id="btnExportToCapCut" class="btn btn-block" style="background: linear-gradient(135deg, #0284c7, #06b6d4); border: none; color: #fff; font-weight: 600;">
+                  <button type="button" id="btnExportToCapCut" class="btn btn-block" style="background: linear-gradient(135deg, #0284c7, #06b6d4); border: none; color: #fff; font-weight: 700;">
                     <span class="btn-text"><i class="fa-solid fa-file-export"></i> 🎬 캡컷(CapCut) 프로젝트로 자동 조립</span>
                     <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 조립 중...</span>
                   </button>
@@ -826,6 +815,50 @@
 
                 <div id="capcutExportResultBox" style="display: none; margin-top: 10px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 10px; font-size: 0.8rem;">
                 </div>
+              </div>
+
+              <!-- [패널 B] 서버 내부 즉시 MP4 렌더링 모드 (ffmpeg) -->
+              <div id="panelRenderFfmpeg" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <span style="font-size: 0.85rem; font-weight: 700; color: #a78bfa;"><i class="fa-solid fa-bolt"></i> 0클릭 즉시 MP4 렌더링 (서버 ffmpeg)</span>
+                  <span class="badge badge-accent" style="font-size: 10px;">무인 자동화</span>
+                </div>
+
+                <div class="control-row">
+                  <div class="control-group half">
+                    <label for="producerResSelect"><i class="fa-solid fa-desktop"></i> 해상도</label>
+                    <select id="producerResSelect" class="form-select">
+                      <option value="1080p" selected>1080p (Full HD)</option>
+                      <option value="720p">720p (HD)</option>
+                      <option value="360p">360p (초고속 프리뷰)</option>
+                    </select>
+                  </div>
+                  <div class="control-group half">
+                    <label for="producerTransitionSelect"><i class="fa-solid fa-film"></i> 씬 전환 효과</label>
+                    <select id="producerTransitionSelect" class="form-select">
+                      <option value="fade" selected>0.5초 크로스페이드 (권장)</option>
+                      <option value="none">컷 전환 (Cut)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="options-row" style="margin: 10px 0;">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="producerBurnSubtitles" checked>
+                    <span class="custom-checkbox"></span>
+                    자막 번인 합성
+                  </label>
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="producerFitNarration" checked>
+                    <span class="custom-checkbox"></span>
+                    발화시간 씬 자동 싱크
+                  </label>
+                </div>
+
+                <button type="submit" id="btnStartRender" class="btn btn-primary btn-block">
+                  <span class="btn-text"><i class="fa-solid fa-play"></i> 🎬 즉시 MP4 렌더링 시작</span>
+                  <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 렌더링 중...</span>
+                </button>
               </div>
             </form>
 
