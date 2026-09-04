@@ -26,3 +26,11 @@ watchfiles==1.2.0
 websockets==17.0.1
 yt-dlp==2026.8.19
 edge-tts>=7.0.0
+
+# YouTube Data API v3 OAuth (uploader.py — 채널 연결/업로드/브랜딩)
+google-api-python-client>=2.200.0
+google-auth-oauthlib>=1.4.1
+
+# Gemini 이미지·영상·음악 생성 (producer.py 나노바나나 / luna_engine.py Lyria)
+# 미설치 시 해당 기능만 비활성화되고 나머지는 정상 동작합니다.
+google-genai>=2.0.0
