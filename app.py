@@ -20,6 +20,7 @@ import pandas as pd
 import yt_dlp
 
 import llm_client
+import scene_store
 from tts_service import TTSService, AUDIO_DIR, VOICES_DIR, ZIP_DIR, EDGE_PRESETS, QWEN_PRESETS
 from prompt_generator import (
     PromptGenerator,
@@ -842,19 +843,73 @@ def _run_build_worker(job_id: str, plan_dict: dict, options: dict):
             "message": f"합성 실패: {str(e)}"
         }
 
+class ScenePlanSaveRequest(BaseModel):
+    batch: Dict[str, Any]
+    scene_seconds: Optional[float] = 8.0
+
+
+@app.post("/api/scenes/save")
+async def save_scene_plan(req: ScenePlanSaveRequest):
+    """씬 기획 결과를 영상 합성이 읽을 수 있는 기획서로 저장한다."""
+    if not (req.batch or {}).get("scenes"):
+        raise HTTPException(status_code=400, detail="저장할 씬이 없습니다. 먼저 씬 기획을 생성해주세요.")
+    plan = scene_store.build_plan(req.batch, scene_seconds=req.scene_seconds or 8.0)
+    plan_id = scene_store.save_plan(plan)
+    return {
+        "status": "success",
+        "plan_id": plan_id,
+        "scene_count": len(plan["structured_scenes"]),
+        "audio_count": len(plan["audio_data"]["scenes_audio"]),
+    }
+
+
+@app.get("/api/scenes/list")
+async def list_scene_plans():
+    """저장된 씬 기획서 목록 (영상 합성 탭 선택용)."""
+    return {"status": "success", "data": scene_store.list_plans()}
+
+
+@app.get("/api/scenes/{plan_id}")
+async def get_scene_plan(plan_id: str):
+    plan = scene_store.load_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="씬 기획서를 찾을 수 없습니다.")
+    return {"status": "success", "data": plan}
+
+
+@app.delete("/api/scenes/{plan_id}")
+async def remove_scene_plan(plan_id: str):
+    if not scene_store.delete_plan(plan_id):
+        raise HTTPException(status_code=404, detail="씬 기획서를 찾을 수 없습니다.")
+    return {"status": "success", "message": "씬 기획서를 삭제했습니다."}
+
+
+def _resolve_plan(plan_id: str):
+    """씬 기획서 -> 채널 기획서 -> output 디렉토리 순으로 조회한다."""
+    plan = scene_store.load_plan(plan_id)
+    if plan:
+        return plan
+    plan = channel_builder.get_plan(plan_id)
+    if plan:
+        return plan
+    plan_file = OUTPUT_DIR / f"{plan_id}.json"
+    if plan_file.exists():
+        with open(plan_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+
 @app.post("/api/producer/build")
 async def build_video_endpoint(req: ProducerBuildRequest, background_tasks: BackgroundTasks):
     """ffmpeg 기반 영상 합성 작업 시작 (BackgroundTasks)"""
-    plan = channel_builder.get_plan(req.plan_id)
-    if not plan:
-        # 혹시 output 디렉토리의 기획서인지 확인
-        plan_file = OUTPUT_DIR / f"{req.plan_id}.json"
-        if plan_file.exists():
-            with open(plan_file, "r", encoding="utf-8") as f:
-                plan = json.load(f)
-
+    plan = _resolve_plan(req.plan_id)
     if not plan:
         raise HTTPException(status_code=404, detail="합성할 기획서(plan_id)를 찾을 수 없습니다.")
+    if not plan.get("structured_scenes"):
+        raise HTTPException(
+            status_code=400,
+            detail="이 기획서에는 씬 데이터가 없습니다. 3단계에서 씬을 기획한 뒤 [영상 합성용으로 저장]을 눌러주세요."
+        )
 
     job_id = f"job_{int(time.time() * 1000)}"
     _producer_jobs[job_id] = {
@@ -1240,7 +1295,7 @@ async def export_to_capcut(req: CapCutExportRequest):
         name = req.project_name or "TubeInsight_AI_Video"
 
         if req.plan_id:
-            plan = channel_builder.get_plan(req.plan_id)
+            plan = _resolve_plan(req.plan_id)
             if not plan:
                 raise HTTPException(status_code=404, detail="지정한 플랜을 찾을 수 없습니다.")
             name = req.project_name or plan.get("topic") or plan.get("title") or "TubeInsight_Project"

@@ -1274,9 +1274,33 @@ document.addEventListener('DOMContentLoaded', () => {
   // [1순위 최적화] 3단계에서 4단계 비디오 제작으로 플랜 가지고 직행
   const btnGoToProducer = document.getElementById('btnGoToProducer');
   if (btnGoToProducer) {
-    btnGoToProducer.addEventListener('click', () => {
-      switchMainView('producer');
-      showAlert('4단계 비디오 프로듀서로 이동했습니다.', 'success');
+    btnGoToProducer.addEventListener('click', async () => {
+      if (!currentGeneratedBatch || !(currentGeneratedBatch.scenes || []).length) {
+        showAlert('먼저 씬을 기획해주세요.', 'error');
+        return;
+      }
+      const orig = btnGoToProducer.innerHTML;
+      btnGoToProducer.disabled = true;
+      btnGoToProducer.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 기획서 저장 중...';
+      try {
+        // 씬 데이터를 영상 합성이 읽을 수 있는 기획서로 저장한 뒤 넘어간다
+        const res = await fetch('/api/scenes/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ batch: currentGeneratedBatch })
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.detail || '기획서 저장에 실패했습니다.');
+        switchMainView('producer');
+        await loadProducerPlans(d.plan_id);
+        const audioNote = d.audio_count ? ` (음성 ${d.audio_count}개 포함)` : ' (음성 미포함 — 3단계에서 먼저 합성하면 나레이션이 들어갑니다)';
+        showAlert(`씬 ${d.scene_count}개를 기획서로 저장했습니다${audioNote}`, 'success');
+      } catch (err) {
+        showAlert('이동 실패: ' + err.message, 'error');
+      } finally {
+        btnGoToProducer.disabled = false;
+        btnGoToProducer.innerHTML = orig;
+      }
     });
   }
 
@@ -1904,30 +1928,51 @@ document.addEventListener('DOMContentLoaded', () => {
   const ytUploadPinnedComment = document.getElementById('ytUploadPinnedComment');
   const btnSubmitYoutubeUpload = document.getElementById('btnSubmitYoutubeUpload');
 
-  async function loadProducerPlans() {
+  async function loadProducerPlans(selectId) {
     if (!producerPlanSelect) return;
+    producerPlanSelect.innerHTML = '<option value="">기획서를 선택하세요...</option>';
+
+    // 씬 기획서 — 영상 합성이 실제로 소비할 수 있는 유일한 형식
+    try {
+      const res = await fetch('/api/scenes/list');
+      const d = await res.json();
+      const plans = (d && d.data) || [];
+      if (plans.length) {
+        const g = document.createElement('optgroup');
+        g.label = '씬 기획서 (합성 가능)';
+        plans.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          const audio = p.audio_count ? ` · 음성 ${p.audio_count}` : '';
+          opt.textContent = `${p.title || p.topic} — 씬 ${p.scene_count}${audio}`;
+          g.appendChild(opt);
+        });
+        producerPlanSelect.appendChild(g);
+      }
+    } catch (err) {
+      console.warn('씬 기획서 목록 로드 실패:', err);
+    }
+
+    // 채널 기획서 — 씬 데이터가 없어 합성은 불가. 참고용으로만 노출한다.
     try {
       const res = await fetch('/api/channel/history');
       const list = await res.json();
-      producerPlanSelect.innerHTML = '<option value="">기획서를 선택하세요...</option>';
-      if (Array.isArray(list) && list.length > 0) {
+      if (Array.isArray(list) && list.length) {
+        const g = document.createElement('optgroup');
+        g.label = '채널 기획서 (씬 없음 — 합성 불가)';
         list.forEach(p => {
           const opt = document.createElement('option');
           opt.value = p.id;
-          opt.textContent = `[${p.id}] ${p.topic || '채널 기획서'}`;
-          producerPlanSelect.appendChild(opt);
+          opt.textContent = p.topic || '채널 기획서';
+          g.appendChild(opt);
         });
-      }
-      if (currentGeneratedBatch) {
-        const opt = document.createElement('option');
-        opt.value = currentGeneratedBatch.topic;
-        opt.textContent = `[현재 기획] ${currentGeneratedBatch.recommended_title || currentGeneratedBatch.topic}`;
-        opt.selected = true;
-        producerPlanSelect.appendChild(opt);
+        producerPlanSelect.appendChild(g);
       }
     } catch (err) {
-      console.warn('플랜 목록 로드 실패:', err);
+      console.warn('채널 기획서 목록 로드 실패:', err);
     }
+
+    if (selectId) producerPlanSelect.value = selectId;
   }
 
   async function checkYoutubeStatus() {

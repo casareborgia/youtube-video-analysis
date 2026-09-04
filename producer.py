@@ -94,15 +94,48 @@ GEMINI_INTERACTION_URL = "https://generativelanguage.googleapis.com/v1beta/inter
 
 # ── 환경 및 API 키 관리 ───────────────────────────────────────────────────
 
+_FFMPEG_CACHE = {}
+
+
+def _ffmpeg_has_drawtext(exe):
+    """자막·플레이스홀더 렌더에 필수인 drawtext 필터 지원 여부."""
+    if exe in _FFMPEG_CACHE:
+        return _FFMPEG_CACHE[exe]
+    ok = False
+    try:
+        out = subprocess.run([exe, "-hide_banner", "-filters"],
+                             capture_output=True, text=True, timeout=20).stdout
+        ok = any(len(parts) > 1 and parts[1] == "drawtext"
+                 for parts in (l.split() for l in out.splitlines()))
+    except Exception:
+        ok = False
+    _FFMPEG_CACHE[exe] = ok
+    return ok
+
+
 def ffmpeg_path():
+    """drawtext 를 지원하는 ffmpeg 를 우선 고른다.
+
+    libfreetype 없이 빌드된 ffmpeg 가 PATH 에 있으면 자막 번인과 플레이스홀더가
+    'No such filter: drawtext' 로 실패한다. PATH 의 첫 바이너리를 무조건 쓰지 않고
+    필요한 필터를 갖춘 쪽을 선택하며, 둘 다 없으면 있는 것이라도 반환한다.
+    """
+    candidates = []
     exe = shutil.which("ffmpeg")
     if exe:
-        return exe
+        candidates.append(exe)
     try:
         import imageio_ffmpeg
-        return imageio_ffmpeg.get_ffmpeg_exe()
+        bundled = imageio_ffmpeg.get_ffmpeg_exe()
+        if bundled and bundled not in candidates:
+            candidates.append(bundled)
     except Exception:
-        return None
+        pass
+
+    for c in candidates:
+        if _ffmpeg_has_drawtext(c):
+            return c
+    return candidates[0] if candidates else None
 
 
 def find_font():

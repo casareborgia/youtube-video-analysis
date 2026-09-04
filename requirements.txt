@@ -34,3 +34,7 @@ google-auth-oauthlib>=1.4.1
 # Gemini 이미지·영상·음악 생성 (producer.py 나노바나나 / luna_engine.py Lyria)
 # 미설치 시 해당 기능만 비활성화되고 나머지는 정상 동작합니다.
 google-genai>=2.0.0
+
+# drawtext(자막 번인)를 지원하는 ffmpeg 번들.
+# 시스템 ffmpeg 가 libfreetype 없이 빌드된 경우 producer 가 이쪽을 선택한다.
+imageio-ffmpeg>=0.6.0
