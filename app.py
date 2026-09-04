@@ -50,7 +50,7 @@ async def add_security_headers(request: Request, call_next):
     response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
-        "img-src 'self' data: https://i.ytimg.com https://*.youtube.com; "
+        "img-src 'self' data: https://i.ytimg.com https://*.youtube.com https://*.ggpht.com; "
         "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
         "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
         "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
@@ -140,6 +140,9 @@ class AnalyzeRequest(BaseModel):
 class LLMSelectRequest(BaseModel):
     backend: str = "auto"  # auto | lmstudio | ollama
 
+class LLMSelectModelRequest(BaseModel):
+    model: Optional[str] = None  # None이면 자동 선택으로 초기화
+
 class PromptCustomTopicRequest(BaseModel):
     topic: str
     scene_count: int = 6
@@ -201,6 +204,40 @@ async def select_llm_backend(req: LLMSelectRequest):
         return {"status": "success", "preference": saved_pref}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/llm/models")
+async def get_llm_models():
+    """LM Studio & Ollama에 설치된 전체 모델 목록 반환"""
+    probes = llm_client.probe_all()
+    current_model = llm_client.get_selected_model()
+    all_models = []
+    for backend_key, info in probes.items():
+        backend_label = "LM Studio" if backend_key == "lmstudio" else "Ollama"
+        for m in info.get("models", []):
+            all_models.append({
+                "id": m,
+                "name": m,
+                "backend": backend_key,
+                "backend_label": backend_label,
+                "online": info["online"],
+            })
+    return {
+        "status": "success",
+        "models": all_models,
+        "selected_model": current_model,
+        "backends": probes,
+    }
+
+@app.post("/api/llm/select-model")
+async def select_llm_model(req: LLMSelectModelRequest):
+    """Ollama / LM Studio 에서 원하는 특정 모델을 직접 지정"""
+    saved = llm_client.set_selected_model(req.model)
+    active = llm_client.detect_backend()
+    return {
+        "status": "success",
+        "selected_model": saved,
+        "active": active,
+    }
 
 # ==========================================
 # 유튜브 영상 분석 API
@@ -832,6 +869,83 @@ async def get_youtube_status():
     """유튜브 OAuth 인증 및 연동 채널 상태 조회"""
     return uploader.status()
 
+@app.get("/api/youtube/auth/login")
+async def youtube_auth_login(background_tasks: BackgroundTasks, force: bool = False):
+    """
+    유튜브 OAuth 브라우저 인증을 시작합니다.
+    uploader.authorize()가 로컬 서버를 열어 브라우저 로그인을 처리하므로
+    백그라운드 스레드에서 실행하고 즉시 안내 메시지를 반환합니다.
+    """
+    st = uploader.status()
+    if not st.get("libs"):
+        raise HTTPException(
+            status_code=503,
+            detail="구글 API 패키지가 없습니다. 터미널에서 'pip install google-api-python-client google-auth-oauthlib'를 실행해주세요."
+        )
+    if not st.get("client_secret"):
+        raise HTTPException(
+            status_code=503,
+            detail="data/youtube/client_secret.json 파일이 없습니다. Google Cloud Console에서 OAuth 클라이언트(데스크톱 앱) JSON을 받아 저장해주세요."
+        )
+    # force=true 이면 이미 연결돼 있어도 새 채널을 추가로 연결한다
+    if st.get("authorized") and not force:
+        ch = st.get("channel") or {}
+        return JSONResponse({
+            "status": "already_authorized",
+            "message": f"이미 '{ch.get('title', '알 수 없음')}' 채널이 연결되어 있습니다.",
+            "channel": ch,
+            "channels": st.get("channels", [])
+        })
+    # 브라우저 팝업 OAuth — 별도 스레드에서 블로킹 실행
+    import concurrent.futures
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(None, uploader.authorize)
+        ch = result.get("channel") or {}
+        return JSONResponse({
+            "status": "success",
+            "message": f"'{ch.get('title', '알 수 없음')}' 채널이 연결되었습니다.",
+            "channel": ch,
+            "channels": result.get("channels", [])
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"유튜브 인증 실패: {e}")
+
+@app.post("/api/youtube/auth/disconnect")
+async def youtube_auth_disconnect(channel_id: Optional[str] = None):
+    """channel_id를 주면 해당 채널만, 생략하면 모든 채널의 연결을 해제합니다."""
+    res = uploader.disconnect(channel_id)
+    if channel_id:
+        msg = "선택한 채널의 연결이 해제되었습니다."
+    else:
+        msg = "모든 유튜브 채널 연결이 해제되었습니다."
+    return {"status": "success", "message": msg, "channels": res.get("channels", [])}
+
+
+@app.get("/api/youtube/channels")
+async def list_youtube_channels():
+    """연결된 모든 유튜브 채널 목록과 현재 활성 채널을 반환합니다."""
+    return {
+        "status": "success",
+        "active_channel_id": uploader.get_active_channel_id(),
+        "channels": uploader.list_channels()
+    }
+
+
+@app.post("/api/youtube/channels/select")
+async def select_youtube_channel(channel_id: str):
+    """업로드·브랜딩에 사용할 활성 채널을 전환합니다."""
+    try:
+        uploader.set_active_channel(channel_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "status": "success",
+        "active_channel_id": channel_id,
+        "channels": uploader.list_channels()
+    }
+
+
 class YoutubeUploadRequest(BaseModel):
     video_file: str
     title: str
@@ -841,26 +955,30 @@ class YoutubeUploadRequest(BaseModel):
     privacy_status: Optional[str] = "unlisted"
     thumbnail_file: Optional[str] = None
     pinned_comment: Optional[str] = None
+    publish_at: Optional[str] = None
+    channel_id: Optional[str] = None
 
 @app.post("/api/youtube/upload")
 async def upload_youtube_video(req: YoutubeUploadRequest):
     """YouTube Data API v3 원클릭 영상, 썸네일, 고정댓글 업로드"""
-    st = uploader.status()
+    st = uploader.status(req.channel_id)
     if not st.get("authorized"):
         raise HTTPException(status_code=401, detail="YouTube OAuth 계정 인증이 필요합니다.")
 
     try:
         res = uploader.upload_video(
-            video_file=req.video_file,
+            video_path=req.video_file,
             title=req.title,
             description=req.description or "",
             tags=req.tags or [],
             category_id=req.category_id or "28",
-            privacy_status=req.privacy_status or "unlisted",
-            thumbnail_file=req.thumbnail_file,
-            pinned_comment=req.pinned_comment
+            privacy=req.privacy_status or "unlisted",
+            publish_at=req.publish_at,
+            thumbnail_path=req.thumbnail_file,
+            pinned_comment=req.pinned_comment,
+            channel_id=req.channel_id
         )
-        return {"status": "success", "result": res}
+        return {"status": "success", "channel": st.get("channel"), "result": res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"유튜브 업로드 실패: {e}")
 
@@ -959,7 +1077,8 @@ async def get_env_settings():
     masked_key = (k[:8] + "..." + k[-4:]) if has_key and len(k) > 12 else ("등록됨" if has_key else "")
     
     yt_status = uploader.status()
-    has_client_secret = os.path.exists(os.path.join(BASE_DIR, "client_secret.json"))
+    # 실제 인증에 사용되는 파일(data/youtube/client_secret.json)을 기준으로 판단한다
+    has_client_secret = os.path.exists(uploader.CLIENT_SECRET)
     ffmpeg_ok = bool(shutil.which("ffmpeg"))
 
     return {
@@ -968,6 +1087,8 @@ async def get_env_settings():
         "has_client_secret": has_client_secret,
         "youtube_authorized": yt_status.get("authorized", False),
         "youtube_channel": yt_status.get("channel"),
+        "youtube_channels": yt_status.get("channels", []),
+        "youtube_active_channel_id": yt_status.get("active_channel_id"),
         "ffmpeg_installed": ffmpeg_ok,
         "llm_preference": llm_client.get_preference()
     }

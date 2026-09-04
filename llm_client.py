@@ -21,6 +21,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 SETTINGS_FILE = DATA_DIR / "settings.json"
 
 _cache = {"ts": 0.0, "backend": None}
+_selected_model: str | None = None
 
 
 def _load_settings() -> dict:
@@ -52,6 +53,16 @@ def _load_preference() -> str:
 _preference = _load_preference()
 
 
+def _load_selected_model() -> str | None:
+    try:
+        return _load_settings().get("selected_model", None)
+    except Exception:
+        return None
+
+
+_selected_model = _load_selected_model()
+
+
 def get_preference() -> str:
     global _preference
     return _preference
@@ -79,6 +90,37 @@ def set_preference(pref: str) -> str:
     _cache["backend"] = None
     _cache["ts"] = 0.0
     return pref
+
+
+def get_selected_model() -> str | None:
+    """현재 사용자가 선택한 모델명을 반환합니다."""
+    global _selected_model
+    return _selected_model
+
+
+def set_selected_model(model: str | None) -> str | None:
+    """사용자가 선택한 특정 모델을 저장합니다 (재시작 후에도 유지)."""
+    global _selected_model
+    _selected_model = model
+    try:
+        data = {}
+        if SETTINGS_FILE.exists():
+            try:
+                with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                data = {}
+        if model:
+            data["selected_model"] = model
+        else:
+            data.pop("selected_model", None)
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[Settings Error] {e}")
+    _cache["backend"] = None
+    _cache["ts"] = 0.0
+    return model
 
 
 def _get_json(url: str, timeout: float = 1.5):
@@ -146,21 +188,30 @@ def detect_backend(force: str = None):
 def probe_all():
     """
     두 백엔드의 실행 상태를 각각 확인합니다 (상단 상태 배지용).
-    반환: {"lmstudio": {"online": bool, "model": str}, "ollama": {"online": bool, "model": str}}
+    반환: {"lmstudio": {"online": bool, "model": str, "models": list},
+            "ollama": {"online": bool, "model": str, "models": list}}
     """
-    lms = {"online": False, "model": None}
+    lms = {"online": False, "model": None, "models": []}
     try:
         data = _get_json(LMSTUDIO_URL + "/v1/models", timeout=1.2)
-        models = data.get("data") or []
-        lms = {"online": True, "model": models[0].get("id") if models else "서버 켜짐 (모델 미선택)"}
+        model_list = [m.get("id") for m in (data.get("data") or []) if m.get("id")]
+        lms = {
+            "online": True,
+            "model": model_list[0] if model_list else "서버 켜짐 (모델 미선택)",
+            "models": model_list,
+        }
     except Exception:
         pass
 
-    oll = {"online": False, "model": None}
+    oll = {"online": False, "model": None, "models": []}
     try:
         data = _get_json(OLLAMA_URL + "/api/tags", timeout=1.2)
-        models = [m.get("name") for m in (data.get("models") or []) if m.get("name")]
-        oll = {"online": True, "model": models[0] if models else "모델 설치 필요"}
+        model_list = [m.get("name") for m in (data.get("models") or []) if m.get("name")]
+        oll = {
+            "online": True,
+            "model": model_list[0] if model_list else "모델 설치 필요",
+            "models": model_list,
+        }
     except Exception:
         pass
 
@@ -204,9 +255,12 @@ def call_llm(
     full_content = ""
     history = list(messages)
 
+    # 사용자가 특정 모델을 선택했으면 그 모델을 우선 사용
+    active_model = _selected_model or backend["model"]
+
     for step in range(max_continues):
         payload = {
-            "model": backend["model"],
+            "model": active_model,
             "messages": history,
             "max_tokens": max_tokens,
             "temperature": temperature,

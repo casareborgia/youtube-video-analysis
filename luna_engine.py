@@ -444,9 +444,9 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None):
         description=meta["youtube_description"],
         tags=meta["youtube_tags"],
         category_id=10,  # 음악 카테고리
-        privacy_status=privacy_status,
+        privacy=privacy_status,
         thumbnail_path=cover_path if os.path.exists(cover_path) else None,
-        progress=lambda p, m: step(20 + int(p * 0.7), m)
+        progress=lambda stage, msg, pct: step(20 + int(pct * 0.7), msg)
     )
 
     track["uploaded_video_id"] = result.get("video_id")

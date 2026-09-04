@@ -89,8 +89,164 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==============================================================
-  // LLM 실시간 상태 감지 및 클릭 전환
+  // LLM 실시간 상태 감지 및 모델 선택 팝업
   // ==============================================================
+
+  // 모델 선택 팝업 생성 (최초 1회)
+  function ensureModelPickerDOM() {
+    if (document.getElementById('llmModelPicker')) return;
+    const overlay = document.createElement('div');
+    overlay.id = 'llmModelPickerOverlay';
+    overlay.style.cssText = `
+      display:none; position:fixed; inset:0; z-index:9999;
+      background:rgba(0,0,0,0.55); backdrop-filter:blur(4px);
+      align-items:center; justify-content:center;
+    `;
+    overlay.innerHTML = `
+      <div id="llmModelPicker" style="
+        background:var(--surface,#1e1e2e); border:1px solid var(--border,#333);
+        border-radius:16px; padding:28px 32px; min-width:360px; max-width:520px;
+        box-shadow:0 24px 64px rgba(0,0,0,0.6); color:var(--text,#e0e0e0);
+        font-family:inherit;
+      ">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+          <h3 style="margin:0;font-size:1.1rem;font-weight:700;">
+            <i class="fa-solid fa-microchip" style="color:#8b5cf6;margin-right:8px;"></i>
+            로컬 AI 모델 선택
+          </h3>
+          <button id="llmPickerClose" style="
+            background:none;border:none;color:var(--text-muted,#888);
+            font-size:1.3rem;cursor:pointer;padding:4px 8px;border-radius:6px;
+            transition:background 0.2s;
+          " onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='none'">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+        <p style="margin:0 0 16px;font-size:0.85rem;color:var(--text-muted,#888);line-height:1.5;">
+          LM Studio 또는 Ollama에서 감지된 모델 목록입니다.<br>
+          원하는 모델을 선택하면 즉시 적용됩니다.
+        </p>
+        <div id="llmModelList" style="
+          display:flex; flex-direction:column; gap:8px;
+          max-height:340px; overflow-y:auto; padding-right:4px;
+        ">
+          <div style="text-align:center;padding:20px;color:#888;">
+            <i class="fa-solid fa-spinner fa-spin"></i> 모델 목록 조회 중...
+          </div>
+        </div>
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border,#333);display:flex;gap:8px;justify-content:flex-end;">
+          <button id="llmPickerAutoBtn" style="
+            padding:8px 16px;border-radius:8px;border:1px solid #4f4f6a;
+            background:transparent;color:var(--text,#e0e0e0);cursor:pointer;
+            font-size:0.85rem;transition:background 0.2s;
+          " onmouseover="this.style.background='rgba(255,255,255,0.08)'" onmouseout="this.style.background='transparent'">
+            <i class="fa-solid fa-rotate"></i> 자동 선택 초기화
+          </button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    // 닫기 버튼
+    overlay.querySelector('#llmPickerClose').addEventListener('click', () => {
+      overlay.style.display = 'none';
+    });
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) overlay.style.display = 'none';
+    });
+
+    // 자동 선택 초기화
+    overlay.querySelector('#llmPickerAutoBtn').addEventListener('click', async () => {
+      await fetch('/api/llm/select-model', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: null })
+      });
+      overlay.style.display = 'none';
+      showAlert('자동 모델 선택으로 초기화되었습니다.', 'success');
+      pollLLMStatus();
+    });
+  }
+
+  async function openModelPicker() {
+    ensureModelPickerDOM();
+    const overlay = document.getElementById('llmModelPickerOverlay');
+    const listEl = document.getElementById('llmModelList');
+    overlay.style.display = 'flex';
+    listEl.innerHTML = '<div style="text-align:center;padding:20px;color:#888;"><i class="fa-solid fa-spinner fa-spin"></i> 조회 중...</div>';
+
+    try {
+      const [modelsRes, statusRes] = await Promise.all([
+        fetch('/api/llm/models'),
+        fetch('/api/llm/status')
+      ]);
+      const modelsData = await modelsRes.json();
+      const statusData = await statusRes.json();
+      const selectedModel = modelsData.selected_model || statusData?.active?.model;
+      const models = modelsData.models || [];
+
+      if (models.length === 0) {
+        listEl.innerHTML = `
+          <div style="text-align:center;padding:24px;color:#f87171;">
+            <i class="fa-solid fa-circle-xmark" style="font-size:1.8rem;margin-bottom:10px;display:block;"></i>
+            감지된 모델이 없습니다.<br>
+            <span style="font-size:0.82rem;color:#888;margin-top:6px;display:block;">
+              LM Studio 또는 Ollama를 실행한 뒤 다시 시도해주세요.
+            </span>
+          </div>`;
+        return;
+      }
+
+      // 백엔드별 그룹핑
+      const grouped = {};
+      models.forEach(m => {
+        if (!grouped[m.backend_label]) grouped[m.backend_label] = [];
+        grouped[m.backend_label].push(m);
+      });
+
+      let html = '';
+      for (const [label, items] of Object.entries(grouped)) {
+        html += `<div style="font-size:0.75rem;font-weight:700;color:#8b5cf6;text-transform:uppercase;
+          letter-spacing:0.08em;margin:8px 0 4px;padding-left:4px;">${label}</div>`;
+        items.forEach(m => {
+          const isActive = m.id === selectedModel;
+          html += `
+            <button class="llm-model-item" data-model="${escapeHtml(m.id)}" style="
+              display:flex; align-items:center; gap:12px; width:100%;
+              padding:10px 14px; border-radius:10px; border:1px solid ${isActive ? '#8b5cf6' : 'transparent'};
+              background:${isActive ? 'rgba(139,92,246,0.15)' : 'rgba(255,255,255,0.04)'};
+              color:var(--text,#e0e0e0); cursor:pointer; text-align:left;
+              transition:all 0.15s; font-size:0.88rem;
+            "
+            onmouseover="this.style.background='rgba(139,92,246,0.1)';this.style.borderColor='#7c3aed'"
+            onmouseout="this.style.background='${isActive ? 'rgba(139,92,246,0.15)' : 'rgba(255,255,255,0.04)'}';this.style.borderColor='${isActive ? '#8b5cf6' : 'transparent'}'"
+            >
+              <i class="fa-solid fa-${isActive ? 'circle-check' : 'circle'}" style="color:${isActive ? '#8b5cf6' : '#555'};font-size:1rem;flex-shrink:0;"></i>
+              <span style="flex:1;font-weight:${isActive ? '600' : '400'};word-break:break-all;">${escapeHtml(m.id)}</span>
+              ${isActive ? '<span style="font-size:0.72rem;background:#8b5cf6;color:#fff;padding:2px 8px;border-radius:20px;flex-shrink:0;">사용 중</span>' : ''}
+            </button>`;
+        });
+      }
+      listEl.innerHTML = html;
+
+      listEl.querySelectorAll('.llm-model-item').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const modelId = btn.dataset.model;
+          await fetch('/api/llm/select-model', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: modelId })
+          });
+          overlay.style.display = 'none';
+          showAlert(`모델이 [${modelId}]로 변경되었습니다.`, 'success');
+          pollLLMStatus();
+        });
+      });
+    } catch (e) {
+      listEl.innerHTML = `<div style="color:#f87171;padding:12px;">오류: ${escapeHtml(e.message)}</div>`;
+    }
+  }
+
   async function pollLLMStatus() {
     try {
       const res = await fetch('/api/llm/status');
@@ -100,41 +256,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (data.active) {
         dot.className = 'status-dot online';
-        const prefLabel = data.preference === 'auto' ? 'Auto' : data.active.name;
-        llmBackendName.textContent = `${data.active.name} (${prefLabel})`;
-        llmModelBadge.textContent = data.active.model || '온라인';
+        // 선택된 모델 우선 표시
+        const modelRes = await fetch('/api/llm/models');
+        const modelData = await modelRes.json();
+        const displayModel = modelData.selected_model || data.active.model || '온라인';
+        llmBackendName.textContent = data.active.name;
+        llmModelBadge.textContent = displayModel;
         llmModelBadge.style.display = 'inline-block';
+        llmStatusBadge.title = '클릭하여 모델 변경';
       } else {
         dot.className = 'status-dot offline';
         llmBackendName.textContent = '로컬 AI 꺼짐';
         llmModelBadge.textContent = 'LM Studio/Ollama 실행 필요';
         llmModelBadge.style.display = 'inline-block';
+        llmStatusBadge.title = 'LM Studio 또는 Ollama를 실행해주세요';
       }
     } catch (e) {
       console.warn('LLM 상태 조회 실패:', e);
     }
   }
 
-  llmStatusBadge.addEventListener('click', async () => {
-    try {
-      const res = await fetch('/api/llm/status');
-      const data = await res.json();
-      const currentPref = data.preference || 'auto';
-      // auto -> lmstudio -> ollama -> auto 순환
-      const nextPref = currentPref === 'auto' ? 'lmstudio' : currentPref === 'lmstudio' ? 'ollama' : 'auto';
-
-      const selectRes = await fetch('/api/llm/select', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ backend: nextPref })
-      });
-      const selectData = await selectRes.json();
-      showAlert(`로컬 AI 백엔드가 [${selectData.preference.toUpperCase()}] 모드로 변경되었습니다.`, 'success');
-      pollLLMStatus();
-    } catch (e) {
-      showAlert('백엔드 전환 오류: ' + e.message, 'error');
-    }
-  });
+  // 배지 클릭 → 모델 선택 팝업
+  llmStatusBadge.addEventListener('click', openModelPicker);
+  llmStatusBadge.style.cursor = 'pointer';
 
   pollLLMStatus();
   setInterval(pollLLMStatus, 10000);
@@ -2405,7 +2549,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const envYtAuthBadge = document.getElementById('envYtAuthBadge');
   const envClientSecretStatus = document.getElementById('envClientSecretStatus');
-  const envYtChannelName = document.getElementById('envYtChannelName');
+  const envYtChannelList = document.getElementById('envYtChannelList');
+  const btnConnectYoutube = document.getElementById('btnConnectYoutube');
   const btnDisconnectYoutube = document.getElementById('btnDisconnectYoutube');
 
   const envLlmPreference = document.getElementById('envLlmPreference');
@@ -2431,8 +2576,8 @@ document.addEventListener('DOMContentLoaded', () => {
       // 2. YouTube 상태
       if (envClientSecretStatus) {
         envClientSecretStatus.innerHTML = data.has_client_secret 
-          ? '<span style="color:#34d399;"><i class="fa-solid fa-check"></i> 루트 폴더에 정상 배치됨</span>' 
-          : '<span style="color:#f43f5e;"><i class="fa-solid fa-xmark"></i> client_secret.json 파일 없음</span>';
+          ? '<span style="color:#34d399;"><i class="fa-solid fa-check"></i> data/youtube/ 에 정상 배치됨</span>' 
+          : '<span style="color:#f43f5e;"><i class="fa-solid fa-xmark"></i> data/youtube/client_secret.json 파일 없음</span>';
       }
 
       if (envYtAuthBadge) {
@@ -2445,13 +2590,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
       }
 
-      if (envYtChannelName) {
-        if (data.youtube_channel) {
-          envYtChannelName.textContent = `${data.youtube_channel.title} (${data.youtube_channel.custom_url || ''})`;
-        } else {
-          envYtChannelName.textContent = '연결된 계정 없음 (인증 필요)';
-        }
-      }
+      renderYoutubeChannels(data.youtube_channels, data.youtube_active_channel_id);
 
       // 3. 엔진 상태
       if (envLlmPreference) {
@@ -2467,6 +2606,97 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       console.warn('환경설정 조회 실패:', err);
     }
+  }
+
+  // 연결된 유튜브 채널 목록 렌더링 (활성 채널 전환 / 개별 연결 해제)
+  function renderYoutubeChannels(channels, activeId) {
+    if (!envYtChannelList) return;
+    const list = Array.isArray(channels) ? channels : [];
+    if (!list.length) {
+      envYtChannelList.innerHTML = '<div style="opacity:.6;">연결된 채널이 없습니다. [채널 추가 연결]을 눌러주세요.</div>';
+      return;
+    }
+
+    envYtChannelList.innerHTML = list.map((ch) => {
+      const active = ch.active || ch.id === activeId;
+      const border = active ? 'rgba(52,211,153,.5)' : 'var(--border-color)';
+      const bg = active ? 'rgba(52,211,153,.08)' : 'transparent';
+      const thumb = ch.thumbnail
+        ? `<img src="${escapeHtml(ch.thumbnail)}" alt="" style="width:24px;height:24px;border-radius:50%;flex:none;">`
+        : '';
+      const rightBtn = active
+        ? '<span class="badge badge-success" style="font-size:10px;">사용 중</span>'
+        : `<button type="button" class="btn btn-xs btn-outline js-yt-select" data-id="${escapeHtml(ch.id)}">이 채널 사용</button>`;
+      return `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;border:1px solid ${border};background:${bg};">
+          ${thumb}
+          <div style="flex:1;min-width:0;">
+            <div style="color:#fff;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(ch.title || ch.id)}</div>
+            <div style="font-size:.72rem;opacity:.6;">${escapeHtml(ch.custom_url || ch.id)}</div>
+          </div>
+          ${rightBtn}
+          <button type="button" class="btn btn-xs btn-outline js-yt-remove" data-id="${escapeHtml(ch.id)}" title="이 채널만 연결 해제" style="color:#f43f5e;">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>`;
+    }).join('');
+
+    envYtChannelList.querySelectorAll('.js-yt-select').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-id');
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/youtube/channels/select?channel_id=${encodeURIComponent(id)}`, { method: 'POST' });
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(d.detail || '채널 전환에 실패했습니다.');
+          showAlert('업로드에 사용할 채널을 전환했습니다.', 'success');
+          loadEnvSettings();
+        } catch (err) {
+          showAlert('채널 전환 오류: ' + err.message, 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+
+    envYtChannelList.querySelectorAll('.js-yt-remove').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-id');
+        if (!confirm('이 채널의 연결만 해제하시겠습니까? (다른 채널 연결은 유지됩니다)')) return;
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/youtube/auth/disconnect?channel_id=${encodeURIComponent(id)}`, { method: 'POST' });
+          const d = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(d.detail || '연결 해제에 실패했습니다.');
+          showAlert('채널 연결이 해제되었습니다.', 'success');
+          loadEnvSettings();
+        } catch (err) {
+          showAlert('연결 해제 오류: ' + err.message, 'error');
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
+  // 채널 추가 연결 (이미 연결된 채널이 있어도 새 채널을 추가로 연결)
+  if (btnConnectYoutube) {
+    btnConnectYoutube.addEventListener('click', async () => {
+      const orig = btnConnectYoutube.innerHTML;
+      btnConnectYoutube.disabled = true;
+      btnConnectYoutube.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 브라우저에서 인증 중...';
+      showAlert('브라우저에 열린 구글 동의 화면에서 연결할 채널을 선택해주세요.', 'success');
+      try {
+        const res = await fetch('/api/youtube/auth/login?force=true');
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(d.detail || '연결에 실패했습니다.');
+        showAlert(d.message || '채널이 연결되었습니다.', 'success');
+        loadEnvSettings();
+      } catch (err) {
+        showAlert('유튜브 연결 오류: ' + err.message, 'error');
+      } finally {
+        btnConnectYoutube.disabled = false;
+        btnConnectYoutube.innerHTML = orig;
+      }
+    });
   }
 
   if (btnOpenEnvSettingsModal && envSettingsModal) {
@@ -2552,10 +2782,10 @@ document.addEventListener('DOMContentLoaded', () => {
   // 유튜브 연결 해제
   if (btnDisconnectYoutube) {
     btnDisconnectYoutube.addEventListener('click', async () => {
-      if (!confirm('유튜브 계정 연결을 해제하시겠습니까?')) return;
+      if (!confirm('연결된 모든 유튜브 채널의 연결을 해제하시겠습니까?')) return;
       try {
         await fetch('/api/youtube/auth/disconnect', { method: 'POST' });
-        showAlert('유튜브 계정 연결이 해제되었습니다.', 'success');
+        showAlert('모든 유튜브 채널 연결이 해제되었습니다.', 'success');
         loadEnvSettings();
       } catch (err) {
         showAlert('연결 해제 오류: ' + err.message, 'error');
