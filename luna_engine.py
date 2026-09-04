@@ -3,6 +3,7 @@
 import os
 import re
 import json
+import base64
 import time
 import glob
 import shutil
@@ -128,26 +129,23 @@ def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None):
 
     step(15, f"Lyria 3 Pro 음악 생성 준비 중 (목표 길이: {duration_seconds}초)...")
 
-    # 1. Google GenAI Lyria 3 호출 시도
+    # 1. Google GenAI Lyria 호출 시도 (Interactions API)
     lyria_success = False
     if key:
-        step(35, "Google GenAI Lyria 3 Pro 엔진에 작곡 요청 전송 중...")
-        try:
-            from google import genai
-            client = genai.Client(api_key=key)
-            if hasattr(client, "models") and hasattr(client.models, "generate_audio"):
-                res = client.models.generate_audio(
-                    model="lyria-3-pro",
-                    prompt=lyria_prompt,
-                    config={"duration_seconds": duration_seconds}
-                )
-                if hasattr(res, "audio_bytes") and res.audio_bytes:
-                    with open(audio_path, "wb") as f:
-                        f.write(res.audio_bytes)
-                    lyria_success = True
-                    step(80, "Lyria 3 Pro 고음질 오디오 스트림 수신 완료!")
-        except Exception as e:
-            print(f"[LunaEngine] Lyria 3 direct call bypassed or error ({e}) -> 고음질 오토 신스 백업 엔진 가동")
+        step(35, "Google GenAI Lyria 엔진에 작곡 요청 전송 중...")
+        last_err = ""
+        for model_name in LYRIA_MODELS:
+            try:
+                step(40, f"Lyria 작곡 요청 중 ({model_name})...")
+                _lyria_generate(key, model_name, lyria_prompt, duration_seconds, audio_path)
+                lyria_success = True
+                step(80, f"Lyria 고음질 오디오 수신 완료! ({model_name})")
+                break
+            except Exception as e:
+                last_err = f"{model_name}: {str(e)[:160]}"
+                print(f"[LunaEngine] Lyria 실패 -> {last_err}")
+        if not lyria_success:
+            print(f"[LunaEngine] 모든 Lyria 모델 실패({last_err}) -> 고음질 오토 신스 백업 엔진 가동")
 
     # 2. 안전 폴백: ffmpeg 정교한 앰비언트 신스 & 칠 사운드스케이프 생성기
     if not lyria_success or not os.path.exists(audio_path) or os.path.getsize(audio_path) < 1000:
@@ -161,6 +159,92 @@ def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None):
 
     step(100, "에이전트 루나 완곡 음원 준비 완료!")
     return track_data
+
+
+# Lyria 음악 생성 모델 우선순위.
+# 계정/티어에 따라 사용 가능한 모델이 다르므로 앞에서부터 순서대로 시도한다.
+# (producer.py 의 FALLBACK_IMAGE_MODELS 와 동일한 패턴)
+LYRIA_MODELS = ["lyria-3.5", "lyria-3-pro-preview", "lyria-3-clip-preview"]
+
+
+def _lyria_generate(api_key, model_name, prompt, duration_seconds, out_path):
+    """Interactions API 로 Lyria 음악을 생성해 out_path 에 저장한다.
+
+    google-genai SDK 에는 generate_audio() 가 없고, Lyria 는 영상(Omni)과 마찬가지로
+    interactions 엔드포인트를 통해 생성된다. producer 의 헬퍼를 그대로 재사용한다.
+    """
+    client = producer.get_genai_client(api_key)
+    payload = {
+        "model": model_name,
+        "input": [{"type": "text", "text": prompt}],
+        "response_format": {"type": "audio", "duration_seconds": int(duration_seconds)},
+    }
+    r = producer._create_interaction(client, api_key, payload)
+    r = producer._wait_interaction(client, api_key, r, label="Lyria 음악")
+
+    err = producer._interaction_errors(r)
+    status = producer._status_of(r)
+    if err:
+        raise RuntimeError(f"status={status} {err}")
+
+    block = _find_audio_block(r)
+    if not block:
+        raise RuntimeError(f"오디오 출력 없음 (status={status})")
+
+    data = block.get("data")
+    if data:
+        raw = base64.b64decode(data) if isinstance(data, str) else bytes(data)
+        with open(out_path, "wb") as f:
+            f.write(raw)
+    else:
+        uri = block.get("uri")
+        if not uri:
+            raise RuntimeError("오디오 데이터도 URI 도 없음")
+        req = urllib.request.Request(
+            uri if "alt=media" in uri else uri + ("&" if "?" in uri else "?") + "alt=media",
+            headers={"x-goog-api-key": api_key},
+        )
+        with urllib.request.urlopen(req, timeout=600) as resp, open(out_path, "wb") as f:
+            shutil.copyfileobj(resp, f)
+
+    if not os.path.exists(out_path) or os.path.getsize(out_path) < 1000:
+        raise RuntimeError("저장된 오디오가 비어 있음")
+
+
+def _find_audio_block(obj):
+    """SDK 객체 또는 REST JSON 에서 오디오 출력(data/uri)을 찾는다."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        t = obj.get("type")
+        mime = str(obj.get("mime_type") or obj.get("mimeType") or "")
+        if (t == "audio" or mime.startswith("audio/")) and (obj.get("data") or obj.get("uri")):
+            return obj
+        for key in ("output_audio", "outputAudio"):
+            if isinstance(obj.get(key), dict):
+                return obj[key]
+        for key in ("outputs", "output", "steps", "content", "contents", "parts"):
+            v = obj.get(key)
+            if isinstance(v, list):
+                for it in v:
+                    hit = _find_audio_block(it)
+                    if hit:
+                        return hit
+            elif isinstance(v, dict):
+                hit = _find_audio_block(v)
+                if hit:
+                    return hit
+        return None
+    oa = getattr(obj, "output_audio", None)
+    if oa is not None and (getattr(oa, "data", None) or getattr(oa, "uri", None)):
+        return {"data": getattr(oa, "data", None), "uri": getattr(oa, "uri", None)}
+    for it in (getattr(obj, "outputs", None) or []):
+        mime = str(getattr(it, "mime_type", "") or "")
+        if (getattr(it, "type", None) == "audio" or mime.startswith("audio/")) and (
+            getattr(it, "data", None) or getattr(it, "uri", None)
+        ):
+            return {"data": getattr(it, "data", None), "uri": getattr(it, "uri", None)}
+    return None
 
 
 def _generate_fallback_ambient_mp3(output_path, duration=180):
