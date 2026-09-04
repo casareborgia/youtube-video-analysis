@@ -644,5 +644,6 @@ def get_my_channel_diagnostics() -> dict:
 # 호환성을 위한 별칭 등록
 generate_channel_settings = generate_channel_setup
 list_plans = list_channels
+get_plan = load_channel
 
 

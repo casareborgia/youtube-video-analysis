@@ -105,3 +105,6 @@ threads_config.json
 .archive/
 
 
+
+# 생성된 다운로드 zip 산출물
+data/zips/

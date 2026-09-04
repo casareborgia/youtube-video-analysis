@@ -68,6 +68,12 @@ SUPPORTED_MODELS = {
 }
 
 
+# 8초 씬 나레이션 규격 (프롬프트 지시문과 검증 기준을 단일 소스로 통일)
+NARRATION_MIN_CHARS = 35
+NARRATION_MAX_CHARS = 45
+KO_CHARS_PER_SEC = 5.2  # 한국어 다큐 어조 기준 초당 발화 글자수
+
+
 def sanitize_input_text(text: str) -> str:
     """사용자 입력 텍스트에서 프롬프트 인젝션 의심 구문 및 제어 문자 정제"""
     if not text:
@@ -590,11 +596,25 @@ class PromptGenerator:
             # 8초 기준 글자수 및 발화 소요 시간 계산
             narr = (sc.get("narration") or sc.get("subtitle") or "").strip()
             char_len = len(narr)
-            est_duration = round(char_len / 5.2, 1)  # 한국어 다큐 어조 초당 약 5.2자
+            est_duration = round(char_len / KO_CHARS_PER_SEC, 1)  # 한국어 다큐 어조 초당 약 5.2자
 
             sc["char_count"] = char_len
             sc["estimated_sec"] = est_duration
-            sc["is_8s_optimized"] = (30 <= char_len <= 50)
+            # 스펙(35~45자)과 동일한 기준으로 판정한다.
+            # 45자를 넘으면 8초 안에 낭독이 끝나지 않으므로 경고로 표시한다(대본은 그대로 유지).
+            sc["is_8s_optimized"] = (NARRATION_MIN_CHARS <= char_len <= NARRATION_MAX_CHARS)
+            if char_len > NARRATION_MAX_CHARS:
+                sc["length_warning"] = (
+                    f"{char_len}자(약 {est_duration}초)로 8초를 초과합니다. "
+                    f"{NARRATION_MAX_CHARS}자 이내로 줄이면 음성과 영상 길이가 맞습니다."
+                )
+            elif char_len < NARRATION_MIN_CHARS:
+                sc["length_warning"] = (
+                    f"{char_len}자(약 {est_duration}초)로 8초를 채우지 못합니다. "
+                    f"{NARRATION_MIN_CHARS}자 이상으로 늘리는 것이 좋습니다."
+                )
+            else:
+                sc["length_warning"] = ""
 
             # SFX(효과음) 정제 (BGM/대사 키워드 완전 배제)
             sfx_text = clean_sfx_text(sc.get("sfx") or "")

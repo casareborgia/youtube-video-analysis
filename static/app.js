@@ -962,7 +962,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const charLen = narration.length;
       const estSec = scene.estimated_sec || (Math.round(charLen / 5.2 * 10) / 10);
-      const isOptimal = (charLen >= 30 && charLen <= 50);
+      // 판정 기준은 백엔드(35~45자)를 단일 소스로 삼는다. 값이 없을 때만 동일 기준으로 계산.
+      const isOptimal = (typeof scene.is_8s_optimized === 'boolean')
+        ? scene.is_8s_optimized
+        : (charLen >= 35 && charLen <= 45);
+      const lengthWarning = scene.length_warning || '';
 
       return `
         <div class="scene-card" data-index="${idx}" id="sceneCard_${idx}">
@@ -971,8 +975,8 @@ document.addEventListener('DOMContentLoaded', () => {
               <span class="scene-num-badge">Scene #${sceneNum}</span>
               <span class="scene-time-badge"><i class="fa-solid fa-clock"></i> ${escapeHtml(timeRange)}</span>
               <span class="tag-chip">${escapeHtml(beat)}</span>
-              <span class="badge ${isOptimal ? 'badge-success' : 'badge-warning'}" style="font-size:11px;" title="한국어 다큐 기준 8초 영상에 최적화된 35~45자 분량">
-                <i class="fa-solid fa-stopwatch"></i> 8초 맞춤 대사: ${charLen}자 (약 ${estSec}초)
+              <span class="badge ${isOptimal ? 'badge-success' : 'badge-warning'}" style="font-size:11px;" title="${escapeHtml(lengthWarning || '한국어 다큐 기준 8초 영상에 최적화된 35~45자 분량입니다.')}">
+                <i class="fa-solid fa-stopwatch"></i> 8초 맞춤 대사: ${charLen}자 (약 ${estSec}초)${isOptimal ? '' : ' ⚠️'}
               </span>
             </div>
           </div>

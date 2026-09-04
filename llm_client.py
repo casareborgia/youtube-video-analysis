@@ -7,6 +7,7 @@ LM Studio(1234) / Ollama(11434) 겸용
 
 import os
 import json
+import re
 import time
 import urllib.request
 import urllib.error
@@ -265,20 +266,34 @@ def call_llm(
             "max_tokens": max_tokens,
             "temperature": temperature,
         }
-        if json_mode:
+        # LM Studio 는 response_format 으로 'json_schema' 또는 'text' 만 허용하며
+        # {"type": "json_object"} 를 보내면 HTTP 400 으로 거절한다.
+        # 이 경우 헤더를 생략하고 프롬프트 지시 + extract_json() 파싱에 의존한다.
+        if json_mode and backend["backend_type"] != "lmstudio":
             payload["response_format"] = {"type": "json_object"}
 
         # Ollama /v1 호환 엔드포인트 또는 LM Studio /v1/chat/completions
         endpoint_url = backend["base"] + "/v1/chat/completions"
-        req = urllib.request.Request(
-            endpoint_url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json", "User-Agent": "TubeInsight/2.0"},
-        )
+
+        def _post(body: dict):
+            r = urllib.request.Request(
+                endpoint_url,
+                data=json.dumps(body).encode("utf-8"),
+                headers={"Content-Type": "application/json", "User-Agent": "TubeInsight/2.0"},
+            )
+            with urllib.request.urlopen(r, timeout=300) as resp:
+                return json.loads(resp.read().decode("utf-8"))
 
         try:
-            with urllib.request.urlopen(req, timeout=300) as response:
-                res_json = json.loads(response.read().decode("utf-8"))
+            try:
+                res_json = _post(payload)
+            except urllib.error.HTTPError as he:
+                # response_format 을 지원하지 않는 서버면 해당 필드만 빼고 한 번 재시도
+                if he.code == 400 and "response_format" in payload:
+                    retry_payload = {k: v for k, v in payload.items() if k != "response_format"}
+                    res_json = _post(retry_payload)
+                else:
+                    raise
         except urllib.error.URLError as e:
             # Ollama native API fallback
             if backend["backend_type"] == "ollama":
@@ -323,9 +338,19 @@ def call_llm(
 
 
 def _strip_fences(text: str) -> str:
-    """마크다운 ```json ... ``` 코드블록 태그 제거"""
+    """마크다운 ```json ... ``` 코드블록에서 첫 블록의 내용만 꺼냅니다."""
     m = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", text)
     return m.group(1) if m else text
+
+
+def _drop_fence_markers(text: str) -> str:
+    """코드펜스 마커만 제거해 본문을 이어붙입니다.
+
+    토큰 길이 초과로 이어쓰기가 발생하면 하나의 JSON이 여러 코드블록으로
+    쪼개져 돌아옵니다. 이때 _strip_fences()는 비탐욕 매칭이라 첫 조각만
+    잡아 JSON이 잘리므로, 마커만 걷어내고 전체를 한 덩어리로 다룹니다.
+    """
+    return re.sub(r"```(?:json)?", "", text)
 
 
 def _balanced_json_span(text: str) -> str:
@@ -362,8 +387,45 @@ def _balanced_json_span(text: str) -> str:
     return text[start:]
 
 
+def _escape_ctrl_in_strings(s: str) -> str:
+    """JSON 문자열 값 안의 이스케이프되지 않은 개행/탭을 \\n, \\t 로 바꿉니다.
+
+    LLM 이 마크다운 장문을 문자열 값에 넣을 때 실제 개행 문자를 그대로 출력하는
+    경우가 잦은데, JSON 명세상 문자열 안의 제어문자는 반드시 이스케이프되어야 하므로
+    'Invalid control character' 로 파싱이 실패한다. 구조(문자열 밖) 공백은 그대로 둔다.
+    """
+    out = []
+    in_str = False
+    esc = False
+    for ch in s:
+        if in_str:
+            if esc:
+                out.append(ch)
+                esc = False
+            elif ch == "\\":
+                out.append(ch)
+                esc = True
+            elif ch == '"':
+                out.append(ch)
+                in_str = False
+            elif ch == "\n":
+                out.append("\\n")
+            elif ch == "\r":
+                out.append("\\r")
+            elif ch == "\t":
+                out.append("\\t")
+            else:
+                out.append(ch)
+            continue
+        if ch == '"':
+            in_str = True
+        out.append(ch)
+    return "".join(out)
+
+
 def _repair_json(s: str) -> str:
     """끝 쉼표·제어문자 제거 후, 잘린 응답이면 열린 문자열/괄호를 올바른 순서로 닫습니다."""
+    s = _escape_ctrl_in_strings(s)
     s = re.sub(r",\s*([}\]])", r"\1", s)
     s = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", s)
     stack = []
@@ -396,9 +458,12 @@ def extract_json(text: str):
     if not text:
         return None
     candidates = [text.strip(), _strip_fences(text).strip()]
-    span = _balanced_json_span(_strip_fences(text))
-    if span:
-        candidates.append(span)
+    # 펜스 처리 방식을 달리한 여러 후보를 순서대로 시도한다.
+    # (첫 블록만 / 마커만 제거한 전체 / 원문) — 이어쓰기로 쪼개진 응답까지 복원하기 위함.
+    for base in (_strip_fences(text), _drop_fence_markers(text), text):
+        span = _balanced_json_span(base)
+        if span and span not in candidates:
+            candidates.append(span)
     for cand in candidates:
         for fixer in (lambda s: s, _repair_json):
             try:

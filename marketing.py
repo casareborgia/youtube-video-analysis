@@ -194,7 +194,7 @@ def generate_seo_blog(topic, context="", platform_target="general", tone="profes
     ]
 
     try:
-        data, _raw = llm_client.call_llm_json(messages, max_tokens=4096, temperature=0.6)
+        data, _raw = llm_client.call_llm_json(messages, max_tokens=8192, temperature=0.6)
         if not isinstance(data, dict) or "markdown_content" not in data:
             data = _fallback_blog_data(topic, platform_target, "AI 응답을 JSON으로 해석하지 못함")
     except Exception as e:
@@ -338,7 +338,7 @@ def generate_newsletter(topic, context="", campaign_type="video_launch", audienc
     ]
 
     try:
-        data, _raw = llm_client.call_llm_json(messages, max_tokens=4096, temperature=0.6)
+        data, _raw = llm_client.call_llm_json(messages, max_tokens=8192, temperature=0.6)
         if not isinstance(data, dict) or "html_template" not in data:
             data = _fallback_newsletter_data(topic, campaign_type, "AI 응답을 JSON으로 해석하지 못함")
     except Exception as e:

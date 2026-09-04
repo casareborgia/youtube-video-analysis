@@ -630,10 +630,13 @@ async def get_trends_top20(category_id: str = Query("0"), region_code: str = Que
 async def analyze_trends(req: TrendAnalyzeRequest):
     """실시간 급상승 Top 영상 기반 알고리즘 인사이트 리포트 생성"""
     try:
+        loop = asyncio.get_event_loop()
         payload = req.trends_payload
         if not payload:
-            payload = trend_scout.fetch_top20_trends(category_id=req.category_id)
-        result = trend_scout.analyze_trends_with_llm(payload)
+            payload = await loop.run_in_executor(
+                None, lambda: trend_scout.fetch_top20_trends(category_id=req.category_id)
+            )
+        result = await loop.run_in_executor(None, trend_scout.analyze_trends_with_llm, payload)
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"트렌드 분석 실패: {e}")
@@ -667,14 +670,15 @@ async def check_handle(handle: str = Query(...)):
 async def generate_channel(req: ChannelGenRequest):
     """8대 채널 세팅 AI 기획 자동 생성 (명세서 8대 규격 준수)"""
     try:
-        plan = channel_builder.generate_channel_setup(
+        loop = asyncio.get_event_loop()
+        plan = await loop.run_in_executor(None, lambda: channel_builder.generate_channel_setup(
             topic=req.topic,
             lang=req.lang or "ko",
             audience=req.audience or req.concept or "",
             tone=req.tone or "",
             persona_type=req.persona_type or "character",
             audio_lang=req.audio_lang or req.lang or "ko"
-        )
+        ))
         return plan
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"채널 기획 실패: {e}")
@@ -726,46 +730,56 @@ class MarketingGenRequest(BaseModel):
     audience: Optional[str] = "크리에이터, 직장인, 마케터"
     platform: Optional[str] = "threads"
     thread_count: Optional[int] = 5
-    blog_length: Optional[str] = "medium"
+    blog_length: Optional[str] = "medium"  # 엔진에 길이 파라미터가 없어 현재 사용되지 않음
+    blog_platform: Optional[str] = "general"  # naver | tistory | medium_velog | general
     campaign_type: Optional[str] = "educational"
+
+def _run_marketing(mode: str, req: "MarketingGenRequest"):
+    """마케팅 생성 본체 (블로킹 LLM 호출 — executor 에서 실행된다)"""
+    if mode == "threads":
+        return marketing.generate_threads_x(
+            topic=req.topic,
+            context=req.context or "",
+            platform=req.platform or "threads",
+            tone=req.tone or "viral_hook",
+            count=req.thread_count or 5,
+            audience=req.audience or "크리에이터, 직장인, 마케터"
+        )
+    if mode == "blog":
+        return marketing.generate_seo_blog(
+            topic=req.topic,
+            context=req.context or "",
+            platform_target=req.blog_platform or "general",
+            tone=req.tone or "professional",
+            audience=req.audience or "전문가 및 일반 독자"
+        )
+    if mode == "newsletter":
+        return marketing.generate_newsletter(
+            topic=req.topic,
+            context=req.context or "",
+            campaign_type=req.campaign_type or "educational",
+            audience=req.audience or "구독자 및 충성 팬"
+        )
+    return marketing.generate_all_marketing(
+        topic=req.topic,
+        context=req.context or "",
+        options={
+            "thread_platform": req.platform or "threads",
+            "thread_tone": req.tone or "viral_hook",
+            "thread_count": req.thread_count or 5,
+            "audience": req.audience or "크리에이터, 직장인, 마케터",
+            "blog_platform": req.blog_platform or "general",
+            "campaign_type": req.campaign_type or "video_launch",
+        }
+    )
 
 @app.post("/api/marketing/generate")
 async def generate_marketing_content(req: MarketingGenRequest):
     """멀티채널 마케팅(스레드, 블로그, 뉴스레터) 올인원 생성"""
     try:
         mode = req.mode or "all"
-        if mode == "threads":
-            res = marketing.generate_threads_x(
-                topic=req.topic,
-                context=req.context or "",
-                platform=req.platform or "threads",
-                tone=req.tone or "viral_hook",
-                count=req.thread_count or 5,
-                audience=req.audience or ""
-            )
-        elif mode == "blog":
-            res = marketing.generate_blog_post(
-                topic=req.topic,
-                context=req.context or "",
-                target_audience=req.audience or "",
-                length=req.blog_length or "medium",
-                tone=req.tone or "informative"
-            )
-        elif mode == "newsletter":
-            res = marketing.generate_newsletter(
-                topic=req.topic,
-                context=req.context or "",
-                campaign_type=req.campaign_type or "educational",
-                audience=req.audience or ""
-            )
-        else:
-            res = marketing.generate_omni_marketing(
-                topic=req.topic,
-                context=req.context or "",
-                tone=req.tone or "viral_hook",
-                audience=req.audience or ""
-            )
-
+        loop = asyncio.get_event_loop()
+        res = await loop.run_in_executor(None, _run_marketing, mode, req)
         entry_id = marketing.save_entry(req.topic, mode, res)
         return {"status": "success", "id": entry_id, "mode": mode, "result": res}
     except Exception as e:
@@ -1221,7 +1235,7 @@ async def export_to_capcut(req: CapCutExportRequest):
         name = req.project_name or "TubeInsight_AI_Video"
 
         if req.plan_id:
-            plan = producer.get_plan(req.plan_id)
+            plan = channel_builder.get_plan(req.plan_id)
             if not plan:
                 raise HTTPException(status_code=404, detail="지정한 플랜을 찾을 수 없습니다.")
             name = req.project_name or plan.get("topic") or plan.get("title") or "TubeInsight_Project"
