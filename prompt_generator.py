@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 import llm_client
+import concept_packs
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -111,25 +112,21 @@ def enforce_quoted_text(text: Any, max_len: int = 10) -> str:
     return f'"{raw}"'
 
 
-def get_fixed_redline_style() -> Dict[str, Any]:
-    """코드에서 고정으로 주입하는 나노바나나 레드라인 스타일 블록"""
-    return {
-        "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
-        "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
-        "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
-        "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis"
-    }
+def get_fixed_redline_style(concept_key: str = None, style_text: str = "") -> Dict[str, Any]:
+    """레드라인 이미지 프롬프트의 style 블록.
+
+    컨셉 팩의 주석 미학에, 사용자가 고른 화풍(style_text)을 render_style 로 덧입힌다.
+    (이전에는 화풍이 무시되고 항상 같은 미학만 나갔다.)
+    """
+    style = dict(concept_packs.get_pack(concept_key)["image_aesthetic"])
+    if style_text:
+        style["render_style"] = style_text
+    return style
 
 
-def get_fixed_redline_constraints() -> List[str]:
-    """코드에서 항상 고정으로 주입하는 제약 사항 블록"""
-    return [
-        "Do not render any text other than explicitly specified in text_layer",
-        "All text must strictly use English/Korean exactly as quoted in double quotes",
-        "Text strings must be under 10 characters",
-        "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
-        "Redline graphics must be pure sharp red (#FF0000) over high-detail realistic photography"
-    ]
+def get_fixed_redline_constraints(concept_key: str = None, style_text: str = "") -> List[str]:
+    """이미지 제약 블록. 마지막 항목의 렌더 질감은 선택된 화풍을 따른다."""
+    return concept_packs.image_constraints(concept_key, style_text)
 
 
 def clean_sfx_text(text: str) -> str:
@@ -335,8 +332,10 @@ class PromptGenerator:
         # -------------------------------------------------------------
         # 코드 레벨 규칙 강제 (Rules Enforced by Code)
         # -------------------------------------------------------------
-        fixed_style = get_fixed_redline_style()
-        fixed_constraints = get_fixed_redline_constraints()
+        # 사용자가 고른 화풍을 이미지 프롬프트까지 실제로 전달한다
+        style_text = (STYLE_PRESETS.get(style_key) or STYLE_PRESETS["photorealistic_8k"])["prompt"]
+        fixed_style = get_fixed_redline_style(style_text=style_text)
+        fixed_constraints = get_fixed_redline_constraints(style_text=style_text)
 
         # 1. 썸네일 프롬프트 구축 및 정제
         raw_thumb = (parsed.get("thumbnail") if isinstance(parsed, dict) else {}) or {}
@@ -471,6 +470,7 @@ class PromptGenerator:
         safe_angle = sanitize_input_text(angle)
         target_lang = SUPPORTED_LANGUAGES.get(language, SUPPORTED_LANGUAGES["korean"])
         style_info = STYLE_PRESETS.get(style_key, STYLE_PRESETS["photorealistic_8k"])
+        concept = concept_packs.get_pack()
 
         # 1. 씬별 시간 분할 계산 (8초 단위)
         time_segments = []
@@ -496,8 +496,8 @@ class PromptGenerator:
   * 최적 분량: 차분하고 몰입감 넘치는 톤으로 8초간 자연스럽게 완독되는 35~45자
 - 대본 언어: {target_lang['name']}
 - 타겟 비디오 AI: {SUPPORTED_MODELS.get(model, {}).get('name', 'AI Video')}
-- 비주얼 화풍: {style_info['name']}
-- 전개 플롯: 5단계 마스터 플롯(도입 훅 -> 갈등/스케일 -> 공학적 난제 -> 해결 시도 -> 씁쓸한 현실과 깊은 여운)
+- 비주얼 화풍: {style_info['name']} — {style_info['prompt']}
+- 전개 플롯: 5단계 마스터 플롯({concept['plot']})
 
 [★ 비디오 생성 프롬프트 & 사운드(SFX) 절대 규칙 (BGM·대사 절대 배제)]
 - BGM·음악·보컬·대사 완전 배제: 영상 생성 프롬프트 및 사운드 묘사에 사람 목소리, 말소리, 대사, BGM, 음악, 멜로디 관련 단어를 절대 포함하지 마세요 (no music, no bgm, no voice, no speech, no singing, no dialogue).

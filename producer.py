@@ -20,6 +20,7 @@ except ImportError:
     av = None
 
 import llm_client
+import concept_packs
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -83,7 +84,8 @@ IMAGE_MODEL = "nano-banana-pro-preview"  # 나노바나나 프로
 FALLBACK_IMAGE_MODELS = ["gemini-2.5-flash-image", "imagen-3.0-generate-002"]
 VIDEO_MODEL = "gemini-omni-1.1-flash"     # Omni 1.1 Flash (10초 단위 영상 생성)
 
-STYLE = "시네마틱 다큐멘터리 3D 미니어처 디오라마, 차가운 청록 색감, 부드러운 스튜디오 조명, 사실적인 질감, 빨간 공학 주석(레드라인)"  # 지정 텍스트 외 글자 금지는 프롬프트 constraints 가 담당
+# 렌더 톤은 컨셉 팩에서 가져온다 (지정 텍스트 외 글자 금지는 프롬프트 constraints 가 담당)
+STYLE = concept_packs.render_style()
 AUDIO_RULE = "효과음만, 나레이션 없음, 음악 없음"
 
 GEMINI_REST_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
