@@ -458,7 +458,8 @@ class PromptGenerator:
         style_key: str = "photorealistic_8k",
         custom_subject: str = "",
         language: str = "korean",
-        data_dir: Path = DATA_DIR
+        data_dir: Path = DATA_DIR,
+        angle: str = ""
     ) -> Dict[str, Any]:
         """
         사용자가 입력한 주제(topic)에 대해 8초 단위 씬별 대본, AI 영상 프롬프트 및
@@ -466,6 +467,8 @@ class PromptGenerator:
         """
         safe_topic = sanitize_input_text(topic)
         safe_subject = sanitize_input_text(custom_subject)
+        # 트렌드 분석이 제안한 '차별화 앵글'. 주제문을 오염시키지 않도록 별도 항목으로 전달한다.
+        safe_angle = sanitize_input_text(angle)
         target_lang = SUPPORTED_LANGUAGES.get(language, SUPPORTED_LANGUAGES["korean"])
         style_info = STYLE_PRESETS.get(style_key, STYLE_PRESETS["photorealistic_8k"])
 
@@ -482,6 +485,7 @@ class PromptGenerator:
 [신규 기획 주제]
 "{safe_topic}"
 {f"- 특정 주인공/피사체 설정: {safe_subject}" if safe_subject else ""}
+{f"- 연출 앵글/차별화 방향(이 방향으로 서사를 전개할 것): {safe_angle}" if safe_angle else ""}
 
 [★ 8초 나레이션 대사 작성 절대 규칙]
 - 총 씬 개수: 정확히 {scene_count}개

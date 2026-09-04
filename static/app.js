@@ -787,10 +787,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  window.openPromptStudioForTopic = function(topicText) {
+  // 트렌드 추천 주제에서 넘어온 '차별화 앵글'. 주제를 직접 수정하면 무효화한다.
+  let pendingTopicAngle = '';
+
+  // 사용자가 주제를 직접 고치면 이전 앵글은 더 이상 유효하지 않다
+  if (promptTopicInput) {
+    promptTopicInput.addEventListener('input', () => { pendingTopicAngle = ''; });
+  }
+
+  window.openPromptStudioForTopic = function(topicText, angleText) {
     switchMainView('promptStudio');
     if (promptTopicInput) {
       promptTopicInput.value = topicText;
+      pendingTopicAngle = (angleText || '').trim();
       triggerPromptGeneration();
     }
   };
@@ -827,6 +836,7 @@ document.addEventListener('DOMContentLoaded', () => {
           aspect_ratio: promptAspectRatio.value,
           style_key: promptStyle.value,
           custom_subject: promptCustomSubject ? promptCustomSubject.value.trim() : '',
+          angle: pendingTopicAngle,
           language: promptLanguageSelect ? promptLanguageSelect.value : 'korean'
         })
       });
@@ -1497,7 +1507,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         if (trendAudienceTriggers) trendAudienceTriggers.textContent = a.audience_triggers || '';
         if (trendRecommendedTopics) {
-          trendRecommendedTopics.innerHTML = (a.recommended_topics || []).map(t => `<div><strong>• ${escapeHtml(t.topic || '')}</strong><br><span class="text-muted" style="font-size:0.8rem;">${escapeHtml(t.angle || '')}</span></div>`).join('');
+          trendRecommendedTopics.innerHTML = (a.recommended_topics || []).map(t => `
+            <div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:10px;">
+              <div style="flex:1; min-width:0;">
+                <strong>• ${escapeHtml(t.topic || '')}</strong><br>
+                <span class="text-muted" style="font-size:0.8rem;">${escapeHtml(t.angle || '')}</span>
+              </div>
+              <button type="button" class="btn btn-xs btn-accent js-plan-topic"
+                      data-topic="${escapeHtml(t.topic || '')}" data-angle="${escapeHtml(t.angle || '')}"
+                      style="flex:none; white-space:nowrap;"
+                      title="이 주제와 앵글로 8초 씬 기획을 바로 시작합니다">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> 이 주제로 기획
+              </button>
+            </div>`).join('');
+
+          trendRecommendedTopics.querySelectorAll('.js-plan-topic').forEach((btn) => {
+            btn.addEventListener('click', () => {
+              window.openPromptStudioForTopic(btn.dataset.topic, btn.dataset.angle);
+            });
+          });
         }
         if (trendLeoTip) trendLeoTip.textContent = a.leo_algorithm_tip || '';
 

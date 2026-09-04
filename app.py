@@ -151,6 +151,7 @@ class PromptCustomTopicRequest(BaseModel):
     style_key: str = "photorealistic_8k"
     custom_subject: Optional[str] = ""
     language: Optional[str] = "korean"
+    angle: Optional[str] = ""  # 트렌드 추천 주제의 차별화 앵글 (선택)
 
 class PromptExportRequest(BaseModel):
     scenes: List[Dict[str, Any]]
@@ -408,17 +409,20 @@ async def generate_custom_topic_prompts(req: PromptCustomTopicRequest):
 
     try:
         loop = asyncio.get_event_loop()
+        # 인자 추가 시 위치가 어긋나지 않도록 키워드로 전달한다
         result = await loop.run_in_executor(
             None,
-            PromptGenerator.generate_prompts_from_custom_topic,
-            req.topic.strip(),
-            req.scene_count,
-            req.model,
-            req.aspect_ratio,
-            req.style_key,
-            req.custom_subject or "",
-            req.language or "korean",
-            DATA_DIR
+            lambda: PromptGenerator.generate_prompts_from_custom_topic(
+                topic=req.topic.strip(),
+                scene_count=req.scene_count,
+                model=req.model,
+                aspect_ratio=req.aspect_ratio,
+                style_key=req.style_key,
+                custom_subject=req.custom_subject or "",
+                language=req.language or "korean",
+                data_dir=DATA_DIR,
+                angle=req.angle or "",
+            )
         )
         return result
     except Exception as e:
