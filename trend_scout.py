@@ -185,15 +185,26 @@ def analyze_trends_with_llm(trends_payload: Dict[str, Any]) -> Dict[str, Any]:
 현재 실시간 인기 급상승 Top 영상들의 제목, 채널, 조회수 데이터를 분석하여 크리에이터가 즉시 실행할 수 있는 고밀도 트렌드 인사이트를 도출해야 합니다.
 
 반드시 유효한 JSON 형식으로만 응답하세요.
+
+[필수 개수 규칙]
+- top_keywords: 정확히 5개
+- hook_patterns: 2~3개
+- recommended_topics: **반드시 3개** (최소 2개 미만은 허용되지 않음).
+  서로 다른 소재·타깃·포맷으로 확실히 구분되게 제안하고, 같은 주제를 표현만 바꿔
+  반복하지 마세요.
+
 ```json
 {
   "top_keywords": ["키워드1", "키워드2", "키워드3", "키워드4", "키워드5"],
   "hook_patterns": [
-    {"pattern": "후킹 패턴명", "description": "제목에서 공통적으로 발견되는 심리적 트리거 및 이유"}
+    {"pattern": "후킹 패턴명1", "description": "제목에서 공통적으로 발견되는 심리적 트리거 및 이유"},
+    {"pattern": "후킹 패턴명2", "description": "또 다른 심리적 트리거 및 이유"}
   ],
   "audience_triggers": "시청자들이 지금 이 영상들에 폭발적으로 반응하고 댓글을 다는 핵심 심리 요인 (2~3문장)",
   "recommended_topics": [
-    {"topic": "추천 기획 주제", "angle": "어떤 차별화된 앵글과 8초 훅으로 진입해야 하는지"}
+    {"topic": "추천 기획 주제 1", "angle": "어떤 차별화된 앵글과 8초 훅으로 진입해야 하는지"},
+    {"topic": "추천 기획 주제 2 (1번과 다른 소재·타깃)", "angle": "차별화된 앵글과 8초 훅"},
+    {"topic": "추천 기획 주제 3 (1·2번과 다른 소재·타깃)", "angle": "차별화된 앵글과 8초 훅"}
   ],
   "leo_algorithm_tip": "에이전트 레오의 원포인트 알고리즘 성장 팁 (CTR, 체류시간, 시청 지속시간 극대화 전략)"
 }
@@ -202,7 +213,8 @@ def analyze_trends_with_llm(trends_payload: Dict[str, Any]) -> Dict[str, Any]:
     user_prompt = f"""[카테고리: {cat_name} 실시간 급상승 영상 목록]
 {titles_text}
 
-위 데이터를 분석하여 JSON 리포트를 작성해주세요."""
+위 데이터를 분석하여 JSON 리포트를 작성해주세요.
+recommended_topics 는 서로 다른 소재로 반드시 3개를 채워주세요."""
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -211,7 +223,7 @@ def analyze_trends_with_llm(trends_payload: Dict[str, Any]) -> Dict[str, Any]:
 
     parsed = None
     try:
-        parsed, raw = llm_client.call_llm_json(messages, max_tokens=2048, temperature=0.6)
+        parsed, raw = llm_client.call_llm_json(messages, max_tokens=4096, temperature=0.6)
     except Exception as e:
         print(f"[TrendScout] LLM analysis fallback due to: {e}")
 
