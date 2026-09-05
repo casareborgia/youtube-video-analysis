@@ -208,7 +208,8 @@ class PromptGenerator:
         topic: str,
         scenes: List[Dict[str, Any]],
         aspect_ratio: str = "16:9",
-        style_key: str = "photorealistic_8k"
+        style_key: str = "photorealistic_8k",
+        concept_key: str = None
     ) -> Dict[str, Any]:
         """
         [나노바나나 레드라인 이미지 프롬프트 자동 생성 파이프라인]
@@ -216,16 +217,20 @@ class PromptGenerator:
         2. 씬별 첫 프레임: 빨간 주석 그래픽 위주, 텍스트는 최대 1개 (영상 변환 시 글자 뭉개짐 방지)
         3. 16:9 / 9:16 구도 반영 및 코드 레벨 10자 이내 큰따옴표 & 수치 환각 방지 강제
         """
+        # 컨셉 팩이 이미지 레이어 구성과 구도·렌더 톤을 결정한다
+        spec = concept_packs.image_spec(concept_key)
+        use_annotation = "annotation_layer" in (spec.get("layers") or [])
+
         is_vertical = (aspect_ratio == "9:16")
         comp_layout_thumb = (
             "vertical mobile 9:16 composition, top bold hook headline area, centered visual subject, vertical dimension lines, clean bottom subtitle clearance"
             if is_vertical else
-            "horizontal cinematic 16:9 composition, centered focal subject, balanced technical annotations, left-to-right engineering HUD read flow"
+            (spec.get("composition", {}).get("thumb_h") or "horizontal cinematic 16:9 composition, centered focal subject")
         )
         comp_layout_scene = (
             "vertical 9:16 framing, central focus graphic, top/side redline markers, clear bottom margin"
             if is_vertical else
-            "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+            (spec.get("composition", {}).get("scene_h") or "horizontal 16:9 framing, rule of thirds subject")
         )
 
         real_facts = extract_script_numerical_facts(topic, scenes)
@@ -240,7 +245,7 @@ class PromptGenerator:
 
         scenes_context = "\n".join(scene_summaries)
 
-        prompt = f"""당신은 세계 최고의 다큐멘터리/테크 유튜브 시각 디렉터이자 '나노바나나 레드라인(NanoBanana Redline)' 주석 다이어그램 이미지 프롬프트 엔지니어입니다.
+        prompt = f"""당신은 {spec.get("persona", "시네마틱 이미지 프롬프트 엔지니어")}입니다.
 
 [영상 주제]
 "{topic}"
@@ -256,11 +261,11 @@ class PromptGenerator:
 
 [작성 요구사항]
 1. 썸네일 프롬프트 (1개):
-   - 풀 레드라인 스타일 (시선 강탈 훅 문구 1개, 핵심 라벨 1~2개, 실제 치수 1개)
+   - {spec.get("thumbnail_rule", "")}
    - 모든 텍스트/라벨은 10자 이내이며 큰따옴표("...")로 지정할 것
 2. 씬별 첫 프레임 프롬프트 ({len(scenes)}개):
    - 비디오 AI(Runway/Kling/Sora)에서 첫 프레임으로 사용하여 영상으로 변환할 이미지 프롬프트
-   - 빨간 주석 그래픽(화살표, 원형 타겟, 바운딩 박스, 측정선) 위주로 구성
+   - {spec.get("scene_rule", "")}
    - 텍스트는 글자 뭉개짐을 방지하기 위해 최대 1개(핵심 부위 라벨 또는 빈 문자열)만 지정할 것
 
 아래 JSON 형식 규격으로만 응답해주세요:
@@ -334,8 +339,8 @@ class PromptGenerator:
         # -------------------------------------------------------------
         # 사용자가 고른 화풍을 이미지 프롬프트까지 실제로 전달한다
         style_text = (STYLE_PRESETS.get(style_key) or STYLE_PRESETS["photorealistic_8k"])["prompt"]
-        fixed_style = get_fixed_redline_style(style_text=style_text)
-        fixed_constraints = get_fixed_redline_constraints(style_text=style_text)
+        fixed_style = get_fixed_redline_style(concept_key, style_text=style_text)
+        fixed_constraints = get_fixed_redline_constraints(concept_key, style_text=style_text)
 
         # 1. 썸네일 프롬프트 구축 및 정제
         raw_thumb = (parsed.get("thumbnail") if isinstance(parsed, dict) else {}) or {}
@@ -371,7 +376,7 @@ class PromptGenerator:
         thumbnail_redline = {
             "format": {
                 "aspect_ratio": aspect_ratio,
-                "render_style": "photorealistic photography with sharp redline engineering annotations overlay",
+                "render_style": spec.get("render_style_thumb") or "photorealistic cinematic photography",
                 "composition_layout": comp_layout_thumb
             },
             "style": fixed_style,
@@ -380,12 +385,6 @@ class PromptGenerator:
                 "environment": t_scene.get("environment") or "Dramatic chiaroscuro lighting with deep shadows and moody volumetric haze",
                 "camera_angle": t_scene.get("camera_angle") or "Direct eye-level high-impact cinematic angle"
             },
-            "annotation_layer": {
-                "dimension_lines": t_ann.get("dimension_lines") or ["vertical bright red dimension line with precision end ticks"],
-                "callout_arrows": t_ann.get("callout_arrows") or ["sharp crimson red pointer arrow indicating key structural feature"],
-                "bounding_boxes": t_ann.get("bounding_boxes") or ["red dashed rectangular technical bounding box around central focal point"],
-                "focus_reticles": t_ann.get("focus_reticles") or ["concentric red technical reticle with millimeter calibration crosshairs"]
-            },
             "text_layer": {
                 "hook_text": hook_val,
                 "labels": clean_labels if clean_labels else [enforce_quoted_text("CORE", 10)],
@@ -393,6 +392,11 @@ class PromptGenerator:
             },
             "constraints": fixed_constraints
         }
+        if use_annotation:
+            ad = spec.get("annotation_defaults") or {}
+            thumbnail_redline["annotation_layer"] = {
+                k: (t_ann.get(k) or ad.get(k) or []) for k in ad.keys()
+            }
 
         # 2. 씬별 첫 프레임 프롬프트 구축 및 정제 (텍스트 최대 1개)
         raw_scene_list = (parsed.get("scenes") if isinstance(parsed, dict) else []) or []
@@ -417,7 +421,7 @@ class PromptGenerator:
             frame_prompt = {
                 "format": {
                     "aspect_ratio": aspect_ratio,
-                    "render_style": "photorealistic photography with redline graphics for AI video first frame",
+                    "render_style": spec.get("render_style_scene") or "photorealistic cinematic still for AI video first frame",
                     "composition_layout": comp_layout_scene
                 },
                 "style": fixed_style,
@@ -426,17 +430,21 @@ class PromptGenerator:
                     "environment": s_scene.get("environment") or sc.get("lighting") or "Moody cinematic lighting with realistic ambient occlusion",
                     "camera_angle": s_scene.get("camera_angle") or sc.get("camera") or "Cinematic slow motion framing"
                 },
-                "annotation_layer": {
-                    "dimension_lines": s_ann.get("dimension_lines") or ["subtle red horizontal measurement line"],
-                    "callout_arrows": s_ann.get("callout_arrows") or ["sharp crimson pointer arrow highlighting motion axis"],
-                    "bounding_boxes": s_ann.get("bounding_boxes") or ["minimalist red corner bracket markers"],
-                    "focus_reticles": s_ann.get("focus_reticles") or ["circular red target crosshair ring"]
-                },
                 "text_layer": {
                     "label": clean_lbl  # 최대 1개
                 },
                 "constraints": fixed_constraints
             }
+            if use_annotation:
+                scene_ad = {
+                    "dimension_lines": ["subtle red horizontal measurement line"],
+                    "callout_arrows": ["sharp crimson pointer arrow highlighting motion axis"],
+                    "bounding_boxes": ["minimalist red corner bracket markers"],
+                    "focus_reticles": ["circular red target crosshair ring"],
+                }
+                frame_prompt["annotation_layer"] = {
+                    k: (s_ann.get(k) or v) for k, v in scene_ad.items()
+                }
             scene_first_frames.append({
                 "scene_num": s_num,
                 "redline_prompt": frame_prompt
@@ -458,7 +466,8 @@ class PromptGenerator:
         custom_subject: str = "",
         language: str = "korean",
         data_dir: Path = DATA_DIR,
-        angle: str = ""
+        angle: str = "",
+        concept_key: str = None
     ) -> Dict[str, Any]:
         """
         사용자가 입력한 주제(topic)에 대해 8초 단위 씬별 대본, AI 영상 프롬프트 및
@@ -470,7 +479,7 @@ class PromptGenerator:
         safe_angle = sanitize_input_text(angle)
         target_lang = SUPPORTED_LANGUAGES.get(language, SUPPORTED_LANGUAGES["korean"])
         style_info = STYLE_PRESETS.get(style_key, STYLE_PRESETS["photorealistic_8k"])
-        concept = concept_packs.get_pack()
+        concept = concept_packs.get_pack(concept_key)
 
         # 1. 씬별 시간 분할 계산 (8초 단위)
         time_segments = []
@@ -656,7 +665,8 @@ class PromptGenerator:
             topic=safe_topic,
             scenes=scenes,
             aspect_ratio=aspect_ratio,
-            style_key=style_key
+            style_key=style_key,
+            concept_key=concept_key
         )
 
         thumbnail_redline = redline_results.get("thumbnail_redline", {})
@@ -675,6 +685,8 @@ class PromptGenerator:
 
         result_payload = {
             "status": "success",
+            "concept_key": concept_key or concept_packs.DEFAULT_CONCEPT,
+            "concept_name": concept.get("name", ""),
             "topic": safe_topic,
             "language": language,
             "model": model,

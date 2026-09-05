@@ -21,6 +21,7 @@ import yt_dlp
 
 import llm_client
 import scene_store
+import concept_packs
 from tts_service import TTSService, AUDIO_DIR, VOICES_DIR, ZIP_DIR, EDGE_PRESETS, QWEN_PRESETS
 from prompt_generator import (
     PromptGenerator,
@@ -154,6 +155,7 @@ class PromptCustomTopicRequest(BaseModel):
     custom_subject: Optional[str] = ""
     language: Optional[str] = "korean"
     angle: Optional[str] = ""  # 트렌드 추천 주제의 차별화 앵글 (선택)
+    concept_key: Optional[str] = None  # 컨셉 팩 (미지정 시 기본 팩)
 
 class PromptExportRequest(BaseModel):
     scenes: List[Dict[str, Any]]
@@ -403,6 +405,16 @@ async def get_prompt_options():
         ]
     }
 
+@app.get("/api/prompt/concepts")
+async def get_concept_packs():
+    """선택 가능한 컨셉 팩 목록."""
+    return {
+        "status": "success",
+        "default": concept_packs.DEFAULT_CONCEPT,
+        "data": concept_packs.list_packs(),
+    }
+
+
 @app.post("/api/prompt/generate-custom")
 async def generate_custom_topic_prompts(req: PromptCustomTopicRequest):
     """8초 단위 씬 대본 및 AI 영상 생성 프롬프트 창작"""
@@ -424,6 +436,7 @@ async def generate_custom_topic_prompts(req: PromptCustomTopicRequest):
                 language=req.language or "korean",
                 data_dir=DATA_DIR,
                 angle=req.angle or "",
+                concept_key=req.concept_key,
             )
         )
         return result

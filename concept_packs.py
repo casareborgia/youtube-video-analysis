@@ -40,6 +40,66 @@ CONCEPT_PACKS: Dict[str, Dict[str, Any]] = {
         ],
         # producer 가 이미지 생성 프롬프트 앞에 붙이는 렌더 톤
         "render_style": "시네마틱 다큐멘터리 3D 미니어처 디오라마, 차가운 청록 색감, 부드러운 스튜디오 조명, 사실적인 질감, 빨간 공학 주석(레드라인)",
+        # 이미지 프롬프트 사양. layers 가 프롬프트에 요구할 JSON 구조를 결정한다.
+        "image": {
+            "persona": "세계 최고의 다큐멘터리/테크 유튜브 시각 디렉터이자 '나노바나나 레드라인(NanoBanana Redline)' 주석 다이어그램 이미지 프롬프트 엔지니어",
+            "layers": ["scene", "annotation_layer", "text_layer"],
+            "thumbnail_rule": "풀 레드라인 스타일 (시선 강탈 훅 문구 1개, 핵심 라벨 1~2개, 실제 치수 1개)",
+            "scene_rule": "빨간 주석 그래픽(화살표, 원형 타겟, 바운딩 박스, 측정선) 위주로 구성",
+            "schema_annotation": {
+                "dimension_lines": ["vertical red dimension line measuring main height", "width marker"],
+                "callout_arrows": ["crisp crimson arrow pointing to the critical core"],
+                "bounding_boxes": ["red dashed rectangular bounding box highlighting the anomaly"],
+                "focus_reticles": ["concentric red technical focus rings at center"],
+            },
+            "annotation_defaults": {
+                "dimension_lines": ["vertical bright red dimension line with precision end ticks"],
+                "callout_arrows": ["sharp crimson red pointer arrow indicating key structural feature"],
+                "bounding_boxes": ["red dashed rectangular technical bounding box around central focal point"],
+                "focus_reticles": ["concentric red technical reticle with millimeter calibration crosshairs"],
+            },
+            "render_style_thumb": "photorealistic photography with sharp redline engineering annotations overlay",
+            "render_style_scene": "photorealistic photography with redline graphics for AI video first frame",
+            "composition": {
+                "thumb_h": "horizontal cinematic 16:9 composition, centered focal subject, balanced technical annotations, left-to-right engineering HUD read flow",
+                "scene_h": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics",
+            },
+        },
+    },
+
+    "human_story": {
+        "name": "인물·서사 중심",
+        "description": "한 사람의 선택과 그 대가를 따라가는 감정 중심 내러티브. 도면 주석 없이 인물과 공간의 정서로 끌고 간다",
+        "plot": "일상(평온) -> 균열(사건) -> 선택(갈림길) -> 대가(결과) -> 여운(남은 것)",
+        "image_aesthetic": {
+            "aesthetic": "intimate cinematic character photography, natural available light, shallow depth of field",
+            "palette": "warm muted earth tones with soft highlight rolloff",
+            "framing": "close and medium shots that keep the subject's face and hands readable",
+            "overall_mood": "quiet emotional realism, unforced and observational",
+        },
+        "image_constraints": [
+            "Do not render any text other than explicitly specified in text_layer",
+            "All text must strictly use English/Korean exactly as quoted in double quotes",
+            "Text strings must be under 10 characters",
+            "No technical overlays, no diagram lines, no measurement marks, no HUD graphics",
+            "Keep the frame photographic and unretouched over {style}",
+        ],
+        "render_style": "따뜻한 자연광 시네마틱 인물 사진, 얕은 심도, 부드러운 그림자, 절제된 색보정",
+        "image": {
+            "persona": "인물 다큐멘터리 시각 디렉터이자 감정 중심 시네마토그래퍼",
+            # 주석 레이어 없음 — 이 팩의 그림에는 도면 그래픽이 들어가지 않는다
+            "layers": ["scene", "text_layer"],
+            "thumbnail_rule": "인물의 표정이나 결정적 순간이 중심. 짧은 감정 훅 문구 1개만 허용",
+            "scene_rule": "인물의 시선·손·자세와 공간의 정서로 장면을 설명. 그래픽 요소 금지",
+            "schema_annotation": None,
+            "annotation_defaults": None,
+            "render_style_thumb": "natural light cinematic portrait photography, filmic grain",
+            "render_style_scene": "natural light cinematic still for AI video first frame",
+            "composition": {
+                "thumb_h": "horizontal cinematic 16:9 composition, subject slightly off-center, generous negative space",
+                "scene_h": "horizontal 16:9 framing, rule of thirds with breathing room around the subject",
+            },
+        },
     },
 }
 
@@ -55,6 +115,15 @@ def list_packs() -> List[Dict[str, str]]:
         {"key": k, "name": v["name"], "description": v.get("description", "")}
         for k, v in CONCEPT_PACKS.items()
     ]
+
+
+def image_spec(key: str = None) -> Dict[str, Any]:
+    """이미지 프롬프트 사양. layers 가 요구할 JSON 구조를 결정한다."""
+    return get_pack(key).get("image", {})
+
+
+def has_layer(key: str, layer: str) -> bool:
+    return layer in (get_pack(key).get("image", {}).get("layers") or [])
 
 
 def render_style(key: str = None) -> str:

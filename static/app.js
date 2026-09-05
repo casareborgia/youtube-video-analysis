@@ -665,6 +665,41 @@ document.addEventListener('DOMContentLoaded', () => {
   if (navTabMusic) navTabMusic.addEventListener('click', () => switchMainView('music'));
 
   const promptTopicInput = document.getElementById('promptTopicInput');
+  const promptConcept = document.getElementById('promptConcept');
+  const promptConceptDesc = document.getElementById('promptConceptDesc');
+
+  // 컨셉 팩 목록 — 서사 골격·이미지 레이어 구성·렌더 톤이 한 세트로 바뀐다
+  async function loadConceptPacks() {
+    if (!promptConcept) return;
+    try {
+      const res = await fetch('/api/prompt/concepts');
+      const d = await res.json();
+      const packs = (d && d.data) || [];
+      promptConcept.innerHTML = '';
+      packs.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.key;
+        opt.textContent = p.name;
+        opt.dataset.desc = p.description || '';
+        if (p.key === d.default) opt.selected = true;
+        promptConcept.appendChild(opt);
+      });
+      updateConceptDesc();
+    } catch (err) {
+      console.warn('컨셉 목록 로드 실패:', err);
+      promptConcept.innerHTML = '<option value="">기본 컨셉</option>';
+    }
+  }
+
+  function updateConceptDesc() {
+    if (!promptConcept || !promptConceptDesc) return;
+    const opt = promptConcept.selectedOptions[0];
+    promptConceptDesc.textContent = opt ? (opt.dataset.desc || '') : '';
+  }
+
+  if (promptConcept) promptConcept.addEventListener('change', updateConceptDesc);
+  loadConceptPacks();
+
   const promptTargetModel = document.getElementById('promptTargetModel');
   const promptSceneCount = document.getElementById('promptSceneCount');
   const promptAspectRatio = document.getElementById('promptAspectRatio');
@@ -837,6 +872,7 @@ document.addEventListener('DOMContentLoaded', () => {
           style_key: promptStyle.value,
           custom_subject: promptCustomSubject ? promptCustomSubject.value.trim() : '',
           angle: pendingTopicAngle,
+          concept_key: promptConcept ? promptConcept.value : '',
           language: promptLanguageSelect ? promptLanguageSelect.value : 'korean'
         })
       });

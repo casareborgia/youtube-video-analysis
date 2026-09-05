@@ -108,6 +108,8 @@ def build_plan(batch: Dict[str, Any], scene_seconds: float = 8.0) -> Dict[str, A
         "aspect_ratio": batch.get("aspect_ratio") or "16:9",
         "scene_seconds": scene_seconds,
         "language": batch.get("language", "korean"),
+        "concept_key": batch.get("concept_key", ""),
+        "concept_name": batch.get("concept_name", ""),
         "model": batch.get("model", ""),
         "seo_description": batch.get("seo_description", ""),
         "title_candidates": batch.get("title_candidates", []),
