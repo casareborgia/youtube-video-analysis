@@ -80,3 +80,31 @@ data/*.temp*
 샘플자료/
 temp/
 tmp/
+
+# Generated Output Documents
+output/*
+!output/.gitkeep
+
+data/trends/*
+data/marketing/*
+data/renders/*
+data/channels/*
+data/youtube/*
+data/luna_music/*
+
+# Credentials & Secrets
+.env
+*.env
+client_secret.json
+token.pickle
+token.json
+data/threads_config.json
+threads_config.json
+
+# Legacy Archive
+.archive/
+
+
+
+# 생성된 다운로드 zip 산출물
+data/zips/

@@ -2,21 +2,43 @@ import os
 import re
 import sys
 import json
+import gc
+import time
+import urllib.parse
 import asyncio
 import subprocess
-import urllib.request
+import shutil
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, BackgroundTasks, UploadFile, File, Form, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
-from pydantic import BaseModel, validator
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from pydantic import BaseModel
 import pandas as pd
 import yt_dlp
 
-app = FastAPI(title="YouTube Video Analyzer & Metadata Extractor with Local AI")
+import llm_client
+import scene_store
+import concept_packs
+from tts_service import TTSService, AUDIO_DIR, VOICES_DIR, ZIP_DIR, EDGE_PRESETS, QWEN_PRESETS
+from prompt_generator import (
+    PromptGenerator,
+    STYLE_PRESETS,
+    SUPPORTED_MODELS,
+    SUPPORTED_LANGUAGES
+)
+import trend_scout
+import channel_builder
+import marketing
+import producer
+import uploader
+import luna_engine
+import threads_client
+import capcut_builder
+
+app = FastAPI(title="TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오")
 
 # ==========================================
 # 제로트러스트 보안 헤더 미들웨어
@@ -28,13 +50,23 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "img-src 'self' data: https://i.ytimg.com https://*.youtube.com https://*.ggpht.com; "
+        "style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; "
+        "font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; "
+        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+        "media-src 'self' blob: data:; "
+        "connect-src 'self';"
+    )
     return response
 
 # ==========================================
 # 제로트러스트 입력 검증 헬퍼 (Never Trust, Always Verify)
 # ==========================================
 VIDEO_ID_REGEX = re.compile(r'^[a-zA-Z0-9_-]{5,30}$')
-SAFE_FILENAME_REGEX = re.compile(r'^[a-zA-Z0-9_.-]+$')
+SAFE_FILENAME_REGEX = re.compile(r'^[a-zA-Z0-9_.\-가-힣]+$')
 
 def verify_video_id(video_id: str) -> str:
     """video_id 파라미터가 안전한 유튜브 ID 형식인지 엄격 검증"""
@@ -46,26 +78,24 @@ def verify_youtube_url(url: str) -> str:
     """SSRF 방지를 위해 신뢰할 수 있는 공식 유튜브 도메인만 허용"""
     if not url or not isinstance(url, str):
         raise HTTPException(status_code=400, detail="URL이 입력되지 않았습니다.")
-    
+
     url_clean = url.strip()
     allowed_domains = ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be", "music.youtube.com"]
     match = re.match(r'^https?://([^/]+)', url_clean)
     if not match:
         raise HTTPException(status_code=400, detail="유효한 HTTP/HTTPS URL 형식이 아닙니다.")
-    
+
     domain = match.group(1).lower()
     if not any(domain == d or domain.endswith("." + d) for d in allowed_domains):
         raise HTTPException(status_code=400, detail="공식 유튜브(youtube.com, youtu.be) URL만 분석할 수 있습니다.")
     return url_clean
 
-# 기본 저장 경로 설정
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 STATIC_DIR = BASE_DIR / "static"
 STATIC_DIR.mkdir(exist_ok=True)
 
-# 메타데이터 인덱스 파일
 INDEX_FILE = DATA_DIR / "metadata_index.json"
 
 def load_index() -> List[Dict[str, Any]]:
@@ -75,8 +105,7 @@ def load_index() -> List[Dict[str, Any]]:
     try:
         with open(INDEX_FILE, "r", encoding="utf-8") as f:
             raw_index = json.load(f)
-            
-        # 실제 메타데이터 파일이 존재하는 항목만 유효 항목으로 유지
+
         valid_index = []
         is_changed = False
         for item in raw_index:
@@ -86,16 +115,15 @@ def load_index() -> List[Dict[str, Any]]:
                 continue
             meta_file = DATA_DIR / f"{v_id}_metadata.json"
             if meta_file.exists():
-                # 리포트 파일 존재 여부 실시간 최신화
                 report_file = DATA_DIR / f"{v_id}_리포트.txt"
                 item["has_report"] = report_file.exists()
                 valid_index.append(item)
             else:
                 is_changed = True
-                
+
         if is_changed:
             save_index(valid_index)
-            
+
         return valid_index
     except Exception:
         return []
@@ -112,6 +140,41 @@ class AnalyzeRequest(BaseModel):
     auto_generate_ai_report: bool = False
     max_playlist_items: Optional[int] = 10
 
+class LLMSelectRequest(BaseModel):
+    backend: str = "auto"  # auto | lmstudio | ollama
+
+class LLMSelectModelRequest(BaseModel):
+    model: Optional[str] = None  # None이면 자동 선택으로 초기화
+
+class PromptCustomTopicRequest(BaseModel):
+    topic: str
+    scene_count: int = 6
+    model: str = "google_flow"
+    aspect_ratio: str = "16:9"
+    style_key: str = "photorealistic_8k"
+    custom_subject: Optional[str] = ""
+    language: Optional[str] = "korean"
+    angle: Optional[str] = ""  # 트렌드 추천 주제의 차별화 앵글 (선택)
+    concept_key: Optional[str] = None  # 컨셉 팩 (미지정 시 기본 팩)
+
+class PromptExportRequest(BaseModel):
+    scenes: List[Dict[str, Any]]
+    format: str = "autoflow_txt"  # autoflow_txt | csv | json
+    video_title: Optional[str] = "prompt_batch"
+
+class TTSSceneRequest(BaseModel):
+    text: str
+    voice_id: str = "edge_injoon"
+    scene_index: int = 1
+    topic_slug: Optional[str] = "scene"
+    language: Optional[str] = "korean"
+
+class TTSBatchRequest(BaseModel):
+    scenes: List[Dict[str, Any]]
+    voice_id: str = "edge_injoon"
+    topic: Optional[str] = "custom_topic"
+    language: Optional[str] = "korean"
+
 def format_duration(seconds: Optional[int]) -> str:
     if not seconds:
         return "00:00"
@@ -121,523 +184,106 @@ def format_duration(seconds: Optional[int]) -> str:
         return f"{h:02d}:{m:02d}:{s:02d}"
     return f"{m:02d}:{s:02d}"
 
-def extract_transcript(video_id: str) -> str:
-    """yt-dlp로 한국어 자막(srt)을 추출하고 텍스트로 정제"""
-    srt_base = str(DATA_DIR / video_id)
-    srt_path = DATA_DIR / f"{video_id}.ko.srt"
-    
-    if not srt_path.exists():
-        try:
-            subprocess.run([
-                "yt-dlp", "--skip-download", "--write-auto-subs", "--sub-langs", "ko",
-                "--convert-subs", "srt", "-o", srt_base, f"https://youtu.be/{video_id}"
-            ], capture_output=True, text=True, timeout=60)
-        except Exception:
-            pass
-
-    if srt_path.exists():
-        try:
-            seen = []
-            for l in open(srt_path, encoding="utf-8").read().splitlines():
-                l = l.strip()
-                if not l or l.isdigit() or "-->" in l:
-                    continue
-                if not seen or seen[-1] != l:
-                    seen.append(l)
-            return " ".join(seen)
-        except Exception as e:
-            return f"(자막 파싱 실패: {str(e)})"
-    
-    return "(자막 없음)"
-
-def clean_description(desc: str) -> str:
-    """설명란에서 불필요한 SNS 링크, 스폰서, 단순 태그 도배만 걸러내고 본문 시놉시스 유지"""
-    if not desc:
-        return ""
-    lines = []
-    for l in desc.splitlines():
-        l_str = l.strip()
-        if not l_str or l_str.startswith("http") or l_str.startswith("www."):
-            continue
-        if "인스타그램" in l_str or "페이스북" in l_str or "트위터" in l_str or "협찬문의" in l_str:
-            continue
-        lines.append(l_str)
-    return "\n".join(lines)[:600]
-
-def optimize_transcript(transcript: str, max_chars: int = 4000) -> str:
-    """자막의 연속 중복 타임라인과 불필요한 음향 태그만 스마트 제거하여 문맥 깊이 100% 보존"""
-    if not transcript or transcript == "(자막 없음)":
-        return "(자막 없음)"
-    cleaned = re.sub(r'\[(?:음악|박수|노래|한숨)\]|\>\>', ' ', transcript)
-    cleaned = re.sub(r'\s+', ' ', cleaned).strip()
-    if len(cleaned) > max_chars:
-        return cleaned[:max_chars]
-    return cleaned
-
-def call_local_ai_gemma(prompt: str, model_name: str = "gemma4:latest") -> str:
-    """Ollama (1순위, 16384 컨텍스트 & 4096 출력 토큰) 및 LM Studio (2순위) 하이브리드 로컬 AI 호출"""
-    # 1. Ollama 우선 시도 (Thinking 토큰을 감안하여 16384 ctx 및 4096 predict 완전 보장)
-    try:
-        ollama_data = json.dumps({
-            "model": model_name,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "당신은 대한민국 최고의 유튜브 콘텐츠 전략가이자 심층 영상 분석가입니다.\n"
-                        "주어진 영상의 메타데이터, 자막 흐름, 시청자 댓글 여론을 다각도로 분석하여 매우 전문적이고 깊이 있는 리포트를 작성하세요.\n"
-                        "형식적인 요약에 그치지 말고, 영상의 본질적인 흥행 원리와 구체적인 시사점을 담아 아래 5가지 목차를 1번부터 5번 끝까지 완벽하게 작성해야 합니다."
-                    )
-                },
-                {"role": "user", "content": prompt}
-            ],
-            "options": {
-                "num_ctx": 16384,
-                "num_predict": 4096,
-                "temperature": 0.6
-            },
-            "stream": false
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
-            "http://127.0.0.1:11434/api/chat",
-            data=ollama_data,
-            headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=300) as response:
-            res_json = json.loads(response.read().decode("utf-8"))
-            if "message" in res_json and "content" in res_json["message"]:
-                content = res_json["message"]["content"]
-                if content and len(content.strip()) > 100:
-                    return content
-    except Exception as ollama_err:
-        pass
-
-    # 2. LM Studio 폴백 시도
-    try:
-        lm_data = json.dumps({
-            "model": "google/gemma-4-e4b",
-            "messages": [
-                {
-                    "role": "system", 
-                    "content": (
-                        "당신은 대한민국 최고의 유튜브 콘텐츠 전략가이자 심층 영상 분석가입니다.\n"
-                        "주어진 영상의 메타데이터, 자막 흐름, 시청자 댓글 여론을 다각도로 분석하여 매우 전문적이고 깊이 있는 리포트를 작성하세요.\n"
-                        "형식적인 요약에 그치지 말고, 영상의 본질적인 흥행 원리와 구체적인 시사점을 담아 아래 5가지 목차를 1번부터 5번 끝까지 완벽하게 작성해야 합니다."
-                    )
-                },
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.6,
-            "max_tokens": 4096
-        }).encode("utf-8")
-
-        req = urllib.request.Request(
-            "http://127.0.0.1:1234/v1/chat/completions",
-            data=lm_data,
-            headers={"Content-Type": "application/json"}
-        )
-        with urllib.request.urlopen(req, timeout=300) as response:
-            res_json = json.loads(response.read().decode("utf-8"))
-            return res_json["choices"][0]["message"]["content"]
-    except Exception as e:
-        return f"(Ollama 및 LM Studio 로컬 서버 연결 실패: {str(e)}\n\n아래 프롬프트를 AI에 직접 복사하여 사용하세요)\n\n" + prompt
-
-def generate_video_ai_report(video_id: str) -> Dict[str, Any]:
-    """메타데이터, 자막, 댓글을 종합하여 고품질 심층 AI 리포트 생성"""
-    meta_path = DATA_DIR / f"{video_id}_metadata.json"
-    if not meta_path.exists():
-        raise HTTPException(status_code=404, detail="영상 메타데이터를 먼저 수집해야 합니다.")
-    
-    with open(meta_path, "r", encoding="utf-8") as f:
-        meta = json.load(f)
-
-    # 1. 자막 및 설명란 스마트 정제 (문맥 훼손 없는 노이즈 제거)
-    raw_transcript = extract_transcript(video_id)
-    transcript = optimize_transcript(raw_transcript, max_chars=4000)
-    cleaned_desc = clean_description(meta.get("description", ""))
-
-    # 2. 상위 공감 댓글 선별 (상위 12개, 추천수 명시)
-    comments = meta.get("comments", [])
-    top_comments = ["• [" + str(c.get("like_count",0)) + "개 추천] " + (c.get("text") or "").replace("\n", " ")[:90] for c in comments[:12]]
-
-    # 3. 챕터 정보가 있는 경우 서사 흐름에 반영
-    chapters = meta.get("chapters", [])
-    chapters_str = "\n".join([f"- {c.get('start_time_formatted')} {c.get('title')}" for c in chapters[:10]]) if chapters else "(챕터 정보 없음)"
-
-    # 4. 정밀 메타데이터
-    info_dict = {
-        "title": meta.get("title"),
-        "channel": meta.get("channel"),
-        "channel_follower_count": meta.get("channel_follower_count"),
-        "view_count": meta.get("view_count"),
-        "like_count": meta.get("like_count"),
-        "comment_count": meta.get("comment_count"),
-        "duration": meta.get("duration_string") or meta.get("duration_formatted"),
-        "upload_date": meta.get("upload_date")
-    }
-
-    prompt = (
-        "아래 유튜브 영상을 다각도로 심층 분석하여 최고 수준의 분석 리포트를 작성해줘.\n\n"
-        "[영상 메타데이터]\n" + json.dumps(info_dict, ensure_ascii=False, indent=2) + "\n\n"
-        "[영상 설명란]\n" + (cleaned_desc or "(설명 없음)") + "\n\n"
-        "[챕터 타임라인]\n" + chapters_str + "\n\n"
-        "[자막 전문 흐름]\n" + transcript + "\n\n"
-        "[시청자 상위 댓글 여론]\n" + ("\n".join(top_comments) if top_comments else "(댓글 없음)") + "\n\n"
-        "--- 반드시 아래 5가지 목차에 따라 심도 있는 분석과 구체적인 액션 플랜을 1번부터 5번 끝까지 완성해주세요 ---\n"
-        "## 1. 제목·훅 구조 분석\n"
-        "- 클릭을 유발한 심리적 트리거와 제목 키워드 분석\n"
-        "- 영상 초반 이탈을 막은 인트로 훅(Hook) 설계 원리\n\n"
-        "## 2. 전개 방식 (단계별 서사 구조)\n"
-        "- 도입 → 전개 → 절정 → 결말의 단계별 빌드업 메커니즘\n"
-        "- 시청 지속 시간을 극대화한 완급 조절 및 연출 특징\n\n"
-        "## 3. 핵심 메시지 및 인사이트\n"
-        "- 영상이 관객에게 남기는 궁극적인 메시지와 철학/본질\n"
-        "- 단순 정보 나열을 넘어선 고유의 콘텐츠적 가치\n\n"
-        "## 4. 댓글 여론 특징 및 시청자 반응\n"
-        "- 시청자들이 가장 감탄하거나 공감한 포인트 분석\n"
-        "- 댓글 반응을 통해 본 채널 팬덤의 특성과 몰입 요인\n\n"
-        "## 5. 내 채널/콘텐츠에 적용할 점 3가지 (구체적 실행 방안)\n"
-        "- **전략 1 (기획/제목/썸네일):** 내 채널에 바로 적용할 수 있는 구체적인 실행 계획\n"
-        "- **전략 2 (연출/스토리텔링):** 시청 유지율을 높이기 위한 실전 연출 방안\n"
-        "- **전략 3 (팬덤 구축/확장):** 댓글 참여 및 충성 구독자를 만드는 실행 방안"
-    )
-
-    # 4. 로컬 AI 호출
-    report_content = call_local_ai_gemma(prompt)
-
-    # 5. 리포트 파일 저장: [video_id]_리포트.txt
-    report_file = DATA_DIR / f"{video_id}_리포트.txt"
-    with open(report_file, "w", encoding="utf-8") as f:
-        f.write(report_content)
-
-    # 메타데이터 갱신
-    meta["ai_report"] = report_content
-    meta["transcript"] = transcript[:3000]
-    meta["has_ai_report"] = True
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f, ensure_ascii=False, indent=2)
+# ==========================================
+# LLM 실시간 상태 및 제어 API
+# ==========================================
+@app.get("/api/llm/status")
+async def get_llm_status():
+    """LM Studio & Ollama 실행 상태 및 활성 모델 확인"""
+    probes = llm_client.probe_all()
+    pref = llm_client.get_preference()
+    active_backend = llm_client.detect_backend()
 
     return {
-        "video_id": video_id,
-        "report": report_content,
-        "transcript_length": len(transcript),
-        "report_file": str(report_file)
+        "status": "success",
+        "backends": probes,
+        "preference": pref,
+        "active": active_backend
     }
 
-def extract_single_video_metadata(
-    url: str, 
-    extract_subs: bool = True,
-    extract_comments: bool = True,
-    max_comments: int = 100,
-    auto_ai_report: bool = False
-) -> Dict[str, Any]:
-    """단일 영상 상세 메타데이터, 챕터, 구독자 수, 댓글(Comments) 심층 추출"""
-    ydl_opts = {
-        'skip_download': True,
-        'quiet': True,
-        'no_warnings': True,
-        'writesubtitles': extract_subs,
-        'writeautomaticsub': extract_subs,
-        'subtitleslangs': ['ko', 'en', 'auto'],
+@app.post("/api/llm/select")
+async def select_llm_backend(req: LLMSelectRequest):
+    """사용자가 선호하는 LLM 백엔드 전환 설정"""
+    try:
+        saved_pref = llm_client.set_preference(req.backend)
+        return {"status": "success", "preference": saved_pref}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/llm/models")
+async def get_llm_models():
+    """LM Studio & Ollama에 설치된 전체 모델 목록 반환"""
+    probes = llm_client.probe_all()
+    current_model = llm_client.get_selected_model()
+    all_models = []
+    for backend_key, info in probes.items():
+        backend_label = "LM Studio" if backend_key == "lmstudio" else "Ollama"
+        for m in info.get("models", []):
+            all_models.append({
+                "id": m,
+                "name": m,
+                "backend": backend_key,
+                "backend_label": backend_label,
+                "online": info["online"],
+            })
+    return {
+        "status": "success",
+        "models": all_models,
+        "selected_model": current_model,
+        "backends": probes,
     }
 
-    if extract_comments and max_comments > 0:
-        ydl_opts['getcomments'] = True
-        ydl_opts['extractor_args'] = {
-            'youtube': {
-                'max_comments': [str(max_comments), 'all', '10', '0']
-            }
-        }
-
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-
-    if not info:
-        raise HTTPException(status_code=404, detail="영상 상세 정보를 가져올 수 없습니다.")
-
-    video_id = info.get('id', '')
-    title = info.get('title', '')
-    channel = info.get('uploader') or info.get('channel', '')
-    channel_id = info.get('channel_id', '')
-    channel_url = info.get('uploader_url') or info.get('channel_url', '')
-    channel_follower_count = info.get('channel_follower_count') or 0
-
-    view_count = info.get('view_count', 0) or 0
-    like_count = info.get('like_count', 0) or 0
-    comment_count = info.get('comment_count', 0) or 0
-    duration = info.get('duration', 0) or 0
-    duration_string = info.get('duration_string') or format_duration(duration)
-    
-    upload_date = info.get('upload_date', '')
-    if upload_date and len(upload_date) == 8:
-        formatted_date = f"{upload_date[:4]}-{upload_date[4:6]}-{upload_date[6:]}"
-    else:
-        formatted_date = upload_date
-
-    description = info.get('description', '') or ''
-    tags = info.get('tags', []) or []
-    categories = info.get('categories', []) or []
-    thumbnail = info.get('thumbnail', '')
-    webpage_url = info.get('webpage_url', url)
-
-    # 챕터 (Chapters)
-    raw_chapters = info.get('chapters') or []
-    chapters = []
-    for idx, chap in enumerate(raw_chapters, start=1):
-        chapters.append({
-            "index": idx,
-            "title": chap.get('title', f"Chapter {idx}"),
-            "start_time": chap.get('start_time', 0),
-            "end_time": chap.get('end_time', 0),
-            "start_time_formatted": format_duration(int(chap.get('start_time', 0))),
-            "end_time_formatted": format_duration(int(chap.get('end_time', 0)))
-        })
-
-    # 가용 해상도
-    formats = info.get('formats', [])
-    resolution_list = []
-    for f in formats:
-        height = f.get('height')
-        if height and f"{height}p" not in resolution_list:
-            resolution_list.append(f"{height}p")
-
-    # 자막 요약
-    subtitles = info.get('subtitles', {}) or {}
-    automatic_captions = info.get('automatic_captions', {}) or {}
-    subtitles_summary = {
-        "manual_languages": list(subtitles.keys()),
-        "automatic_languages": list(automatic_captions.keys()),
-        "total_manual_count": len(subtitles),
-        "total_auto_count": len(automatic_captions)
+@app.post("/api/llm/select-model")
+async def select_llm_model(req: LLMSelectModelRequest):
+    """Ollama / LM Studio 에서 원하는 특정 모델을 직접 지정"""
+    saved = llm_client.set_selected_model(req.model)
+    active = llm_client.detect_backend()
+    return {
+        "status": "success",
+        "selected_model": saved,
+        "active": active,
     }
 
-    # 댓글 (Comments)
-    raw_comments_iter = info.get('comments') or []
-    raw_comments = list(raw_comments_iter)
-    processed_comments = []
-    for c in raw_comments:
-        c_author = c.get('author') or 'Anonymous'
-        c_author_id = c.get('author_id') or ''
-        c_text = c.get('text') or ''
-        c_like_count = c.get('like_count') or 0
-        c_timestamp = c.get('timestamp')
-        c_date = ''
-        if c_timestamp:
-            try:
-                c_date = datetime.fromtimestamp(c_timestamp).strftime('%Y-%m-%d %H:%M:%S')
-            except Exception:
-                c_date = str(c_timestamp)
-        
-        processed_comments.append({
-            "id": c.get('id', ''),
-            "author": c_author,
-            "author_id": c_author_id,
-            "author_thumbnail": c.get('author_thumbnail', ''),
-            "text": c_text,
-            "like_count": c_like_count,
-            "reply_count": c.get('reply_count', 0) or 0,
-            "date": c_date,
-            "is_favorited": c.get('is_favorited', False)
-        })
-
-    processed_comments.sort(key=lambda c: c.get('like_count') or 0, reverse=True)
-
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    metadata = {
-        "id": video_id,
-        "title": title,
-        "channel": channel,
-        "channel_id": channel_id,
-        "channel_url": channel_url,
-        "channel_follower_count": channel_follower_count,
-        "view_count": view_count,
-        "like_count": like_count,
-        "comment_count": comment_count,
-        "duration": duration,
-        "duration_string": duration_string,
-        "duration_formatted": format_duration(duration),
-        "upload_date": formatted_date,
-        "analyzed_at": now_str,
-        "url": webpage_url,
-        "thumbnail": thumbnail,
-        "description": description,
-        "tags": tags,
-        "categories": categories,
-        "chapters": chapters,
-        "subtitles": subtitles_summary,
-        "resolutions": sorted(resolution_list, key=lambda x: int(x.replace('p', '')) if x.replace('p', '').isdigit() else 0, reverse=True),
-        "comments_count_extracted": len(processed_comments),
-        "comments": processed_comments,
-        "has_ai_report": False
-    }
-
-    # 개별 JSON 저장
-    save_filename = f"{video_id}_metadata.json"
-    file_path = DATA_DIR / save_filename
-    with open(file_path, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, ensure_ascii=False, indent=2)
-
-    # c.info.json 저장
-    c_info_file_path = DATA_DIR / f"{video_id}_c.info.json"
-    c_info_data = {
-        "id": video_id,
-        "title": title,
-        "channel": channel,
-        "channel_follower_count": channel_follower_count,
-        "view_count": view_count,
-        "like_count": like_count,
-        "comment_count": comment_count,
-        "duration_string": duration_string,
-        "upload_date": formatted_date,
-        "chapters": chapters,
-        "description": description,
-        "subtitles": subtitles,
-        "automatic_captions": automatic_captions,
-        "comments": processed_comments
-    }
-    with open(c_info_file_path, "w", encoding="utf-8") as f:
-        json.dump(c_info_data, f, ensure_ascii=False, indent=2)
-
-    if processed_comments:
-        comments_df = pd.DataFrame(processed_comments)
-        comments_csv_path = DATA_DIR / f"{video_id}_comments.csv"
-        comments_df.to_csv(comments_csv_path, index=False, encoding="utf-8-sig")
-
-    # 자동 AI 리포트 옵션이 켜진 경우 실행
-    ai_report_res = None
-    if auto_ai_report:
-        try:
-            ai_report_res = generate_video_ai_report(video_id)
-            metadata["ai_report"] = ai_report_res.get("report")
-            metadata["has_ai_report"] = True
-        except Exception:
-            pass
-
-    # 인덱스 갱신
-    index = load_index()
-    index = [item for item in index if item.get('id') != video_id]
-    index.insert(0, {
-        "id": video_id,
-        "title": title,
-        "channel": channel,
-        "channel_follower_count": channel_follower_count,
-        "upload_date": formatted_date,
-        "duration_string": duration_string,
-        "duration_formatted": format_duration(duration),
-        "view_count": view_count,
-        "like_count": like_count,
-        "comment_count": comment_count,
-        "comments_extracted": len(processed_comments),
-        "chapters_count": len(chapters),
-        "has_ai_report": metadata.get("has_ai_report", False),
-        "analyzed_at": now_str,
-        "url": webpage_url,
-        "thumbnail": thumbnail,
-        "file_name": save_filename
-    })
-    save_index(index)
-
-    return metadata
-
-def extract_metadata_from_ytdlp(
-    url: str, 
-    extract_subs: bool = True, 
-    extract_comments: bool = True,
-    max_comments: int = 100,
-    auto_ai_report: bool = False,
-    max_items: int = 10
-) -> List[Dict[str, Any]]:
-    ydl_opts = {
-        'skip_download': True,
-        'extract_flat': 'in_playlist',
-        'quiet': True,
-        'no_warnings': True,
-    }
-
-    results = []
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            info = ydl.extract_info(url, download=False)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"yt-dlp 정보 추출 실패: {str(e)}")
-
-        if not info:
-            raise HTTPException(status_code=404, detail="영상 정보를 찾을 수 없습니다.")
-
-        entries = info.get('entries')
-        if entries:
-            items_to_process = list(entries)[:max_items]
-            for entry in items_to_process:
-                video_url = entry.get('url') or entry.get('webpage_url') or f"https://www.youtube.com/watch?v={entry.get('id')}"
-                try:
-                    detailed_info = extract_single_video_metadata(
-                        video_url, 
-                        extract_subs=extract_subs,
-                        extract_comments=extract_comments,
-                        max_comments=max_comments,
-                        auto_ai_report=auto_ai_report
-                    )
-                    results.append(detailed_info)
-                except Exception as ex:
-                    print(f"Error processing {video_url}: {ex}")
-                    continue
-        else:
-            detailed_info = extract_single_video_metadata(
-                url, 
-                extract_subs=extract_subs,
-                extract_comments=extract_comments,
-                max_comments=max_comments,
-                auto_ai_report=auto_ai_report
-            )
-            results.append(detailed_info)
-
-    return results
-
+# ==========================================
+# 유튜브 영상 분석 API
+# ==========================================
 @app.post("/api/analyze")
 async def analyze_youtube(req: AnalyzeRequest):
     """유튜브 단일 영상 또는 재생목록의 메타데이터 및 댓글 심층 분석"""
     try:
         safe_url = verify_youtube_url(req.url)
+        from analyze import analyze_video
         loop = asyncio.get_event_loop()
-        results = await loop.run_in_executor(
-            None, 
-            extract_metadata_from_ytdlp, 
-            safe_url, 
-            req.extract_subtitles,
-            req.extract_comments,
-            req.max_comments,
-            req.auto_generate_ai_report,
-            req.max_playlist_items or 10
-        )
-        return {"status": "success", "count": len(results), "data": results}
+        result = await loop.run_in_executor(None, analyze_video, safe_url)
+
+        # 인덱스 갱신
+        vid = result["id"]
+        info = result["info"]
+        index = load_index()
+        index = [item for item in index if item.get('id') != vid]
+        index.insert(0, {
+            "id": vid,
+            "title": info.get("title"),
+            "channel": info.get("channel"),
+            "channel_follower_count": info.get("channel_follower_count", 0),
+            "upload_date": info.get("upload_date", ""),
+            "duration_string": info.get("duration_string", "00:00"),
+            "view_count": info.get("view_count", 0),
+            "like_count": info.get("like_count", 0),
+            "comment_count": info.get("comment_count", 0),
+            "comments_extracted": len(result.get("comments", [])),
+            "has_ai_report": bool(result.get("report")),
+            "analyzed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "url": safe_url,
+            "thumbnail": info.get("thumbnail")
+        })
+        save_index(index)
+
+        return {"status": "success", "count": 1, "data": [result]}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-@app.post("/api/ai-analyze/{video_id}")
-async def run_ai_analysis(video_id: str):
-    """LM Studio google/gemma-4-e4b 모델로 AI 리포트 비동기 생성"""
-    safe_id = verify_video_id(video_id)
-    try:
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(None, generate_video_ai_report, safe_id)
-        return {"status": "success", "data": result}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.get("/api/ai-report/{video_id}/download")
-async def download_ai_report(video_id: str):
-    safe_id = verify_video_id(video_id)
-    report_file = DATA_DIR / f"{safe_id}_리포트.txt"
-    if not report_file.exists():
-        raise HTTPException(status_code=404, detail="생성된 AI 리포트가 없습니다.")
-    return FileResponse(
-        report_file,
-        filename=f"{safe_id}_리포트.txt",
-        media_type="text/plain; charset=utf-8"
-    )
 
 @app.get("/api/history")
 async def get_history():
@@ -652,123 +298,101 @@ async def get_metadata_detail(video_id: str):
         raise HTTPException(status_code=404, detail="해당 영상의 메타데이터를 찾을 수 없습니다.")
     with open(file_path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    
-    # 리포트 파일 내용이 있으면 로드
-    report_file = DATA_DIR / f"{video_id}_리포트.txt"
+
+    report_file = DATA_DIR / f"{safe_id}_리포트.txt"
     if report_file.exists():
         try:
             with open(report_file, "r", encoding="utf-8") as rf:
                 data["ai_report"] = rf.read()
+                data["report"] = data["ai_report"]
                 data["has_ai_report"] = True
         except Exception:
             pass
-            
+
     return {"status": "success", "data": data}
 
-@app.get("/api/comments/{video_id}/csv")
-async def export_video_comments_csv(video_id: str):
-    file_path = DATA_DIR / f"{video_id}_metadata.json"
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="해당 영상 데이터를 찾을 수 없습니다.")
-    with open(file_path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    
-    comments = data.get("comments", [])
-    if not comments:
-        raise HTTPException(status_code=404, detail="수집된 댓글이 없습니다.")
-
-    df = pd.DataFrame(comments)
-    csv_file = DATA_DIR / f"{video_id}_comments_export.csv"
-    df.to_csv(csv_file, index=False, encoding="utf-8-sig")
+@app.get("/api/ai-report/{video_id}/download")
+async def download_ai_report(video_id: str):
+    safe_id = verify_video_id(video_id)
+    report_file = DATA_DIR / f"{safe_id}_리포트.txt"
+    if not report_file.exists():
+        raise HTTPException(status_code=404, detail="생성된 AI 리포트가 없습니다.")
     return FileResponse(
-        csv_file,
-        filename=f"{video_id}_comments_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        media_type="text/csv"
+        report_file,
+        filename=f"{safe_id}_리포트.txt",
+        media_type="text/plain; charset=utf-8"
     )
 
 @app.delete("/api/metadata/{video_id}")
 async def delete_metadata(video_id: str):
-    """영상 및 그에 연관된 모든 정보, 자막, AI 리포트, 오디오 파일 등을 완전 삭제"""
-    deleted_files = []
-    
-    # 1. data/ 디렉토리 내 video_id가 포함된 모든 파일 검색 및 삭제
-    for p in DATA_DIR.glob(f"*{video_id}*"):
-        if p.is_file():
-            try:
-                p.unlink()
-                deleted_files.append(p.name)
-            except Exception as e:
-                print(f"[Delete Error] {p.name}: {e}")
-                
-    # 2. data/audio/ 디렉토리 내 video_id가 포함된 오디오 파일 삭제
-    audio_dir = DATA_DIR / "audio"
-    if audio_dir.exists():
-        for ap in audio_dir.glob(f"*{video_id}*"):
-            if ap.is_file():
-                try:
-                    ap.unlink()
-                    deleted_files.append(f"audio/{ap.name}")
-                except Exception:
-                    pass
+    """영상 및 연관 파일 완전 삭제"""
+    clean_vid = urllib.parse.unquote(video_id).strip()
+    safe_vid = re.sub(r'[^A-Za-z0-9_-]', '', clean_vid)
 
-    # 3. 메타데이터 인덱스 파일에서 제거
-    index = load_index()
-    index = [item for item in index if item.get('id') != video_id]
-    save_index(index)
-    
+    if not clean_vid and not safe_vid:
+        raise HTTPException(status_code=400, detail="유효하지 않은 영상 ID입니다.")
+
+    gc.collect()
+
+    deleted_files = []
+    failed_files = []
+
+    # DATA_DIR 전체 하위 경로(rglob) 대상 검색
+    targets = set()
+    for p in DATA_DIR.rglob("*"):
+        if p.is_file():
+            name = p.name
+            if (clean_vid and clean_vid in name) or (safe_vid and safe_vid in name):
+                targets.add(p)
+
+    for p in targets:
+        try:
+            p.unlink()
+            deleted_files.append(str(p.relative_to(DATA_DIR)))
+        except Exception as e:
+            print(f"[Delete Error] Failed to remove {p}: {e}")
+            failed_files.append(str(p.relative_to(DATA_DIR)))
+
+    # metadata_index.json에서 삭제 대상 항목 확실하게 제거
+    raw_index = []
+    if INDEX_FILE.exists():
+        try:
+            with open(INDEX_FILE, "r", encoding="utf-8") as f:
+                raw_index = json.load(f)
+        except Exception as e:
+            print(f"[Index Load Error] {e}")
+
+    new_index = [
+        item for item in raw_index 
+        if item.get('id') != clean_vid and item.get('id') != safe_vid
+    ]
+    save_index(new_index)
+
+    # 핵심 메타데이터 파일 삭제 실패 시 500 에러 처리
+    meta_file1 = DATA_DIR / f"{clean_vid}_metadata.json"
+    meta_file2 = DATA_DIR / f"{safe_vid}_metadata.json"
+    if meta_file1.exists() or meta_file2.exists():
+        raise HTTPException(
+            status_code=500,
+            detail=f"영상 데이터 파일 삭제에 실패했습니다. (오류 파일: {', '.join(failed_files)})"
+        )
+
     return {
-        "status": "success", 
-        "message": f"영상({video_id}) 및 연관된 메타데이터, 자막, AI 리포트 등 총 {len(deleted_files)}개 파일이 완전히 삭제되었습니다.",
-        "deleted_files": deleted_files
+        "status": "success",
+        "deleted_files": deleted_files,
+        "failed_files": failed_files
     }
 
 # ==========================================
-# AI 프롬프트 스튜디오 & AutoFlow-Pro 연동 API
+# AI 프롬프트 스튜디오 API
 # ==========================================
-from prompt_generator import (
-    PromptGenerator, 
-    STYLE_PRESETS, 
-    SUPPORTED_MODELS,
-    SUPPORTED_LANGUAGES
-)
-from tts_service import TTSService, AUDIO_DIR
-
-class PromptCustomTopicRequest(BaseModel):
-    topic: str
-    scene_count: int = 6
-    model: str = "google_flow"
-    aspect_ratio: str = "16:9"
-    style_key: str = "photorealistic_8k"
-    custom_subject: Optional[str] = ""
-    language: Optional[str] = "korean"
-
-class PromptExportRequest(BaseModel):
-    scenes: List[Dict[str, Any]]
-    format: str = "autoflow_txt"  # autoflow_txt | csv | json
-    video_title: Optional[str] = "prompt_batch"
-
-class TTSSceneRequest(BaseModel):
-    text: str
-    voice_id: str = "docu_male"
-    scene_index: int = 1
-    topic_slug: Optional[str] = "scene"
-    language: Optional[str] = "korean"
-
-class TTSBatchRequest(BaseModel):
-    scenes: List[Dict[str, Any]]
-    voice_id: str = "docu_male"
-    topic: Optional[str] = "custom_topic"
-    language: Optional[str] = "korean"
-
 @app.get("/api/prompt/strengths")
 async def get_prompt_strengths():
-    """분석 완료된 영상들에서 공통 도출된 성공 강점 및 패턴 제공"""
     strengths = PromptGenerator.extract_common_strengths(DATA_DIR)
     return {"status": "success", "data": strengths}
 
 @app.get("/api/prompt/options")
 async def get_prompt_options():
-    """프롬프트 생성기 옵션 제공"""
     return {
         "models": {k: {"name": v["name"], "description": v["description"], "default_aspect": v["default_aspect"]} for k, v in SUPPORTED_MODELS.items()},
         "style_presets": STYLE_PRESETS,
@@ -781,142 +405,53 @@ async def get_prompt_options():
         ]
     }
 
+@app.get("/api/prompt/concepts")
+async def get_concept_packs():
+    """선택 가능한 컨셉 팩 목록."""
+    return {
+        "status": "success",
+        "default": concept_packs.DEFAULT_CONCEPT,
+        "data": concept_packs.list_packs(),
+    }
+
+
 @app.post("/api/prompt/generate-custom")
 async def generate_custom_topic_prompts(req: PromptCustomTopicRequest):
-    """사용자가 새로 입력한 주제에 대해 분석 영상 공통 강점을 반영하여 씬별 AI 프롬프트 생성"""
+    """8초 단위 씬 대본 및 AI 영상 생성 프롬프트 창작"""
     if not req.topic or not req.topic.strip():
         raise HTTPException(status_code=400, detail="새로운 영상 주제(Topic)를 입력해주세요.")
-        
+
     try:
-        result = PromptGenerator.generate_prompts_from_custom_topic(
-            topic=req.topic.strip(),
-            scene_count=req.scene_count,
-            model=req.model,
-            aspect_ratio=req.aspect_ratio,
-            style_key=req.style_key,
-            custom_subject=req.custom_subject or "",
-            language=req.language or "korean",
-            data_dir=DATA_DIR
+        loop = asyncio.get_event_loop()
+        # 인자 추가 시 위치가 어긋나지 않도록 키워드로 전달한다
+        result = await loop.run_in_executor(
+            None,
+            lambda: PromptGenerator.generate_prompts_from_custom_topic(
+                topic=req.topic.strip(),
+                scene_count=req.scene_count,
+                model=req.model,
+                aspect_ratio=req.aspect_ratio,
+                style_key=req.style_key,
+                custom_subject=req.custom_subject or "",
+                language=req.language or "korean",
+                data_dir=DATA_DIR,
+                angle=req.angle or "",
+                concept_key=req.concept_key,
+            )
         )
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"프롬프트 생성 실패: {str(e)}")
-
-# ==========================================
-# Qwen-TTS & Voice Clone 음성 합성 API
-# ==========================================
-@app.get("/api/tts/voices")
-async def get_tts_voices():
-    """사용 가능한 모든 보이스 목록 (내 목소리 Voice Clone 포함) 반환"""
-    voices = TTSService.get_registered_voices()
-    return {"status": "success", "data": voices}
-
-@app.post("/api/tts/upload-voice")
-async def upload_voice_clone(
-    voice_file: UploadFile = File(...),
-    voice_name: str = Form("내 목소리"),
-    ref_text: str = Form("")
-):
-    """내 목소리 오디오 파일 업로드 및 Voice Clone 프로필 등록"""
-    # 1. 파일 확장자 검증
-    allowed_exts = {".wav", ".mp3", ".m4a", ".ogg"}
-    orig_name = Path(voice_file.filename or "voice.wav").name
-    file_ext = Path(orig_name).suffix.lower()
-    if file_ext not in allowed_exts:
-        raise HTTPException(status_code=400, detail="오디오 파일(.wav, .mp3, .m4a)만 업로드할 수 있습니다.")
-    
-    # 2. 안전한 임시 파일 생성
-    safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', orig_name)
-    temp_path = DATA_DIR / f"temp_{safe_name}"
-    try:
-        content = await voice_file.read()
-        if len(content) > 30 * 1024 * 1024:  # 30MB 제한
-            raise HTTPException(status_code=400, detail="음성 파일 크기는 최대 30MB를 초과할 수 없습니다.")
-            
-        with open(temp_path, "wb") as f:
-            f.write(content)
-            
-        res = TTSService.register_my_voice(temp_path, voice_name=voice_name[:30], ref_text=ref_text[:300])
-        if temp_path.exists():
-            temp_path.unlink()
-        return res
-    except HTTPException:
-        if temp_path.exists():
-            temp_path.unlink()
-        raise
-    except Exception as e:
-        if temp_path.exists():
-            temp_path.unlink()
-        raise HTTPException(status_code=500, detail=f"보이스 등록 실패: {str(e)}")
-
-@app.post("/api/tts/generate-scene")
-async def generate_scene_tts(req: TTSSceneRequest):
-    """단일 씬 대본 텍스트에 대한 음성 합성"""
-    if not req.text or not req.text.strip():
-        raise HTTPException(status_code=400, detail="합성할 텍스트가 없습니다.")
-        
-    slug = re.sub(r'[^a-zA-Z0-9가-힣_-]', '_', req.topic_slug or "scene")[:20]
-    res = TTSService.synthesize_speech(
-        text=req.text.strip(),
-        voice_id=req.voice_id,
-        scene_index=req.scene_index,
-        topic_slug=slug,
-        language=req.language or "korean"
-    )
-    if res.get("status") == "error":
-        raise HTTPException(status_code=500, detail=res.get("message", "음성 합성 실패"))
-    return res
-
-@app.post("/api/tts/generate-batch")
-async def generate_batch_tts(req: TTSBatchRequest):
-    """전체 씬 일괄 음성 합성"""
-    if not req.scenes:
-        raise HTTPException(status_code=400, detail="합성할 씬 목록이 없습니다.")
-        
-    slug = re.sub(r'[^a-zA-Z0-9가-힣_-]', '_', req.topic or "topic")[:20]
-    results = []
-    
-    for idx, sc in enumerate(req.scenes):
-        narration = sc.get("narration", "").strip()
-        if not narration:
-            continue
-        scene_idx = sc.get("scene_index", idx + 1)
-        res = TTSService.synthesize_speech(
-            text=narration,
-            voice_id=req.voice_id,
-            scene_index=scene_idx,
-            topic_slug=slug,
-            language=req.language or "korean"
-        )
-        results.append(res)
-        
-    return {
-        "status": "success",
-        "total": len(results),
-        "data": results
-    }
-
-@app.get("/api/audio/{filename}")
-async def get_audio_file(filename: str):
-    """합성된 오디오 파일 스트리밍 서빙 (경로 순회 공격 방어)"""
-    safe_name = Path(filename).name
-    if not SAFE_FILENAME_REGEX.match(safe_name) or not safe_name.endswith(".wav"):
-        raise HTTPException(status_code=400, detail="잘못된 오디오 파일명 형식입니다.")
-        
-    file_path = (AUDIO_DIR / safe_name).resolve()
-    if not file_path.is_relative_to(AUDIO_DIR.resolve()) or not file_path.exists():
-        raise HTTPException(status_code=404, detail="오디오 파일을 찾을 수 없습니다.")
-    return FileResponse(file_path, media_type="audio/wav")
 
 @app.post("/api/prompt/export")
 async def export_prompts(req: PromptExportRequest):
     """AutoFlow-Pro 호환 TXT, CSV, JSON 형식으로 내보내기"""
     if not req.scenes:
         raise HTTPException(status_code=400, detail="내보낼 씬 데이터가 없습니다.")
-        
+
     title_slug = re.sub(r'[^a-zA-Z0-9가-힣_-]', '_', req.video_title or "prompt_batch")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
     if req.format == "autoflow_txt":
         txt_content = PromptGenerator.export_autoflow_txt(req.scenes)
         filename = f"autoflow_prompts_{title_slug}_{timestamp}.txt"
@@ -932,7 +467,7 @@ async def export_prompts(req: PromptExportRequest):
             media_type="text/csv",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
-    else:  # json
+    else:
         json_content = json.dumps(req.scenes, ensure_ascii=False, indent=2)
         filename = f"prompts_workflow_{title_slug}_{timestamp}.json"
         return PlainTextResponse(
@@ -941,12 +476,116 @@ async def export_prompts(req: PromptExportRequest):
             headers={"Content-Disposition": f'attachment; filename="{filename}"'}
         )
 
+# ==========================================
+# 하이브리드 TTS & 음성 스튜디오 API
+# ==========================================
+@app.get("/api/tts/voices")
+async def get_tts_voices():
+    voices = TTSService.get_registered_voices()
+    return {"status": "success", "data": voices}
+
+@app.post("/api/tts/upload-voice")
+async def upload_voice_clone(
+    voice_file: UploadFile = File(...),
+    voice_name: str = Form("내 목소리"),
+    ref_text: str = Form("")
+):
+    allowed_exts = {".wav", ".mp3", ".m4a", ".ogg"}
+    orig_name = Path(voice_file.filename or "voice.wav").name
+    file_ext = Path(orig_name).suffix.lower()
+    if file_ext not in allowed_exts:
+        raise HTTPException(status_code=400, detail="오디오 파일(.wav, .mp3, .m4a)만 업로드할 수 있습니다.")
+
+    safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', orig_name)
+    temp_path = DATA_DIR / f"temp_{safe_name}"
+    try:
+        content = await voice_file.read()
+        if len(content) > 30 * 1024 * 1024:
+            raise HTTPException(status_code=400, detail="음성 파일 크기는 최대 30MB를 초과할 수 없습니다.")
+
+        with open(temp_path, "wb") as f:
+            f.write(content)
+
+        res = TTSService.register_my_voice(temp_path, voice_name=voice_name[:30], ref_text=ref_text[:300])
+        if temp_path.exists():
+            temp_path.unlink()
+        return res
+    except HTTPException:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise
+    except Exception as e:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise HTTPException(status_code=500, detail=f"보이스 등록 실패: {str(e)}")
+
+@app.post("/api/tts/generate-scene")
+async def generate_scene_tts(req: TTSSceneRequest):
+    """단일 씬 음성 합성 (Edge-TTS 고속 또는 Qwen-TTS)"""
+    if not req.text or not req.text.strip():
+        raise HTTPException(status_code=400, detail="합성할 텍스트가 없습니다.")
+
+    slug = re.sub(r'[^a-zA-Z0-9가-힣_-]', '_', req.topic_slug or "scene")[:20]
+    res = TTSService.synthesize_speech(
+        text=req.text.strip(),
+        voice_id=req.voice_id,
+        scene_index=req.scene_index,
+        topic_slug=slug,
+        language=req.language or "korean"
+    )
+    if res.get("status") == "error":
+        raise HTTPException(status_code=500, detail=res.get("message", "음성 합성 실패"))
+    return res
+
+@app.post("/api/tts/generate-all-scenes")
+async def generate_all_scenes_tts(req: TTSBatchRequest):
+    """전체 씬 일괄 고속 병렬 합성 + 마스터 오디오 병합 + 원클릭 ZIP 번들 생성"""
+    if not req.scenes:
+        raise HTTPException(status_code=400, detail="합성할 씬 목록이 없습니다.")
+
+    try:
+        loop = asyncio.get_event_loop()
+        res = await loop.run_in_executor(
+            None,
+            TTSService.generate_all_scenes_audio_batch,
+            req.scenes,
+            req.topic or "custom_topic",
+            req.voice_id
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"일괄 음성 합성 실패: {str(e)}")
+
+@app.get("/api/audio/{filename:path}")
+async def get_audio_file(filename: str):
+    """오디오 스트리밍 서빙 (하위 폴더 포함 안전 검증)"""
+    file_path = (AUDIO_DIR / filename).resolve()
+    if not file_path.is_relative_to(AUDIO_DIR.resolve()) or not file_path.exists():
+        raise HTTPException(status_code=404, detail="오디오 파일을 찾을 수 없습니다.")
+
+    media_type = "audio/mpeg" if file_path.suffix.lower() == ".mp3" else "audio/wav"
+    return FileResponse(file_path, media_type=media_type)
+
+@app.get("/api/audio/zip/{filename}")
+async def download_audio_zip(filename: str):
+    """원클릭 일괄 다운로드 ZIP 번들 서빙 (Path Traversal 방어)"""
+    safe_name = Path(filename).name
+    file_path = (ZIP_DIR / safe_name).resolve()
+    if not file_path.is_relative_to(ZIP_DIR.resolve()) or not file_path.exists():
+        raise HTTPException(status_code=404, detail="요청한 ZIP 파일을 찾을 수 없습니다.")
+
+    return FileResponse(
+        file_path,
+        filename=safe_name,
+        media_type="application/zip"
+    )
+
 @app.get("/api/export/csv")
 async def export_csv():
     index = load_index()
     if not index:
         raise HTTPException(status_code=404, detail="저장된 메타데이터가 없습니다.")
-    
+
     full_data = []
     for item in index:
         v_id = item.get('id')
@@ -955,48 +594,817 @@ async def export_csv():
             try:
                 with open(detail_path, "r", encoding="utf-8") as f:
                     d = json.load(f)
-                    chapters_titles = [c.get("title", "") for c in d.get("chapters", [])]
+                    info = d.get("info", d)
                     full_data.append({
                         "ID": d.get("id"),
-                        "제목": d.get("title"),
-                        "채널": d.get("channel"),
-                        "구독자수": d.get("channel_follower_count", 0),
-                        "업로드일자": d.get("upload_date"),
-                        "재생시간": d.get("duration_string") or d.get("duration_formatted"),
-                        "조회수": d.get("view_count"),
-                        "좋아요수": d.get("like_count"),
-                        "댓글수": d.get("comment_count"),
-                        "수집된댓글수": d.get("comments_count_extracted", 0),
-                        "챕터개수": len(d.get("chapters", [])),
-                        "챕터목록": " | ".join(chapters_titles),
-                        "태그": ", ".join(d.get("tags", [])),
-                        "카테고리": ", ".join(d.get("categories", [])),
+                        "제목": info.get("title"),
+                        "채널": info.get("channel"),
+                        "구독자수": info.get("channel_follower_count", 0),
+                        "업로드일자": info.get("upload_date"),
+                        "재생시간": info.get("duration_string", "00:00"),
+                        "조회수": info.get("view_count"),
+                        "좋아요수": info.get("like_count"),
+                        "댓글수": info.get("comment_count"),
                         "AI리포트생성여부": "생성됨" if (DATA_DIR / f"{v_id}_리포트.txt").exists() else "미생성",
                         "영상URL": d.get("url"),
-                        "분석일시": d.get("analyzed_at")
+                        "분석일시": item.get("analyzed_at")
                     })
             except Exception:
                 continue
-    
+
     df = pd.DataFrame(full_data)
     csv_file = DATA_DIR / "youtube_metadata_export.csv"
     df.to_csv(csv_file, index=False, encoding="utf-8-sig")
     return FileResponse(
-        csv_file, 
+        csv_file,
         filename=f"youtube_metadata_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
         media_type="text/csv"
     )
 
 @app.post("/api/open-folder")
 async def open_data_folder():
-    """Mac Finder로 data 폴더 열기"""
     try:
         subprocess.run(["open", str(DATA_DIR)], check=True)
         return {"status": "success", "message": "Finder에서 data 폴더를 열었습니다."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"폴더 열기 실패: {str(e)}")
 
-# 정적 파일 서빙
+# ==========================================
+# Phase 1: 트렌드 스카우터 API
+# ==========================================
+class TrendAnalyzeRequest(BaseModel):
+    category_id: str = "0"
+    trends_payload: Optional[Dict[str, Any]] = None
+
+@app.get("/api/trends/top20")
+async def get_trends_top20(category_id: str = Query("0"), region_code: str = Query("KR")):
+    """카테고리별 실시간 인기 급상승 영상 Top 20 조회"""
+    try:
+        data = trend_scout.fetch_top20_trends(category_id=category_id, region_code=region_code)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"트렌드 조회 실패: {e}")
+
+@app.post("/api/trends/analyze")
+async def analyze_trends(req: TrendAnalyzeRequest):
+    """실시간 급상승 Top 영상 기반 알고리즘 인사이트 리포트 생성"""
+    try:
+        loop = asyncio.get_event_loop()
+        payload = req.trends_payload
+        if not payload:
+            payload = await loop.run_in_executor(
+                None, lambda: trend_scout.fetch_top20_trends(category_id=req.category_id)
+            )
+        result = await loop.run_in_executor(None, trend_scout.analyze_trends_with_llm, payload)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"트렌드 분석 실패: {e}")
+
+
+# ==========================================
+# Phase 1: 채널 빌더 & 레오의 채널 진단 API
+# ==========================================
+class ChannelGenRequest(BaseModel):
+    topic: str
+    lang: str = "ko"
+    audio_lang: Optional[str] = None
+    audience: Optional[str] = ""
+    tone: Optional[str] = ""
+    persona_type: Optional[str] = "character"
+    concept: Optional[str] = ""
+    category_id: Optional[int] = 27
+
+class ChannelBrandingApplyRequest(BaseModel):
+    description: Optional[str] = None
+    keywords: Optional[List[str]] = None
+    default_language: Optional[str] = "ko"
+
+@app.get("/api/channel/check-handle")
+async def check_handle(handle: str = Query(...)):
+    """유튜브 실시간 핸들(@) 중복 확인"""
+    available, msg = channel_builder.check_handle_availability(handle)
+    return {"available": available, "message": msg, "handle": handle}
+
+@app.post("/api/channel/generate")
+async def generate_channel(req: ChannelGenRequest):
+    """8대 채널 세팅 AI 기획 자동 생성 (명세서 8대 규격 준수)"""
+    try:
+        loop = asyncio.get_event_loop()
+        plan = await loop.run_in_executor(None, lambda: channel_builder.generate_channel_setup(
+            topic=req.topic,
+            lang=req.lang or "ko",
+            audience=req.audience or req.concept or "",
+            tone=req.tone or "",
+            persona_type=req.persona_type or "character",
+            audio_lang=req.audio_lang or req.lang or "ko"
+        ))
+        return plan
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"채널 기획 실패: {e}")
+
+@app.post("/api/channel/apply-branding")
+async def apply_channel_branding(req: ChannelBrandingApplyRequest):
+    """YouTube Data API channels.update 를 통한 채널 설명란 및 키워드 원클릭 자동 등록"""
+    try:
+        res = uploader.update_channel_branding(
+            description=req.description,
+            keywords=req.keywords,
+            default_language=req.default_language or "ko"
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"채널 브랜딩 등록 실패: {e}")
+
+@app.get("/api/channel/my-status")
+async def get_channel_diagnostics():
+    """로그인된 내 채널 통계 및 에이전트 레오의 알고리즘 성장 진단"""
+    try:
+        diag = channel_builder.get_my_channel_diagnostics()
+        return diag
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"채널 진단 실패: {e}")
+
+@app.get("/api/channel/history")
+async def get_channel_history():
+    """저장된 채널 기획서 목록 조회"""
+    return channel_builder.list_plans()
+
+@app.get("/api/channel/plan/{plan_id}")
+async def get_channel_plan(plan_id: str):
+    """특정 채널 기획서 상세 조회"""
+    plan = channel_builder.get_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="채널 기획서를 찾을 수 없습니다.")
+    return plan
+
+
+# ==========================================
+# Phase 3: 원소스 멀티유즈(OSMU) 마케팅 엔진 API
+# ==========================================
+class MarketingGenRequest(BaseModel):
+    topic: str
+    context: Optional[str] = ""
+    mode: Optional[str] = "all"  # all | threads | blog | newsletter
+    tone: Optional[str] = "viral_hook"
+    audience: Optional[str] = "크리에이터, 직장인, 마케터"
+    platform: Optional[str] = "threads"
+    thread_count: Optional[int] = 5
+    blog_length: Optional[str] = "medium"  # 엔진에 길이 파라미터가 없어 현재 사용되지 않음
+    blog_platform: Optional[str] = "general"  # naver | tistory | medium_velog | general
+    campaign_type: Optional[str] = "educational"
+
+def _run_marketing(mode: str, req: "MarketingGenRequest"):
+    """마케팅 생성 본체 (블로킹 LLM 호출 — executor 에서 실행된다)"""
+    if mode == "threads":
+        return marketing.generate_threads_x(
+            topic=req.topic,
+            context=req.context or "",
+            platform=req.platform or "threads",
+            tone=req.tone or "viral_hook",
+            count=req.thread_count or 5,
+            audience=req.audience or "크리에이터, 직장인, 마케터"
+        )
+    if mode == "blog":
+        return marketing.generate_seo_blog(
+            topic=req.topic,
+            context=req.context or "",
+            platform_target=req.blog_platform or "general",
+            tone=req.tone or "professional",
+            audience=req.audience or "전문가 및 일반 독자"
+        )
+    if mode == "newsletter":
+        return marketing.generate_newsletter(
+            topic=req.topic,
+            context=req.context or "",
+            campaign_type=req.campaign_type or "educational",
+            audience=req.audience or "구독자 및 충성 팬"
+        )
+    return marketing.generate_all_marketing(
+        topic=req.topic,
+        context=req.context or "",
+        options={
+            "thread_platform": req.platform or "threads",
+            "thread_tone": req.tone or "viral_hook",
+            "thread_count": req.thread_count or 5,
+            "audience": req.audience or "크리에이터, 직장인, 마케터",
+            "blog_platform": req.blog_platform or "general",
+            "campaign_type": req.campaign_type or "video_launch",
+        }
+    )
+
+@app.post("/api/marketing/generate")
+async def generate_marketing_content(req: MarketingGenRequest):
+    """멀티채널 마케팅(스레드, 블로그, 뉴스레터) 올인원 생성"""
+    try:
+        mode = req.mode or "all"
+        loop = asyncio.get_event_loop()
+        res = await loop.run_in_executor(None, _run_marketing, mode, req)
+        entry_id = marketing.save_entry(req.topic, mode, res)
+        return {"status": "success", "id": entry_id, "mode": mode, "result": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"마케팅 생성 실패: {e}")
+
+@app.get("/api/marketing/history")
+async def get_marketing_history():
+    """마케팅 보관함 목록"""
+    return marketing.list_marketing_history()
+
+@app.get("/api/marketing/{entry_id}")
+async def get_marketing_item(entry_id: str):
+    """마케팅 포스트 상세 조회"""
+    item = marketing.load_entry(entry_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="마케팅 문서를 찾을 수 없습니다.")
+    return item
+
+
+# ==========================================
+# Phase 4: 영상 자동 제작 (Producer) & 유튜브 업로더 API
+# ==========================================
+_producer_jobs: Dict[str, Dict[str, Any]] = {}
+
+class ProducerBuildRequest(BaseModel):
+    plan_id: str
+    resolution: Optional[str] = "1080p"
+    burn_subtitles: Optional[bool] = True
+    subtitle_style: Optional[str] = "clean"
+    fit_narration: Optional[bool] = True
+    transition: Optional[str] = "fade"
+    sfx_volume: Optional[float] = 0.35
+    generate_images: Optional[bool] = True  # 미디어가 없는 씬을 Gemini 이미지로 먼저 채운다
+
+def _run_build_worker(job_id: str, plan_dict: dict, options: dict):
+    # 이미지 생성은 전체 진행률의 앞 40%, 합성이 뒤 60% 를 차지하도록 배분한다
+    span = {"base": 0, "scale": 1.0}
+
+    def on_progress(step, msg, pct):
+        p = pct if pct is not None else 0
+        _producer_jobs[job_id] = {
+            "status": "processing",
+            "step": step,
+            "message": msg,
+            "percent": int(span["base"] + p * span["scale"])
+        }
+
+    image_result = None
+    try:
+        if options.pop("generate_images", False):
+            span["base"], span["scale"] = 0, 0.40
+            try:
+                image_result = producer.generate_images(plan_dict, progress=on_progress)
+            except Exception as img_err:
+                # 이미지가 없어도 플레이스홀더로 합성은 가능하므로 중단하지 않는다
+                image_result = {"generated": [], "errors": [{"slot": "-", "error": str(img_err)[:200]}]}
+        span["base"], span["scale"] = (40, 0.60) if image_result else (0, 1.0)
+
+        res = producer.build_video(plan_dict, options=options, progress=on_progress)
+        if image_result:
+            res["images_generated"] = image_result.get("generated", [])
+            res["image_errors"] = image_result.get("errors", [])
+            for e in image_result.get("errors", []):
+                res.setdefault("warnings", []).append(
+                    f"이미지 생성 실패(슬롯 {e.get('slot')}): {str(e.get('error'))[:120]}"
+                )
+        _producer_jobs[job_id] = {
+            "status": "completed",
+            "percent": 100,
+            "message": "영상 합성이 완료되었습니다.",
+            "result": res
+        }
+    except Exception as e:
+        _producer_jobs[job_id] = {
+            "status": "failed",
+            "percent": 0,
+            "message": f"합성 실패: {str(e)}"
+        }
+
+class ScenePlanSaveRequest(BaseModel):
+    batch: Dict[str, Any]
+    scene_seconds: Optional[float] = 8.0
+
+
+@app.post("/api/scenes/save")
+async def save_scene_plan(req: ScenePlanSaveRequest):
+    """씬 기획 결과를 영상 합성이 읽을 수 있는 기획서로 저장한다."""
+    if not (req.batch or {}).get("scenes"):
+        raise HTTPException(status_code=400, detail="저장할 씬이 없습니다. 먼저 씬 기획을 생성해주세요.")
+    plan = scene_store.build_plan(req.batch, scene_seconds=req.scene_seconds or 8.0)
+    plan_id = scene_store.save_plan(plan)
+    return {
+        "status": "success",
+        "plan_id": plan_id,
+        "scene_count": len(plan["structured_scenes"]),
+        "audio_count": len(plan["audio_data"]["scenes_audio"]),
+    }
+
+
+@app.get("/api/scenes/list")
+async def list_scene_plans():
+    """저장된 씬 기획서 목록 (영상 합성 탭 선택용)."""
+    return {"status": "success", "data": scene_store.list_plans()}
+
+
+@app.get("/api/scenes/{plan_id}")
+async def get_scene_plan(plan_id: str):
+    plan = scene_store.load_plan(plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="씬 기획서를 찾을 수 없습니다.")
+    return {"status": "success", "data": plan}
+
+
+@app.delete("/api/scenes/{plan_id}")
+async def remove_scene_plan(plan_id: str):
+    if not scene_store.delete_plan(plan_id):
+        raise HTTPException(status_code=404, detail="씬 기획서를 찾을 수 없습니다.")
+    return {"status": "success", "message": "씬 기획서를 삭제했습니다."}
+
+
+def _resolve_plan(plan_id: str):
+    """씬 기획서 -> 채널 기획서 -> output 디렉토리 순으로 조회한다."""
+    plan = scene_store.load_plan(plan_id)
+    if plan:
+        return plan
+    plan = channel_builder.get_plan(plan_id)
+    if plan:
+        return plan
+    plan_file = OUTPUT_DIR / f"{plan_id}.json"
+    if plan_file.exists():
+        with open(plan_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return None
+
+
+@app.post("/api/producer/build")
+async def build_video_endpoint(req: ProducerBuildRequest, background_tasks: BackgroundTasks):
+    """ffmpeg 기반 영상 합성 작업 시작 (BackgroundTasks)"""
+    plan = _resolve_plan(req.plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="합성할 기획서(plan_id)를 찾을 수 없습니다.")
+    if not plan.get("structured_scenes"):
+        raise HTTPException(
+            status_code=400,
+            detail="이 기획서에는 씬 데이터가 없습니다. 3단계에서 씬을 기획한 뒤 [영상 합성용으로 저장]을 눌러주세요."
+        )
+
+    job_id = f"job_{int(time.time() * 1000)}"
+    _producer_jobs[job_id] = {
+        "status": "queued",
+        "percent": 0,
+        "message": "영상 합성 대기 중..."
+    }
+
+    options = {
+        "resolution": req.resolution or "1080p",
+        "burn_subtitles": req.burn_subtitles,
+        "subtitle_style": req.subtitle_style or "clean",
+        "fit_narration": req.fit_narration,
+        "transition": req.transition or "fade",
+        "sfx_volume": req.sfx_volume or 0.35,
+        "generate_images": bool(req.generate_images)
+    }
+
+    background_tasks.add_task(_run_build_worker, job_id, plan, options)
+    return {"status": "success", "job_id": job_id}
+
+class ProducerImagesRequest(BaseModel):
+    plan_id: str
+    slots: Optional[List[str]] = None
+
+
+@app.post("/api/producer/images")
+async def generate_plan_images(req: ProducerImagesRequest):
+    """저장된 기획서의 씬 이미지를 Gemini 로 생성한다 (합성과 별개로 단독 실행)."""
+    plan = _resolve_plan(req.plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="기획서를 찾을 수 없습니다.")
+    if not plan.get("structured_scenes"):
+        raise HTTPException(status_code=400, detail="이 기획서에는 씬 데이터가 없습니다.")
+    try:
+        loop = asyncio.get_event_loop()
+        res = await loop.run_in_executor(
+            None, lambda: producer.generate_images(plan, slots=req.slots)
+        )
+        return {"status": "success", **res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"이미지 생성 실패: {e}")
+
+
+@app.get("/api/producer/status/{job_id}")
+async def get_producer_status(job_id: str):
+    """영상 합성 진행 상태 조회"""
+    job = _producer_jobs.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="작업 ID를 찾을 수 없습니다.")
+    return job
+
+@app.get("/api/youtube/status")
+async def get_youtube_status():
+    """유튜브 OAuth 인증 및 연동 채널 상태 조회"""
+    return uploader.status()
+
+@app.get("/api/youtube/auth/login")
+async def youtube_auth_login(background_tasks: BackgroundTasks, force: bool = False):
+    """
+    유튜브 OAuth 브라우저 인증을 시작합니다.
+    uploader.authorize()가 로컬 서버를 열어 브라우저 로그인을 처리하므로
+    백그라운드 스레드에서 실행하고 즉시 안내 메시지를 반환합니다.
+    """
+    st = uploader.status()
+    if not st.get("libs"):
+        raise HTTPException(
+            status_code=503,
+            detail="구글 API 패키지가 없습니다. 터미널에서 'pip install google-api-python-client google-auth-oauthlib'를 실행해주세요."
+        )
+    if not st.get("client_secret"):
+        raise HTTPException(
+            status_code=503,
+            detail="data/youtube/client_secret.json 파일이 없습니다. Google Cloud Console에서 OAuth 클라이언트(데스크톱 앱) JSON을 받아 저장해주세요."
+        )
+    # force=true 이면 이미 연결돼 있어도 새 채널을 추가로 연결한다
+    if st.get("authorized") and not force:
+        ch = st.get("channel") or {}
+        return JSONResponse({
+            "status": "already_authorized",
+            "message": f"이미 '{ch.get('title', '알 수 없음')}' 채널이 연결되어 있습니다.",
+            "channel": ch,
+            "channels": st.get("channels", [])
+        })
+    # 브라우저 팝업 OAuth — 별도 스레드에서 블로킹 실행
+    import concurrent.futures
+    loop = asyncio.get_event_loop()
+    try:
+        result = await loop.run_in_executor(None, uploader.authorize)
+        ch = result.get("channel") or {}
+        return JSONResponse({
+            "status": "success",
+            "message": f"'{ch.get('title', '알 수 없음')}' 채널이 연결되었습니다.",
+            "channel": ch,
+            "channels": result.get("channels", [])
+        })
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"유튜브 인증 실패: {e}")
+
+@app.post("/api/youtube/auth/disconnect")
+async def youtube_auth_disconnect(channel_id: Optional[str] = None):
+    """channel_id를 주면 해당 채널만, 생략하면 모든 채널의 연결을 해제합니다."""
+    res = uploader.disconnect(channel_id)
+    if channel_id:
+        msg = "선택한 채널의 연결이 해제되었습니다."
+    else:
+        msg = "모든 유튜브 채널 연결이 해제되었습니다."
+    return {"status": "success", "message": msg, "channels": res.get("channels", [])}
+
+
+@app.get("/api/youtube/channels")
+async def list_youtube_channels():
+    """연결된 모든 유튜브 채널 목록과 현재 활성 채널을 반환합니다."""
+    return {
+        "status": "success",
+        "active_channel_id": uploader.get_active_channel_id(),
+        "channels": uploader.list_channels()
+    }
+
+
+@app.post("/api/youtube/channels/select")
+async def select_youtube_channel(channel_id: str):
+    """업로드·브랜딩에 사용할 활성 채널을 전환합니다."""
+    try:
+        uploader.set_active_channel(channel_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "status": "success",
+        "active_channel_id": channel_id,
+        "channels": uploader.list_channels()
+    }
+
+
+class YoutubeUploadRequest(BaseModel):
+    video_file: str
+    title: str
+    description: Optional[str] = ""
+    tags: Optional[List[str]] = []
+    category_id: Optional[str] = "28"
+    privacy_status: Optional[str] = "unlisted"
+    thumbnail_file: Optional[str] = None
+    pinned_comment: Optional[str] = None
+    publish_at: Optional[str] = None
+    channel_id: Optional[str] = None
+
+@app.post("/api/youtube/upload")
+async def upload_youtube_video(req: YoutubeUploadRequest):
+    """YouTube Data API v3 원클릭 영상, 썸네일, 고정댓글 업로드"""
+    st = uploader.status(req.channel_id)
+    if not st.get("authorized"):
+        raise HTTPException(status_code=401, detail="YouTube OAuth 계정 인증이 필요합니다.")
+
+    try:
+        res = uploader.upload_video(
+            video_path=req.video_file,
+            title=req.title,
+            description=req.description or "",
+            tags=req.tags or [],
+            category_id=req.category_id or "28",
+            privacy=req.privacy_status or "unlisted",
+            publish_at=req.publish_at,
+            thumbnail_path=req.thumbnail_file,
+            pinned_comment=req.pinned_comment,
+            channel_id=req.channel_id
+        )
+        return {"status": "success", "channel": st.get("channel"), "result": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"유튜브 업로드 실패: {e}")
+
+
+# ==========================================
+# Phase 6: 에이전트 루나(Agent Luna) AI 음악 자동화 API
+# ==========================================
+class LunaTrackGenerateRequest(BaseModel):
+    genre: str = "lofi"
+    mood: str = "dawn"
+    custom_topic: Optional[str] = ""
+    duration_seconds: Optional[int] = 180
+
+class LunaRenderVideoRequest(BaseModel):
+    track_id: str
+    quality: Optional[str] = "1080p"
+
+class LunaUploadRequest(BaseModel):
+    track_id: str
+    privacy_status: Optional[str] = "public"
+
+@app.get("/api/luna/presets")
+async def get_luna_presets():
+    """루나 장르 및 무드 프리셋 목록"""
+    return {
+        "genres": luna_engine.GENRE_PRESETS,
+        "moods": luna_engine.MOOD_PRESETS
+    }
+
+@app.post("/api/luna/generate")
+async def generate_luna_track(req: LunaTrackGenerateRequest):
+    """에이전트 루나 AI 음악 콘셉트 기획 및 Lyria 3 Pro 완곡 음원 & 앨범아트 생성"""
+    try:
+        concept = luna_engine.generate_music_concept(
+            genre=req.genre,
+            mood=req.mood,
+            custom_topic=req.custom_topic or ""
+        )
+        track_id = f"luna_{int(time.time())}"
+        concept["track_id"] = track_id
+        concept["created_at"] = time.time()
+        
+        # 음원 생성 (Lyria 3 Pro / 오토 신스)
+        track_with_audio = luna_engine.generate_luna_audio(concept, duration_seconds=req.duration_seconds or 180)
+        
+        # 앨범 커버 생성 (나노바나나)
+        full_track = luna_engine.generate_luna_cover(track_with_audio)
+        
+        # 메타데이터 생성 및 저장
+        meta = luna_engine.build_luna_metadata(full_track)
+        full_track["metadata"] = meta
+        luna_engine.save_track(full_track)
+        
+        return full_track
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"루나 트랙 생성 실패: {e}")
+
+@app.post("/api/luna/render")
+async def render_luna_music_video(req: LunaRenderVideoRequest):
+    """앨범 커버 + 완곡 음원 기반 ffmpeg 켄번즈 감성 비디오 렌더링"""
+    try:
+        track = luna_engine.load_track(req.track_id)
+        if not track:
+            raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
+        rendered = luna_engine.render_luna_video(track, quality=req.quality or "1080p")
+        return rendered
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"루나 영상 렌더링 실패: {e}")
+
+@app.post("/api/luna/upload")
+async def upload_luna_music_video(req: LunaUploadRequest):
+    """루나 유튜브 채널로 감성 음악 영상 원클릭 업로드"""
+    try:
+        res = luna_engine.upload_luna_to_youtube(req.track_id, privacy_status=req.privacy_status or "public")
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"루나 유튜브 업로드 실패: {e}")
+
+@app.get("/api/luna/history")
+async def get_luna_history():
+    """생성된 루나 음악 및 비디오 히스토리 목록"""
+    return luna_engine.list_tracks()
+
+
+# ==========================================
+# Phase 7: API 키 및 환경설정 통합 관리 API
+# ==========================================
+class EnvSettingsUpdateRequest(BaseModel):
+    gemini_api_key: Optional[str] = None
+
+@app.get("/api/settings/env")
+async def get_env_settings():
+    """Gemini API 키, YouTube 인증, ffmpeg 등 시스템 통합 환경설정 상태 조회"""
+    k = producer.gemini_key()
+    has_key = bool(k)
+    masked_key = (k[:8] + "..." + k[-4:]) if has_key and len(k) > 12 else ("등록됨" if has_key else "")
+    
+    yt_status = uploader.status()
+    # 실제 인증에 사용되는 파일(data/youtube/client_secret.json)을 기준으로 판단한다
+    has_client_secret = os.path.exists(uploader.CLIENT_SECRET)
+    ffmpeg_ok = bool(shutil.which("ffmpeg"))
+
+    return {
+        "gemini_api_key_configured": has_key,
+        "gemini_api_key_masked": masked_key,
+        "has_client_secret": has_client_secret,
+        "youtube_authorized": yt_status.get("authorized", False),
+        "youtube_channel": yt_status.get("channel"),
+        "youtube_channels": yt_status.get("channels", []),
+        "youtube_active_channel_id": yt_status.get("active_channel_id"),
+        "ffmpeg_installed": ffmpeg_ok,
+        "llm_preference": llm_client.get_preference()
+    }
+
+@app.post("/api/settings/env")
+async def update_env_settings(req: EnvSettingsUpdateRequest):
+    """Gemini API 키를 .env 파일 및 settings.json, 시스템 메모리에 안전하게 동기화 저장"""
+    try:
+        if req.gemini_api_key is not None:
+            producer.set_gemini_key(req.gemini_api_key.strip())
+        return {"status": "success", "message": "API 키가 .env 파일과 시스템 설정에 성공적으로 저장되었습니다."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"설정 저장 실패: {e}")
+
+@app.post("/api/settings/import-luna-keys")
+async def import_luna_keys():
+    """기존 루나 프로젝트(음악생성에이전트루나)에서 키와 인증 파일을 자동으로 동기화"""
+    try:
+        luna_dir = "/Users/leeseungjun/coding/음악생성에이전트루나"
+        imported = []
+        
+        # 1. .env 복사
+        luna_env = os.path.join(luna_dir, ".env")
+        if os.path.exists(luna_env):
+            shutil.copy2(luna_env, os.path.join(BASE_DIR, ".env"))
+            imported.append(".env (Gemini API 키)")
+            k = producer.gemini_key()
+            if k:
+                os.environ["GEMINI_API_KEY"] = k
+
+        # 2. client_secret.json 복사
+        luna_secret = os.path.join(luna_dir, "client_secret.json")
+        if os.path.exists(luna_secret):
+            shutil.copy2(luna_secret, os.path.join(BASE_DIR, "client_secret.json"))
+            imported.append("client_secret.json (유튜브 OAuth 클라이언트)")
+
+        return {"status": "success", "imported": imported}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"루나 키 연동 실패: {e}")
+
+
+# ==========================================
+# Phase 8: Meta Threads API 연동 & 자동 발행
+# ==========================================
+class ThreadsSettingsRequest(BaseModel):
+    access_token: Optional[str] = None
+    user_id: Optional[str] = None
+    app_id: Optional[str] = None
+    app_secret: Optional[str] = None
+
+class ThreadsPublishRequest(BaseModel):
+    posts: List[str]
+    delay_seconds: Optional[float] = 2.0
+
+@app.get("/api/threads/status")
+async def get_threads_status():
+    """Threads 연동 상태 및 계정 정보 확인"""
+    return threads_client.get_status()
+
+@app.post("/api/threads/settings")
+async def update_threads_settings(req: ThreadsSettingsRequest):
+    """Threads 액세스 토큰 또는 App 자격증명 저장"""
+    updates = {}
+    if req.access_token is not None:
+        updates["access_token"] = req.access_token.strip()
+    if req.user_id is not None:
+        updates["user_id"] = req.user_id.strip()
+    if req.app_id is not None:
+        updates["app_id"] = req.app_id.strip()
+    if req.app_secret is not None:
+        updates["app_secret"] = req.app_secret.strip()
+
+    threads_client.save_config(updates)
+    return threads_client.get_status()
+
+@app.get("/api/threads/auth/login")
+async def threads_oauth_login():
+    """Threads OAuth 웹 로그인 창으로 리다이렉트"""
+    try:
+        url = threads_client.get_oauth_authorization_url()
+        return RedirectResponse(url=url)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"OAuth 로그인 URL 생성 실패: {e}")
+
+@app.get("/api/threads/auth/callback")
+async def threads_oauth_callback(code: str = Query(...)):
+    """Threads OAuth 콜백 수신 및 60일 장기 토큰 저장"""
+    try:
+        threads_client.handle_oauth_callback(code)
+        return RedirectResponse(url="/?threads_connected=1")
+    except Exception as e:
+        return PlainTextResponse(f"Threads 계정 연동 실패: {e}", status_code=400)
+
+@app.post("/api/threads/publish")
+async def publish_threads_series(req: ThreadsPublishRequest):
+    """생성된 스레드 5개 타래를 Threads 실제 피드에 순차 연쇄 발행"""
+    try:
+        res = threads_client.publish_thread_sequence(req.posts, delay_seconds=req.delay_seconds or 2.0)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Threads 발행 실패: {e}")
+
+@app.post("/api/threads/auth/disconnect")
+async def disconnect_threads():
+    """Threads 계정 연동 해제"""
+    return threads_client.disconnect()
+
+
+# ==========================================
+# Phase 9: 캡컷(CapCut) 타임라인 완전 자동화
+# ==========================================
+class CapCutExportRequest(BaseModel):
+    plan_id: Optional[str] = None
+    project_name: Optional[str] = None
+    scenes: Optional[List[Dict[str, Any]]] = None
+    transition_type: Optional[str] = "dissolve"
+    aspect_ratio: Optional[str] = "16:9"
+    bgm_path: Optional[str] = None
+
+@app.get("/api/capcut/status")
+async def get_capcut_status():
+    """캡컷 앱 설치 여부 및 프로젝트 저장소 상태 조회"""
+    return capcut_builder.get_capcut_status()
+
+@app.post("/api/capcut/export")
+async def export_to_capcut(req: CapCutExportRequest):
+    """현재 씬 기획안/음성/자막을 캡컷 프로젝트로 즉시 자동 조립하여 내보내기"""
+    try:
+        scenes_data = []
+        name = req.project_name or "TubeInsight_AI_Video"
+
+        if req.plan_id:
+            plan = _resolve_plan(req.plan_id)
+            if not plan:
+                raise HTTPException(status_code=404, detail="지정한 플랜을 찾을 수 없습니다.")
+            name = req.project_name or plan.get("topic") or plan.get("title") or "TubeInsight_Project"
+            for s in plan.get("scenes", []):
+                m_path = s.get("video_file") or s.get("image_file") or s.get("media_file") or ""
+                a_path = s.get("audio_file") or ""
+                sub_txt = s.get("narration") or s.get("subtitle") or s.get("text") or ""
+                scenes_data.append({
+                    "scene_idx": s.get("scene_idx", 1),
+                    "media_file": m_path,
+                    "audio_file": a_path,
+                    "subtitle": sub_txt
+                })
+        elif req.scenes:
+            scenes_data = req.scenes
+
+        if not scenes_data:
+            raise HTTPException(status_code=400, detail="내보낼 씬 데이터가 없습니다.")
+
+        res = capcut_builder.create_capcut_project(
+            project_name=name,
+            scenes=scenes_data,
+            transition_type=req.transition_type or "dissolve",
+            aspect_ratio=req.aspect_ratio or "16:9",
+            bgm_path=req.bgm_path
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"캡컷 프로젝트 생성 실패: {e}")
+
+@app.post("/api/capcut/open")
+async def open_capcut():
+    """macOS 캡컷 앱 실행"""
+    try:
+        return capcut_builder.open_in_capcut()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"캡컷 실행 실패: {e}")
+
+
+# ==========================================
+# 정적 파일 서빙 및 렌더 디렉토리 마운트
+# ==========================================
+if os.path.exists(producer.RENDERS_DIR):
+    app.mount("/data/renders", StaticFiles(directory=str(producer.RENDERS_DIR)), name="renders")
+if os.path.exists(channel_builder.CHANNELS_DIR):
+    app.mount("/data/channels", StaticFiles(directory=str(channel_builder.CHANNELS_DIR)), name="channels")
+if os.path.exists(luna_engine.LUNA_DIR):
+    app.mount("/data/luna_music", StaticFiles(directory=str(luna_engine.LUNA_DIR)), name="luna_music")
+
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 @app.get("/")
@@ -1006,4 +1414,3 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app:app", host="127.0.0.1", port=8765, reload=True)
-

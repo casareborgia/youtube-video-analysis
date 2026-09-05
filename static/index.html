@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>YouTube 영상 분석 & AI 리포트 스튜디오</title>
+  <title>TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오</title>
   <!-- Google Fonts & FontAwesome -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Pretendard:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -20,24 +20,47 @@
           <i class="fa-brands fa-youtube"></i>
         </div>
         <div class="brand-text">
-          <h1>YouTube 영상 분석 & 프롬프트 스튜디오</h1>
-          <span class="badge-version">yt-dlp Engine • Google Flow / AutoFlow-Pro 연동</span>
+          <h1>TubeInsight AI 스튜디오</h1>
+          <span class="badge-version">0원 완전 분석 • 8초 비디오 기획 • 무료 Edge-TTS / Qwen-TTS</span>
         </div>
       </div>
       
-      <!-- 네비게이션 탭 -->
-      <nav class="main-nav-tabs">
+      <!-- 5대 워크플로우 탭 네비게이션 -->
+      <nav class="main-nav">
         <button id="navTabAnalysis" class="nav-tab active">
-          <i class="fa-solid fa-chart-line"></i> 영상 분석 대시보드
+          <i class="fa-solid fa-chart-line"></i> 1. 트렌드 & 영상 분석
+        </button>
+        <button id="navTabChannel" class="nav-tab">
+          <i class="fa-solid fa-tower-broadcast"></i> 2. 채널 빌더 & 진단
         </button>
         <button id="navTabPromptStudio" class="nav-tab">
-          <i class="fa-solid fa-wand-magic-sparkles"></i> AI 프롬프트 스튜디오 <span class="badge-new">NEW</span>
+          <i class="fa-solid fa-wand-magic-sparkles"></i> 3. 씬 기획 & 나레이션
+        </button>
+        <button id="navTabProducer" class="nav-tab">
+          <i class="fa-solid fa-clapperboard"></i> 4. 영상 제작 & 업로드
+        </button>
+        <button id="navTabMarketing" class="nav-tab">
+          <i class="fa-solid fa-bullhorn"></i> 5. 멀티 마케팅 (OSMU)
+        </button>
+        <button id="navTabMusic" class="nav-tab">
+          <i class="fa-solid fa-compact-disc" style="color: #c084fc;"></i> 6. AI 음악 스튜디오 (Luna)
         </button>
       </nav>
 
+      <!-- LLM 상태 배지 & 헤더 액션 -->
       <div class="header-actions">
+        <!-- LLM 백엔드 상태 배지 (클릭 시 LM Studio / Ollama / Auto 전환) -->
+        <div id="llmStatusBadge" class="llm-status-pill" title="클릭하여 백엔드(Auto / LM Studio / Ollama) 전환">
+          <span class="status-dot online"></span>
+          <span id="llmBackendName">로컬 AI 확인 중...</span>
+          <span id="llmModelBadge" class="llm-model-sub"></span>
+        </div>
+
+        <button id="btnOpenEnvSettingsModal" class="btn btn-outline" style="border-color: #a855f7; color: #c084fc;" title="Gemini API 키 및 유튜브 인증 환경설정">
+          <i class="fa-solid fa-key"></i> API 설정
+        </button>
         <button id="btnOpenFolder" class="btn btn-outline" title="Finder에서 data 폴더 열기">
-          <i class="fa-regular fa-folder-open"></i> 저장 폴더 열기
+          <i class="fa-regular fa-folder-open"></i> 저장 폴더
         </button>
         <button id="btnExportCsv" class="btn btn-outline" title="전체 수집 메타데이터 CSV 다운로드">
           <i class="fa-solid fa-file-csv"></i> 전체 CSV
@@ -52,12 +75,91 @@
     <main class="main-content">
       <!-- 뷰 1: 영상 분석 대시보드 뷰 -->
       <div id="viewAnalysis" class="view-panel active">
+        <!-- 에이전트 레오의 실시간 트렌드 스카우터 섹션 -->
+        <section class="card trend-section" style="margin-bottom: 24px;">
+          <div class="section-title" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <i class="fa-solid fa-fire-flame-curved" style="color: #f43f5e; font-size: 20px;"></i>
+              <div>
+                <h2 style="margin: 0; font-size: 1.15rem;">실시간 인기 급상승 Top 20 & 알고리즘 트렌드 분석</h2>
+                <span class="sub-text">YouTube 카테고리별 실시간 인기 급상승 영상 수집 및 AI 알고리즘 인사이트 리포트</span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <select id="trendCategorySelect" class="form-control" style="width: auto; padding: 6px 12px; font-size: 0.85rem;">
+                <option value="0" selected>🔥 전체 급상승</option>
+                <option value="28">🔬 과학기술 (Sci/Tech)</option>
+                <option value="24">🎬 엔터테인먼트 (Entertainment)</option>
+                <option value="10">🎵 음악 (Music)</option>
+                <option value="20">🎮 게임 (Gaming)</option>
+                <option value="25">📰 뉴스 및 정치 (News)</option>
+              </select>
+              <button id="btnFetchTrends" class="btn btn-outline" style="padding: 6px 12px; font-size: 0.85rem;">
+                <i class="fa-solid fa-arrows-rotate"></i> 새로고침
+              </button>
+              <button id="btnAnalyzeTrends" class="btn btn-accent" style="padding: 6px 14px; font-size: 0.85rem;">
+                <i class="fa-solid fa-brain"></i> AI 트렌드 리포트 생성
+              </button>
+            </div>
+          </div>
+
+          <!-- 트렌드 AI 리포트 영역 -->
+          <div id="trendReportBox" class="trend-report-card" style="display: none; margin-top: 16px;">
+            <div class="trend-report-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <span class="badge-tag" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; padding: 4px 10px; border-radius: 6px; font-weight: 600; font-size: 0.8rem;">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> 에이전트 레오의 알고리즘 트렌드 브리핑
+              </span>
+              <span id="trendReportDate" class="text-muted" style="font-size: 0.8rem;"></span>
+            </div>
+            <div class="trend-keywords-row" style="margin: 12px 0;">
+              <strong style="font-size: 0.85rem; margin-right: 8px;">🔥 핵심 키워드:</strong>
+              <div id="trendKeywordsList" class="badge-group" style="display: inline-flex; gap: 6px; flex-wrap: wrap;"></div>
+            </div>
+            <div class="trend-insight-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 12px;">
+              <div class="insight-box" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: #38bdf8;"><i class="fa-solid fa-magnet"></i> 공통 후킹 패턴</h4>
+                <div id="trendHookPatterns" style="font-size: 0.85rem; line-height: 1.5;"></div>
+              </div>
+              <div class="insight-box" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: #a78bfa;"><i class="fa-solid fa-users"></i> 시청자 반응 & 심리 트리거</h4>
+                <div id="trendAudienceTriggers" style="font-size: 0.85rem; line-height: 1.5;"></div>
+              </div>
+              <div class="insight-box" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+                <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: #34d399;"><i class="fa-solid fa-lightbulb"></i> 다음 주 추천 기획 앵글</h4>
+                <div id="trendRecommendedTopics" style="font-size: 0.85rem; line-height: 1.5;"></div>
+              </div>
+            </div>
+            <div class="leo-tip-banner" style="margin-top: 12px; padding: 10px 14px; background: rgba(99, 102, 241, 0.12); border-left: 4px solid #6366f1; border-radius: 6px; font-size: 0.85rem; display: flex; gap: 10px; align-items: center;">
+              <i class="fa-solid fa-shield-halved" style="color: #6366f1; font-size: 16px;"></i>
+              <div>
+                <strong>에이전트 레오의 알고리즘 팁:</strong>
+                <span id="trendLeoTip"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top 20 영상 목록 슬라이더/그리드 -->
+          <div style="margin-top: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">
+                급상승 순위 목록 (<span id="trendItemsCount">0</span>개)
+              </span>
+              <span id="trendSourceBadge" class="badge badge-subtle" style="font-size: 0.75rem;">출처: 확인 중</span>
+            </div>
+            <div id="trendItemsGrid" class="trend-items-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; max-height: 480px; overflow-y: auto; padding-right: 4px;">
+              <div style="grid-column: 1/-1; text-align: center; padding: 24px; color: var(--text-muted);">
+                <i class="fa-solid fa-circle-notch fa-spin"></i> 실시간 트렌드 목록을 불러오는 중...
+              </div>
+            </div>
+          </div>
+        </section>
+
         <!-- 검색 및 분석 입력 섹션 -->
         <section class="card input-section">
           <div class="section-title">
             <i class="fa-solid fa-wand-magic-sparkles"></i>
             <h2>유튜브 링크 하나로 완전 분석</h2>
-            <span class="sub-text">메타데이터 + 한국어 자막(SRT) + 여론 상위 댓글 + <strong>LM Studio 로컬 AI(Gemma 4)</strong> 종합 분석</span>
+            <span class="sub-text">메타데이터 + 한국어 자막(SRT/VTT 타임스탬프) + 여론 상위 댓글 + <strong>로컬 AI(Gemma 4)</strong> 종합 분석</span>
           </div>
 
           <form id="analyzeForm" class="analyze-form">
@@ -83,7 +185,7 @@
                 <label class="checkbox-label">
                   <input type="checkbox" id="chkSubtitles" checked>
                   <span class="custom-checkbox"></span>
-                  자막(한국어 CC) 수집
+                  자막(타임스탬프 VTT/SRT) 수집
                 </label>
                 <label class="checkbox-label">
                   <input type="checkbox" id="chkComments" checked>
@@ -91,7 +193,7 @@
                   댓글(Comments) 수집 & 여론 분석
                 </label>
                 <label class="checkbox-label" style="color: #a78bfa; font-weight:600;">
-                  <input type="checkbox" id="chkAutoAiReport">
+                  <input type="checkbox" id="chkAutoAiReport" checked>
                   <span class="custom-checkbox"></span>
                   <i class="fa-solid fa-robot"></i> 수집 즉시 AI 심층 리포트 생성 (Gemma 4)
                 </label>
@@ -104,14 +206,6 @@
                     <option value="50">50개 (초고속)</option>
                     <option value="100" selected>100개 (권장)</option>
                     <option value="200">200개 (상세)</option>
-                  </select>
-                </div>
-                <div class="form-group-inline">
-                  <label for="playlistLimit">재생목록 영상 수:</label>
-                  <select id="playlistLimit" class="form-select">
-                    <option value="5">5개</option>
-                    <option value="10" selected>10개</option>
-                    <option value="20">20개</option>
                   </select>
                 </div>
               </div>
@@ -154,14 +248,14 @@
               <thead>
                 <tr>
                   <th width="70">썸네일</th>
-                  <th>영상 제목 & 채널 (구독자수)</th>
+                  <th>영상 제목 & 채널</th>
                   <th width="85">재생시간</th>
                   <th width="105">조회수</th>
                   <th width="90">좋아요</th>
                   <th width="95">댓글 (수집)</th>
                   <th width="95">AI 리포트</th>
                   <th width="95">업로드일</th>
-                  <th width="170">상세 확인 & 프롬프트</th>
+                  <th width="170">상세 확인 & 기획</th>
                 </tr>
               </thead>
               <tbody id="historyTableBody">
@@ -182,11 +276,11 @@
         <div class="strengths-banner card">
           <div class="strengths-header">
             <i class="fa-solid fa-chart-line-up" style="color:var(--success-color)"></i>
-            <span class="strengths-title">분석 영상들에서 도출된 공통 성공 공식 (프롬프트 엔진 자동 주입)</span>
+            <span class="strengths-title">분석 영상 성공 공식 자동 주입 (8초 씬 비디오 기획)</span>
             <span id="strengthsCountBadge" class="badge badge-accent">분석 데이터 반영 중</span>
           </div>
           <p id="strengthsSummaryText" class="strengths-desc">
-            기존 분석된 영상들(SCP 미스터리, 건축 다큐, 탐사물 등)의 공통 강점인 <strong>'초반 5초 오프닝 훅'</strong>, <strong>'4단계 서사 빌드업'</strong>, <strong>'스케일 대비 앵글'</strong>, <strong>'시네마틱 조명'</strong> 공식이 새로 생성될 모든 씬 프롬프트에 자동으로 적용됩니다.
+            분석된 영상들의 공통 강점인 <strong>'초반 5초 오프닝 훅'</strong>, <strong>'5단계 마스터 서사 플롯'</strong>, <strong>'8초 단위 씬별 대본'</strong>, <strong>'시네마틱 카메라/조명'</strong> 공식이 새로 생성될 모든 프롬프트와 나레이션에 자동으로 적용됩니다.
           </p>
         </div>
 
@@ -195,62 +289,64 @@
           <div class="card studio-controls-panel">
             <div class="panel-header">
               <i class="fa-solid fa-wand-magic-sparkles"></i>
-              <h3>새로운 영상 주제 기획 & 프롬프트 생성</h3>
+              <h3>8초 비디오 씬 기획 & 나레이션 생성</h3>
             </div>
 
             <!-- 사용자 신규 주제 입력창 -->
             <div class="control-group">
-              <label for="promptTopicInput"><i class="fa-solid fa-pen-nib"></i> 새로운 영상 주제 / 스토리 컨셉 입력 <span class="text-danger">*</span></label>
+              <label for="promptTopicInput"><i class="fa-solid fa-pen-nib"></i> 영상 기획 주제 / 스토리 컨셉 <span class="text-danger">*</span></label>
               <textarea 
                 id="promptTopicInput" 
                 class="form-control" 
                 rows="3" 
-                placeholder="만들고자 하는 영상/쇼츠의 주제나 시놉시스를 자유롭게 입력하세요.&#10;(예: 2050년 네오 서울, 인공지능 통제에 맞서는 마지막 인간 해커의 심야 침투 작전)"
+                placeholder="만들고자 하는 영상의 주제를 입력하세요.&#10;(예: 지하 50층 국가 최고 기밀 벙커의 진실과 공학적 난제)"
                 required
               ></textarea>
               <!-- 추천 주제 칩 -->
               <div class="topic-chip-container">
                 <span class="topic-chip-label">추천 예시:</span>
+                <button type="button" class="btn-topic-chip" data-topic="지하 50층 국가 최고 기밀 벙커의 진실과 공학적 난제">🏢 지하 비밀 벙커</button>
                 <button type="button" class="btn-topic-chip" data-topic="심해 1만 미터 마리아나 해구에서 발견된 미지의 발광 생명체와 거대 유적">🌊 심해 미지의 유적</button>
                 <button type="button" class="btn-topic-chip" data-topic="2050년 사이버펑크 도시의 마지막 인간 해커와 거대 AI의 대결">🤖 AI 사이버펑크</button>
                 <button type="button" class="btn-topic-chip" data-topic="극지방 빙하 속에 수만 년간 갇혀 있던 미지의 고대 우주선 발굴 탐사">❄️ 극지방 우주선 탐사</button>
-                <button type="button" class="btn-topic-chip" data-topic="조선 시대로 타임슬립한 현대 수석 엔지니어의 첨단 무기 개발기">⚔️ 조선 타임슬립 테크</button>
               </div>
             </div>
 
             <div class="control-group">
-              <label for="promptTargetModel"><i class="fa-solid fa-robot"></i> 타겟 생성 AI 모델</label>
+              <label for="promptTargetModel"><i class="fa-solid fa-robot"></i> 타겟 AI 비디오 생성 툴</label>
               <select id="promptTargetModel" class="form-select">
-                <option value="google_flow" selected>Google Flow (Veo 2/3, Imagen 3/4) - AutoFlow 호환</option>
-                <option value="midjourney">Midjourney v6.1 (--ar, --v 6.1)</option>
-                <option value="runway_kling">Runway Gen-3 / Kling AI / Luma</option>
+                <option value="runway_kling" selected>Runway Gen-3 / Kling AI / Sora (8초 씬 최적화)</option>
+                <option value="google_flow">Google Flow (Veo 2/3, Imagen 3/4) - AutoFlow 호환</option>
+                <option value="midjourney">Midjourney v6.1 (--ar, --v 6.1, --style raw)</option>
               </select>
             </div>
 
             <div class="control-row">
               <div class="control-group half">
-                <label for="promptSceneCount"><i class="fa-solid fa-film"></i> 씬(Scene) 분할 수</label>
+                <label for="promptSceneCount"><i class="fa-solid fa-film"></i> 씬 분할 (8초 단위)</label>
                 <select id="promptSceneCount" class="form-select">
-                  <option value="4">4개 씬</option>
-                  <option value="6" selected>6개 씬 (권장)</option>
-                  <option value="8">8개 씬 (상세)</option>
+                  <option value="6" selected>6개 씬 (48초 분량 - 권장)</option>
+                  <option value="8">8개 씬 (64초 분량)</option>
+                  <option value="10">10개 씬 (80초 완결)</option>
+                  <option value="12">12개 씬 (96초 상세)</option>
                 </select>
               </div>
               <div class="control-group half">
-                <label for="promptAspectRatio"><i class="fa-solid fa-crop-simple"></i> 화면 비율 (Aspect)</label>
+                <label for="promptAspectRatio"><i class="fa-solid fa-crop-simple"></i> 화면 비율 (Aspect Ratio)</label>
                 <select id="promptAspectRatio" class="form-select">
-                  <option value="16:9" selected>16:9 (Landscape - YouTube)</option>
-                  <option value="9:16">9:16 (Portrait - Shorts/Reels)</option>
-                  <option value="1:1">1:1 (Square - Feed)</option>
-                  <option value="21:9">21:9 (Cinemascope)</option>
+                  <option value="16:9" selected>16:9 (롱폼 - YouTube 가로)</option>
+                  <option value="9:16">9:16 (쇼츠 - Shorts/Reels 세로)</option>
                 </select>
+                <span id="aspectRatioHint" class="helper-text">16:9 가로 시네마틱 구도 및 엔지니어링 주석 적용</span>
               </div>
             </div>
 
-            <!-- 카메라 및 조명 자동 추론 배너 -->
-            <div class="auto-inference-info-card">
-              <div class="info-title"><i class="fa-solid fa-camera-movie" style="color:#60a5fa;"></i> 카메라 앵글 & 조명 연출: <strong>AI 자동 추론</strong></div>
-              <p class="info-desc">Ollama Gemma 4가 입력된 주제의 극적 분위기에 맞춰 씬마다 최적의 <strong>카메라 무빙(와이드/클로즈업/드론)</strong>과 <strong>조명(네온/안개/골든아워)</strong>을 스스로 판단하여 합성합니다.</p>
+            <div class="control-group">
+              <label for="promptConcept"><i class="fa-solid fa-layer-group"></i> 영상 컨셉 (Concept)</label>
+              <select id="promptConcept" class="form-select">
+                <option value="">불러오는 중...</option>
+              </select>
+              <span id="promptConceptDesc" class="helper-text"></span>
             </div>
 
             <div class="control-group">
@@ -263,9 +359,9 @@
               </select>
             </div>
 
-            <!-- 대본 및 음성 생성 언어 선택 (Multilingual) -->
+            <!-- 대본 및 음성 생성 언어 선택 -->
             <div class="control-group">
-              <label for="promptLanguageSelect"><i class="fa-solid fa-globe"></i> 대본 및 음성 생성 언어 (Language)</label>
+              <label for="promptLanguageSelect"><i class="fa-solid fa-globe"></i> 대본 및 나레이션 언어</label>
               <select id="promptLanguageSelect" class="form-select">
                 <option value="korean" selected>🇰🇷 한국어 (Korean)</option>
                 <option value="english">🇺🇸 English (영어)</option>
@@ -275,37 +371,38 @@
                 <option value="german">🇩🇪 Deutsch (독일어)</option>
                 <option value="spanish">🇪🇸 Español (스페인어)</option>
               </select>
-              <span class="helper-text">선택한 언어로 기획 대본 및 Qwen-TTS 다국어 음성이 합성됩니다.</span>
             </div>
 
-            <!-- AI 성우 보이스 선택 (Qwen-TTS & Voice Clone) -->
+            <!-- AI 성우 보이스 선택 (Edge-TTS 무료 고속 프리셋 + Qwen-TTS Voice Clone) -->
             <div class="control-group">
               <div style="display:flex; justify-content:space-between; align-items:center;">
-                <label for="promptVoiceSelect"><i class="fa-solid fa-microphone-lines"></i> AI 내레이션 보이스 (Qwen-TTS)</label>
+                <label for="promptVoiceSelect"><i class="fa-solid fa-microphone-lines"></i> 나레이션 보이스 (Edge-TTS / Qwen)</label>
                 <button type="button" id="btnOpenVoiceModal" class="btn btn-sm btn-outline" style="font-size:11px; padding:2px 8px; color:#c4b5fd; border-color:rgba(167,139,250,0.4);">
                   <i class="fa-solid fa-user-plus"></i> 내 목소리 등록
                 </button>
               </div>
               <select id="promptVoiceSelect" class="form-select">
+                <option value="edge_injoon" selected>⚡ 인준 (남성 다큐·지식 전문 - 무료 고속)</option>
+                <option value="edge_sunhi">⚡ 선희 (여성 다큐·뉴스 전문 - 무료 고속)</option>
+                <option value="edge_hyunsu">⚡ 현수 (남성 스토리텔러 - 무료 고속)</option>
                 <option value="my_voice">👤 내 목소리 (Voice Clone)</option>
-                <option value="docu_male" selected>🎙️ 진중한 다큐멘터리 남성 성우 (Ryan)</option>
-                <option value="docu_female">🎙️ 명확하고 차분한 여성 성우 (Sohee)</option>
-                <option value="mystery_narrator">🎙️ 미스터리 / 스릴러 성우 (Uncle Fu)</option>
-                <option value="shorts_energetic">🎙️ 트렌디 쇼츠 / 릴스 성우 (Vivian)</option>
+                <option value="docu_male">🎙️ 진중한 남성 성우 Ryan (Qwen-TTS)</option>
+                <option value="docu_female">🎙️ 명확한 여성 성우 Sohee (Qwen-TTS)</option>
+                <option value="mystery_narrator">🎙️ 미스터리 성우 Uncle Fu (Qwen-TTS)</option>
+                <option value="shorts_energetic">🎙️ 트렌디 쇼츠 성우 Vivian (Qwen-TTS)</option>
                 <option value="voice_design">🎨 AI 보이스 디자인 (Voice Design)</option>
               </select>
-              <span id="voiceDescText" class="helper-text">차분하고 신뢰감 넘치는 묵직한 내레이션</span>
+              <span id="voiceDescText" class="helper-text">차분하고 신뢰감 넘치는 다큐멘터리 어조 (무료 고속 합성)</span>
             </div>
 
             <div class="control-group">
               <label for="promptCustomSubject"><i class="fa-solid fa-user-astronaut"></i> 고정 피사체/캐릭터 일관성 키워드 (선택)</label>
               <input type="text" id="promptCustomSubject" class="form-control" placeholder="예: Korean male researcher in yellow biohazard suit">
-              <span class="helper-text">모든 씬에 고정 반영될 핵심 캐릭터 또는 피사체 묘사</span>
             </div>
 
             <button id="btnGeneratePrompts" class="btn btn-primary btn-block">
-              <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> AI 씬별 프롬프트 자동 생성</span>
-              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> Ollama Gemma 4 생성 중...</span>
+              <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 8초 씬별 기획 & 레드라인 프롬프트 자동 생성</span>
+              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 기획 & 레드라인 생성 중...</span>
             </button>
           </div>
 
@@ -313,24 +410,30 @@
           <div class="studio-content-panel">
             <div class="card studio-results-header">
               <div class="header-left">
-                <h3 id="studioVideoTitle"><i class="fa-solid fa-clapperboard"></i> 씬별 스토리보드 & 시네마틱 프롬프트</h3>
-                <span id="studioSceneBadge" class="badge badge-accent">새 주제 생성 대기</span>
+                <h3 id="studioVideoTitle"><i class="fa-solid fa-clapperboard"></i> 8초 씬별 스토리보드 & 나레이션 스튜디오</h3>
+                <span id="studioSceneBadge" class="badge badge-accent">기획 대기</span>
               </div>
               <div class="header-actions-group">
-                <button id="btnBatchTTS" class="btn btn-sm btn-outline" style="color:#a78bfa; border-color:#8b5cf6;" title="전체 씬의 나레이션을 Qwen-TTS 음성으로 일괄 생성">
+                <button id="btnBatchTTS" class="btn btn-sm btn-primary" title="전체 씬의 나레이션 오디오를 초고속 병렬 합성">
                   <i class="fa-solid fa-microphone-lines"></i> 전체 음성 생성
                 </button>
-                <button id="btnCopyAllPrompts" class="btn btn-sm btn-outline" title="전체 프롬프트 복사">
-                  <i class="fa-solid fa-copy"></i> 전체 복사
+                <button id="btnDirectExportCapcut" class="btn btn-sm" style="background: linear-gradient(135deg, #0284c7, #06b6d4); border: none; color: #fff; font-weight: 700;" title="현재 씬 대본과 나레이션, 자막을 캡컷(CapCut) 프로젝트로 즉시 자동 조립">
+                  <i class="fa-solid fa-scissors"></i> 🎬 캡컷(CapCut) 직행
                 </button>
-                <button id="btnExportAutoFlowTxt" class="btn btn-sm btn-success" title="AutoFlow-Pro에서 Import 가능한 .txt 파일로 다운로드">
-                  <i class="fa-solid fa-file-arrow-down"></i> AutoFlow-Pro TXT
+                <button id="btnGoToProducer" class="btn btn-sm btn-outline" style="border-color: #6366f1; color: #818cf8;" title="4단계 AI 비디오 프로듀서로 플랜을 가지고 즉시 이동">
+                  <i class="fa-solid fa-arrow-right"></i> 4단계 비디오 제작
+                </button>
+                <button id="btnDownloadZip" class="btn btn-sm btn-success" style="display: none;" title="전체 씬 오디오 + 마스터 음성 + 대본 TXT를 하나의 ZIP 파일로 다운로드">
+                  <i class="fa-solid fa-file-zipper"></i> 전체 ZIP 다운로드
+                </button>
+                <button id="btnCopyAllPrompts" class="btn btn-sm btn-outline" title="전체 비디오 프롬프트 복사">
+                  <i class="fa-solid fa-copy"></i> 전체 프롬프트 복사
+                </button>
+                <button id="btnExportAutoFlowTxt" class="btn btn-sm btn-outline" title="AutoFlow-Pro에서 Import 가능한 .txt 파일로 다운로드">
+                  <i class="fa-solid fa-file-arrow-down"></i> AutoFlow TXT
                 </button>
                 <button id="btnExportCsvPrompts" class="btn btn-sm btn-outline" title="스마트 작업 관리용 CSV 다운로드">
                   <i class="fa-solid fa-file-csv"></i> CSV
-                </button>
-                <button id="btnExportJsonPrompts" class="btn btn-sm btn-outline" title="워크플로우 JSON 다운로드">
-                  <i class="fa-solid fa-code"></i> JSON
                 </button>
               </div>
             </div>
@@ -339,8 +442,42 @@
             <div class="autoflow-tip-box">
               <i class="fa-solid fa-circle-info"></i>
               <div>
-                <strong>AutoFlow-Pro & Qwen-TTS 연동 팁:</strong> 
-                생성된 <strong>[AutoFlow-Pro TXT]</strong>로 영상/이미지를 일괄 생성하고, 각 씬 카드의 <strong>[🎙️ 음성 생성]</strong> 버튼으로 내레이션 음성 파일(.wav)을 받아 결합하면 완전한 영상이 완성됩니다.
+                <strong>나노바나나 레드라인 & 8초 비디오 워크플로우:</strong> 
+                <strong>1) 썸네일 레드라인 프롬프트</strong>로 시선 강탈 썸네일을 생성하고, <strong>2) 씬별 첫 프레임 주석 프롬프트</strong>로 첫 이미지를 만든 뒤 비디오 AI에서 8초 클립으로 확장하세요.
+              </div>
+            </div>
+
+            <!-- 🔴 나노바나나 레드라인 썸네일 프롬프트 카드 영역 -->
+            <div id="thumbnailRedlineSection" class="thumbnail-redline-container" style="display: none;"></div>
+
+            <!-- 💬 에이전트 레오의 인게이지먼트 해킹 & 추천 고정 댓글 카드 -->
+            <div id="engagementSection" class="engagement-container card" style="display: none; margin-bottom: 20px; border-left: 4px solid #6366f1;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <i class="fa-solid fa-comments" style="color: #6366f1; font-size: 18px;"></i>
+                  <h4 style="margin: 0; font-size: 0.95rem;">에이전트 레오의 알고리즘 인게이지먼트 해킹</h4>
+                </div>
+                <span class="badge badge-accent">댓글 전환율 10배 극대화</span>
+              </div>
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px;">
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.8rem; font-weight: 600; color: #38bdf8;">
+                      <i class="fa-solid fa-scale-balanced"></i> 도발적 양자택일 오픈 퀘스천 (아웃트로)
+                    </span>
+                    <button id="btnCopyEngagementQ" class="btn btn-xs btn-outline"><i class="fa-solid fa-copy"></i> 복사</button>
+                  </div>
+                  <p id="engagementQuestionText" style="margin: 0; font-size: 0.85rem; line-height: 1.5; color: var(--text-primary);"></p>
+                </div>
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <span style="font-size: 0.8rem; font-weight: 600; color: #f43f5e;">
+                      <i class="fa-solid fa-thumbtack"></i> 📌 추천 고정 댓글 (Pinned Comment)
+                    </span>
+                    <button id="btnCopyPinnedComment" class="btn btn-xs btn-outline"><i class="fa-solid fa-copy"></i> 복사</button>
+                  </div>
+                  <p id="pinnedCommentText" style="margin: 0; font-size: 0.85rem; line-height: 1.5; color: var(--text-primary);"></p>
+                </div>
               </div>
             </div>
 
@@ -348,11 +485,767 @@
             <div id="studioScenesContainer" class="scenes-list-container">
               <div class="empty-state-box">
                 <i class="fa-solid fa-film fa-3x"></i>
-                <p>좌측에서 새로운 영상 주제를 입력하고 <strong>[AI 씬별 프롬프트 자동 생성]</strong> 버튼을 클릭하세요.</p>
+                <p>좌측에서 새로운 영상 주제를 입력하고 <strong>[8초 씬별 기획 & 레드라인 프롬프트 자동 생성]</strong> 버튼을 클릭하세요.</p>
               </div>
             </div>
           </div>
         </section>
+      </div>
+
+      <!-- 뷰 2: 채널 빌더 & 레오의 알고리즘 진단 -->
+      <div id="viewChannel" class="view-panel" style="display: none;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+          <!-- 좌측: 8대 채널 세팅 AI 기획 & 핸들 실시간 중복검사 -->
+          <div class="card">
+            <div class="panel-header" style="margin-bottom: 16px;">
+              <i class="fa-solid fa-tower-broadcast" style="color: var(--accent-color);"></i>
+              <h3>8대 채널 세팅 자동 기획 & 핸들 중복검사</h3>
+            </div>
+
+            <!-- 핸들 중복검사 -->
+            <div class="control-group" style="margin-bottom: 16px;">
+              <label for="channelHandleInput"><i class="fa-brands fa-youtube"></i> 실시간 유튜브 핸들(@) 중복 확인</label>
+              <div style="display: flex; gap: 8px;">
+                <input type="text" id="channelHandleInput" class="form-control" placeholder="예: @TechInsight_Leo" style="flex: 1;">
+                <button id="btnCheckHandle" class="btn btn-outline"><i class="fa-solid fa-magnifying-glass"></i> 중복검사</button>
+              </div>
+              <span id="handleCheckResult" class="helper-text" style="margin-top: 4px; display: block;"></span>
+            </div>
+
+            <!-- 채널 기획 폼 -->
+            <form id="channelGenForm">
+              <div class="control-group">
+                <label for="channelTopicInput"><i class="fa-solid fa-lightbulb"></i> 채널 주제 한 줄 (Topic) <span class="text-danger">*</span></label>
+                <input type="text" id="channelTopicInput" class="form-control" placeholder="예: 50대 은퇴자를 위한 AI 활용법 / 로컬 AI 1인 미디어" required>
+              </div>
+
+              <div class="control-row">
+                <div class="control-group half">
+                  <label for="channelLangSelect"><i class="fa-solid fa-language"></i> 채널 언어 (lang, BCP-47) <span class="text-danger">*</span></label>
+                  <select id="channelLangSelect" class="form-select" required>
+                    <option value="" disabled selected>언어를 선택하세요 (필수)...</option>
+                    <option value="ko">한국어 (ko)</option>
+                    <option value="en">English (en)</option>
+                    <option value="ja">日本語 (ja)</option>
+                    <option value="es">Español (es)</option>
+                    <option value="zh">中文 (zh)</option>
+                    <option value="fr">Français (fr)</option>
+                    <option value="de">Deutsch (de)</option>
+                  </select>
+                </div>
+                <div class="control-group half">
+                  <label for="channelPersonaSelect"><i class="fa-solid fa-masks-theater"></i> 페르소나 유형 (persona_type)</label>
+                  <select id="channelPersonaSelect" class="form-select">
+                    <option value="character" selected>캐릭터 (친근한 마스코트/3D)</option>
+                    <option value="person">실사 (전문 크리에이터/인물)</option>
+                    <option value="symbol">심볼 (미니멀 로고/기하학 그래픽)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="control-row">
+                <div class="control-group half">
+                  <label for="channelToneSelect"><i class="fa-solid fa-comment-dots"></i> 말투와 분위기 (Tone)</label>
+                  <select id="channelToneSelect" class="form-select">
+                    <option value="차분하고 신뢰감 있는 전문가 톤" selected>차분하고 신뢰감 있는 전문가</option>
+                    <option value="유쾌하고 에너지 넘치는 친근한 톤">유쾌하고 에너지 넘치는 톤</option>
+                    <option value="몰입감 넘치고 지적인 다큐멘터리 톤">몰입감 넘치는 지적 다큐</option>
+                    <option value="쉽고 따뜻한 초보자 맞춤 멘토 톤">쉽고 따뜻한 초보자 멘토</option>
+                  </select>
+                </div>
+                <div class="control-group half">
+                  <label for="channelAudienceInput"><i class="fa-solid fa-users"></i> 타겟 독자 (Audience)</label>
+                  <input type="text" id="channelAudienceInput" class="form-control" placeholder="비우면 주제에서 자동 추론">
+                </div>
+              </div>
+
+              <div class="control-row">
+                <div class="control-group half">
+                  <label for="channelCategorySelect"><i class="fa-solid fa-list"></i> 카테고리 (Category)</label>
+                  <select id="channelCategorySelect" class="form-select">
+                    <option value="27" selected>교육 (27)</option>
+                    <option value="28">과학기술 (28)</option>
+                    <option value="22">인물/블로그 (22)</option>
+                    <option value="26">하우투/스타일 (26)</option>
+                    <option value="24">엔터테인먼트 (24)</option>
+                    <option value="20">게임 (20)</option>
+                  </select>
+                </div>
+                <div class="control-group half">
+                  <label for="channelAudioLangSelect"><i class="fa-solid fa-microphone-lines"></i> 음성 언어 (audio_lang)</label>
+                  <select id="channelAudioLangSelect" class="form-select">
+                    <option value="" selected>채널 언어와 동일</option>
+                    <option value="ko">한국어 (ko)</option>
+                    <option value="en">English (en)</option>
+                    <option value="ja">日本語 (ja)</option>
+                    <option value="es">Español (es)</option>
+                  </select>
+                </div>
+              </div>
+
+              <button type="submit" id="btnRunChannelGen" class="btn btn-primary btn-block" style="margin-top: 14px;">
+                <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 8대 채널 세팅 AI 자동 생성</span>
+                <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 8대 채널 기획서 작성 중...</span>
+              </button>
+            </form>
+
+            <!-- 채널 기획 8대 항목 전체 결과 표시 -->
+            <div id="channelGenResultBox" style="display: none; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                <h4 style="margin: 0; color: #38bdf8;"><i class="fa-solid fa-clipboard-check"></i> 채널 개설 8대 세팅 완성 결과</h4>
+                <button type="button" id="btnApplyChannelBranding" class="btn btn-sm btn-accent">
+                  <i class="fa-solid fa-cloud-arrow-up"></i> 내 채널에 설명·키워드 원클릭 자동 등록
+                </button>
+              </div>
+
+              <!-- ① 채널 이름 -->
+              <div style="margin-bottom: 14px; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">① 채널 이름 (50자 이내)</span>
+                  <button id="btnCopyChannelName" class="btn btn-xs btn-outline"><i class="fa-solid fa-copy"></i> 복사</button>
+                </div>
+                <h3 id="resChannelNameText" style="margin: 6px 0 0 0; color: #38bdf8; font-size: 1.15rem;"></h3>
+              </div>
+
+              <!-- ② 핸들 후보 목록 -->
+              <div style="margin-bottom: 14px;">
+                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">② 핸들 후보 (실시간 중복 확인 결과)</span>
+                <div id="resChannelHandlesList" style="display: flex; flex-direction: column; gap: 6px; margin-top: 6px;"></div>
+              </div>
+
+              <!-- ③ 채널 설명란 -->
+              <div style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">③ 채널 설명 (1,000자 이내)</span>
+                  <button id="btnCopyChannelDesc" class="btn btn-xs btn-outline"><i class="fa-solid fa-copy"></i> 복사</button>
+                </div>
+                <textarea id="resChannelDesc" class="form-control" rows="3" readonly style="font-size: 0.85rem;"></textarea>
+              </div>
+
+              <!-- ④ 채널 검색 키워드 -->
+              <div style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">④ 채널 검색 키워드 (8~15개, 500자 이내)</span>
+                  <button id="btnCopyChannelKeywords" class="btn btn-xs btn-outline"><i class="fa-solid fa-copy"></i> 키워드 일괄 복사</button>
+                </div>
+                <div id="resChannelKeywordsList" class="badge-group" style="margin-top: 4px;"></div>
+              </div>
+
+              <!-- ⑤ & ⑥ AI 프로필 & 배너 프롬프트 (일반 vs no text 분리) -->
+              <div style="margin-bottom: 14px;">
+                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">⑤ & ⑥ AI 이미지 생성 프롬프트</span>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px;">
+                  <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.8rem; font-weight: 600; margin-bottom: 4px; color: #a78bfa;">프로필 아바타 (800×800)</div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      <button id="btnCopyAvatarPrompt" class="btn btn-xs btn-outline"><i class="fa-solid fa-image"></i> 기본 프롬프트 복사</button>
+                      <button id="btnCopyAvatarPromptNoText" class="btn btn-xs btn-outline"><i class="fa-solid fa-ban"></i> no text 순수 심볼 복사</button>
+                    </div>
+                  </div>
+                  <div style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <div style="font-size: 0.8rem; font-weight: 600; margin-bottom: 4px; color: #34d399;">채널 배너 (2048×1152, 16:9)</div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                      <button id="btnCopyBannerPrompt" class="btn btn-xs btn-outline"><i class="fa-solid fa-panorama"></i> 기본 배너 프롬프트 복사</button>
+                      <button id="btnCopyBannerPromptNoText" class="btn btn-xs btn-outline"><i class="fa-solid fa-ban"></i> no text 배경 배너 복사</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- ⑦ 업로드 기본값 카드 -->
+              <div style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">⑦ 업로드 기본값 (Upload Defaults)</span>
+                  <button id="btnCopyUploadDefaults" class="btn btn-xs btn-outline"><i class="fa-solid fa-copy"></i> 설명란 템플릿 복사</button>
+                </div>
+                <div id="resUploadDefaultsCard" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; font-size: 0.8rem; line-height: 1.5;"></div>
+              </div>
+
+              <!-- ⑧ 개설 8단계 체크리스트 -->
+              <div style="margin-bottom: 16px;">
+                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">⑧ 유튜브 스튜디오 실전 개설 8단계 체크리스트</span>
+                <div id="resSetupStepsList" style="margin-top: 6px; display: flex; flex-direction: column; gap: 6px;"></div>
+              </div>
+
+              <!-- 할당량 및 주의사항 안내 배너 -->
+              <div style="padding: 10px 12px; background: rgba(245, 158, 11, 0.08); border-left: 3px solid #f59e0b; border-radius: 6px; font-size: 0.78rem; color: var(--text-secondary); line-height: 1.5;">
+                <i class="fa-solid fa-circle-info" style="color: #f59e0b; margin-right: 4px;"></i>
+                <strong>유튜브 Data API 할당량 & 검증 정책 안내:</strong><br>
+                • 채널 브랜딩 업데이트(channels.update)는 50포인트 소모 (일일 10,000 기준 충분)<br>
+                • 영상 업로드(videos.insert)는 1건당 1,600포인트 소모 (일일 최대 약 6편 가능)<br>
+                • Google OAuth 앱 검증 전에는 업로드된 영상이 '비공개(Private)'로 안전하게 보호됩니다.
+              </div>
+            </div>
+          </div>
+
+          <!-- 우측: 에이전트 레오의 내 채널 알고리즘 진단 -->
+          <div class="card">
+            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-user-doctor" style="color: #6366f1;"></i>
+                <h3 style="margin: 0;">에이전트 레오의 내 채널 알고리즘 진단</h3>
+              </div>
+              <button id="btnRefreshChannelDiag" class="btn btn-sm btn-outline"><i class="fa-solid fa-rotate"></i> 새로고침</button>
+            </div>
+
+            <!-- 채널 지표 카드 그리드 -->
+            <div class="channel-metrics-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px;">
+              <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; text-align: center;">
+                <span style="font-size: 0.8rem; color: var(--text-secondary);">구독자 수</span>
+                <h3 id="diagSubsCount" style="margin: 4px 0 0 0; color: #38bdf8;">0명</h3>
+              </div>
+              <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; text-align: center;">
+                <span style="font-size: 0.8rem; color: var(--text-secondary);">총 조회수</span>
+                <h3 id="diagViewsCount" style="margin: 4px 0 0 0; color: #a78bfa;">0회</h3>
+              </div>
+              <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; text-align: center;">
+                <span style="font-size: 0.8rem; color: var(--text-secondary);">업로드 영상 수</span>
+                <h3 id="diagVideosCount" style="margin: 4px 0 0 0; color: #34d399;">0개</h3>
+              </div>
+              <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; text-align: center;">
+                <span style="font-size: 0.8rem; color: var(--text-secondary);">영상당 평균 뷰</span>
+                <h3 id="diagAvgViews" style="margin: 4px 0 0 0; color: #fbbf24;">0회</h3>
+              </div>
+            </div>
+
+            <!-- 성장 단계 및 건강도 점수 -->
+            <div style="background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.3); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <span style="font-size: 0.85rem; font-weight: 600;">현재 성장 단계</span>
+                <span id="diagHealthScore" class="badge badge-accent">건강도: 85점</span>
+              </div>
+              <div id="diagStageText" style="font-size: 0.95rem; font-weight: 700; color: #818cf8;"></div>
+            </div>
+
+            <!-- CTR/AVD 병목 분석 및 3대 액션 플랜 -->
+            <div style="margin-bottom: 14px;">
+              <h4 style="margin: 0 0 6px 0; font-size: 0.9rem; color: #f43f5e;"><i class="fa-solid fa-triangle-exclamation"></i> 핵심 알고리즘 병목</h4>
+              <p id="diagBottleneck" style="margin: 0; font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary);"></p>
+            </div>
+
+            <div style="margin-bottom: 14px;">
+              <h4 style="margin: 0 0 6px 0; font-size: 0.9rem; color: #38bdf8;"><i class="fa-solid fa-list-check"></i> 레오의 3대 추천 액션 플랜</h4>
+              <ul id="diagActionPlans" style="margin: 0; padding-left: 20px; font-size: 0.85rem; line-height: 1.6; color: var(--text-primary);"></ul>
+            </div>
+
+            <div class="leo-tip-banner" style="padding: 10px 14px; background: rgba(52, 211, 153, 0.12); border-left: 4px solid #34d399; border-radius: 6px; font-size: 0.85rem;">
+              <i class="fa-solid fa-medal" style="color: #34d399; margin-right: 6px;"></i>
+              <strong>다음 마일스톤 조언:</strong>
+              <span id="diagMilestoneTip"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 뷰 4: 영상 제작 (Producer) & 유튜브 업로드 -->
+      <div id="viewProducer" class="view-panel" style="display: none;">
+        <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px;">
+          <!-- 좌측: ffmpeg 영상 자동 제작 (Producer) -->
+          <div class="card">
+            <div class="panel-header" style="margin-bottom: 16px;">
+              <i class="fa-solid fa-clapperboard" style="color: var(--primary-color);"></i>
+              <h3>ffmpeg 기반 8초 영상 자동 합성 렌더러</h3>
+            </div>
+
+            <form id="producerBuildForm">
+              <div class="control-group">
+                <label for="producerPlanSelect"><i class="fa-solid fa-file-lines"></i> 렌더링 대상 기획서 선택 <span class="text-danger">*</span></label>
+                <select id="producerPlanSelect" class="form-select" required>
+                  <option value="">기획서를 선택하세요...</option>
+                </select>
+              </div>
+
+              <!-- 🎵 배경음악(BGM) 선택 (루나 스튜디오 음원 자동 연계) -->
+              <div class="control-group" style="margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label for="producerBgmSelect" style="margin: 0;"><i class="fa-solid fa-music" style="color: #ec4899;"></i> 배경음악 (BGM) 선택</label>
+                  <span style="font-size: 0.72rem; color: var(--text-secondary);"><i class="fa-solid fa-bolt"></i> 루나 발매 음원 자동 연동</span>
+                </div>
+                <select id="producerBgmSelect" class="form-select">
+                  <option value="">배경음악 없음 (대사 나레이션만)</option>
+                  <option value="__default_lofi__">기본 잔잔한 앰비언트 로파이 (432Hz Soundscape)</option>
+                </select>
+              </div>
+
+              <!-- 🎬 최종 영상 제작 방식 양자택일 탭 -->
+              <div style="margin-bottom: 14px;">
+                <label style="font-size: 0.8rem; font-weight: 600; color: #fff; margin-bottom: 6px; display: block;">
+                  <i class="fa-solid fa-sliders"></i> 최종 영상 제작 방식 선택
+                </label>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                  <button type="button" class="btn btn-sm btn-primary" id="btnModeCapCut" style="display: flex; align-items: center; justify-content: center; gap: 6px; font-weight: 700; background: linear-gradient(135deg, #0284c7, #06b6d4); border: none;">
+                    <i class="fa-solid fa-scissors"></i> 캡컷(CapCut) 조립 <span class="badge" style="background: rgba(255,255,255,0.25); font-size: 9px;">추천</span>
+                  </button>
+                  <button type="button" class="btn btn-sm btn-outline" id="btnModeFfmpeg" style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+                    <i class="fa-solid fa-bolt"></i> 즉시 MP4 렌더링
+                  </button>
+                </div>
+              </div>
+
+              <!-- [패널 A] 캡컷(CapCut) 타임라인 조립 모드 -->
+              <div id="panelRenderCapCut" style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <span style="font-size: 0.85rem; font-weight: 700; color: #38bdf8;"><i class="fa-solid fa-wand-magic-sparkles"></i> 캡컷 고품질 타임라인 내보내기</span>
+                  <span id="capcutAppBadge" class="badge badge-subtle" style="font-size: 10px;">CapCut 확인 중...</span>
+                </div>
+
+                <div class="control-row" style="margin-bottom: 10px;">
+                  <div class="control-group half">
+                    <label for="capcutTransitionSelect" style="font-size: 0.75rem;"><i class="fa-solid fa-film"></i> 컷 전환 이펙트</label>
+                    <select id="capcutTransitionSelect" class="form-select" style="font-size: 0.8rem; padding: 6px 10px;">
+                      <option value="dissolve" selected>디졸브 (자연스러운 전환)</option>
+                      <option value="zoom_in">줌 인 (빨려 들어가는 효과)</option>
+                      <option value="white_flash">화이트 플래시 (반전/임팩트)</option>
+                      <option value="fade_black">페이드 블랙 (암전)</option>
+                      <option value="glitch">글리치 (테크/왜곡)</option>
+                      <option value="none">전환 없음 (단순 컷)</option>
+                    </select>
+                  </div>
+                  <div class="control-group half">
+                    <label for="capcutRatioSelect" style="font-size: 0.75rem;"><i class="fa-solid fa-mobile-screen"></i> 화면 비율</label>
+                    <select id="capcutRatioSelect" class="form-select" style="font-size: 0.8rem; padding: 6px 10px;">
+                      <option value="16:9" selected>16:9 와이드 (일반 유튜브)</option>
+                      <option value="9:16">9:16 세로형 (유튜브 쇼츠)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" id="btnExportToCapCut" class="btn btn-block" style="background: linear-gradient(135deg, #0284c7, #06b6d4); border: none; color: #fff; font-weight: 700;">
+                    <span class="btn-text"><i class="fa-solid fa-file-export"></i> 🎬 캡컷(CapCut) 프로젝트로 자동 조립</span>
+                    <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 조립 중...</span>
+                  </button>
+                  <button type="button" id="btnLaunchCapCutApp" class="btn btn-outline" style="white-space: nowrap; border-color: #38bdf8; color: #38bdf8;" title="Mac 캡컷 앱 즉시 실행">
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i> 캡컷 열기
+                  </button>
+                </div>
+
+                <div id="capcutExportResultBox" style="display: none; margin-top: 10px; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 6px; padding: 10px; font-size: 0.8rem;">
+                </div>
+              </div>
+
+              <!-- [패널 B] 서버 내부 즉시 MP4 렌더링 모드 (ffmpeg) -->
+              <div id="panelRenderFfmpeg" style="display: none; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <span style="font-size: 0.85rem; font-weight: 700; color: #a78bfa;"><i class="fa-solid fa-bolt"></i> 0클릭 즉시 MP4 렌더링 (서버 ffmpeg)</span>
+                  <span class="badge badge-accent" style="font-size: 10px;">무인 자동화</span>
+                </div>
+
+                <div class="control-row">
+                  <div class="control-group half">
+                    <label for="producerResSelect"><i class="fa-solid fa-desktop"></i> 해상도</label>
+                    <select id="producerResSelect" class="form-select">
+                      <option value="1080p" selected>1080p (Full HD)</option>
+                      <option value="720p">720p (HD)</option>
+                      <option value="360p">360p (초고속 프리뷰)</option>
+                    </select>
+                  </div>
+                  <div class="control-group half">
+                    <label for="producerTransitionSelect"><i class="fa-solid fa-film"></i> 씬 전환 효과</label>
+                    <select id="producerTransitionSelect" class="form-select">
+                      <option value="fade" selected>0.5초 크로스페이드 (권장)</option>
+                      <option value="none">컷 전환 (Cut)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="options-row" style="margin: 10px 0;">
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="producerBurnSubtitles" checked>
+                    <span class="custom-checkbox"></span>
+                    자막 번인 합성
+                  </label>
+                  <label class="checkbox-label">
+                    <input type="checkbox" id="producerFitNarration" checked>
+                    <span class="custom-checkbox"></span>
+                    발화시간 씬 자동 싱크
+                  </label>
+                  <label class="checkbox-label" title="미디어가 없는 씬을 Gemini 이미지로 먼저 채운 뒤 합성합니다 (Gemini API 키 필요)">
+                    <input type="checkbox" id="producerAutoImages" checked>
+                    <span class="custom-checkbox"></span>
+                    씬 이미지 자동 생성
+                  </label>
+                </div>
+
+                <button type="submit" id="btnStartRender" class="btn btn-primary btn-block">
+                  <span class="btn-text"><i class="fa-solid fa-play"></i> 🎬 즉시 MP4 렌더링 시작</span>
+                  <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 렌더링 중...</span>
+                </button>
+              </div>
+            </form>
+
+            <!-- 렌더링 진행률 표시 바 -->
+            <div id="producerProgressBox" style="display: none; margin-top: 16px;">
+              <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px;">
+                <span id="producerStepText">합성 준비 중...</span>
+                <span id="producerPercentText" style="font-weight: 700; color: #38bdf8;">0%</span>
+              </div>
+              <div style="width: 100%; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; overflow: hidden;">
+                <div id="producerProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #6366f1, #38bdf8); transition: width 0.3s;"></div>
+              </div>
+            </div>
+
+            <!-- 완성된 영상 미리보기 플레이어 -->
+            <div id="producerPlayerBox" style="display: none; margin-top: 20px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+              <h4 style="margin: 0 0 10px 0; color: #34d399;"><i class="fa-solid fa-circle-check"></i> 렌더링 완료 영상</h4>
+              <video id="producerVideoPlayer" controls style="width: 100%; border-radius: 8px; background: #000; margin-bottom: 12px;"></video>
+              <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <a id="btnDownloadRenderedVideo" class="btn btn-success" download><i class="fa-solid fa-download"></i> 완성 MP4 다운로드</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- 우측: YouTube Data API v3 원클릭 업로더 -->
+          <div class="card">
+            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <i class="fa-brands fa-youtube" style="color: #f43f5e;"></i>
+                <h3 style="margin: 0;">유튜브 원클릭 업로더</h3>
+              </div>
+              <span id="ytAuthBadge" class="badge badge-subtle">연결 상태 확인 중...</span>
+            </div>
+
+            <form id="youtubeUploadForm">
+              <div class="control-group">
+                <label for="ytUploadVideoPath"><i class="fa-solid fa-file-video"></i> 업로드할 비디오 파일</label>
+                <input type="text" id="ytUploadVideoPath" class="form-control" placeholder="렌더링 완료 시 자동 입력됩니다." required>
+              </div>
+              <div class="control-group">
+                <label for="ytUploadTitle"><i class="fa-solid fa-heading"></i> 영상 제목</label>
+                <input type="text" id="ytUploadTitle" class="form-control" placeholder="유튜브 영상 제목 입력" required>
+              </div>
+              <div class="control-group">
+                <label for="ytUploadDesc"><i class="fa-solid fa-align-left"></i> 영상 설명란</label>
+                <textarea id="ytUploadDesc" class="form-control" rows="3" placeholder="줄거리 및 타임스탬프, 해시태그"></textarea>
+              </div>
+              <div class="control-row">
+                <div class="control-group half">
+                  <label for="ytUploadPrivacy"><i class="fa-solid fa-eye"></i> 공개 상태</label>
+                  <select id="ytUploadPrivacy" class="form-select">
+                    <option value="unlisted" selected>일부 공개 (Unlisted - 권장)</option>
+                    <option value="private">비공개 (Private)</option>
+                    <option value="public">즉시 공개 (Public)</option>
+                  </select>
+                </div>
+                <div class="control-group half">
+                  <label for="ytUploadCategory"><i class="fa-solid fa-tag"></i> 카테고리 ID</label>
+                  <input type="text" id="ytUploadCategory" class="form-control" value="28">
+                </div>
+              </div>
+
+              <!-- 레오의 고정 댓글 자동 등록 -->
+              <div class="control-group">
+                <label for="ytUploadPinnedComment"><i class="fa-solid fa-thumbtack" style="color:#f43f5e;"></i> 레오의 추천 고정 댓글 자동 등록</label>
+                <textarea id="ytUploadPinnedComment" class="form-control" rows="2" placeholder="영상 업로드 즉시 최상단에 고정할 댓글 내용"></textarea>
+              </div>
+
+              <button type="submit" id="btnSubmitYoutubeUpload" class="btn btn-accent btn-block" style="margin-top: 14px;">
+                <span class="btn-text"><i class="fa-solid fa-cloud-arrow-up"></i> 🚀 유튜브 원클릭 업로드 실행</span>
+                <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 업로드 중...</span>
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- 뷰 5: 멀티 마케팅 (OSMU) 엔진 -->
+      <div id="viewMarketing" class="view-panel" style="display: none;">
+        <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px;">
+          <!-- 좌측: 마케팅 생성 컨트롤 -->
+          <div class="card">
+            <div class="panel-header" style="margin-bottom: 16px;">
+              <i class="fa-solid fa-bullhorn" style="color: #ec4899;"></i>
+              <h3>원소스 멀티유즈(OSMU) 마케팅 콘텐츠 생성</h3>
+            </div>
+
+            <form id="marketingGenForm">
+              <div class="control-group">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <label for="marketingTopicInput" style="margin:0;"><i class="fa-solid fa-pen-nib"></i> 마케팅 주제 / 핵심 메시지 <span class="text-danger">*</span></label>
+                  <button type="button" id="btnImportFromScript" class="btn btn-xs btn-outline"><i class="fa-solid fa-file-import"></i> 씬 대본에서 가져오기</button>
+                </div>
+                <textarea id="marketingTopicInput" class="form-control" rows="2" placeholder="예: 8초 룰로 100만 뷰 폭발시킨 유튜브 알고리즘의 비밀" required></textarea>
+              </div>
+
+              <div class="control-group">
+                <label for="marketingContextInput"><i class="fa-solid fa-align-left"></i> 상세 배경 맥락 / 대본 전문</label>
+                <textarea id="marketingContextInput" class="form-control" rows="4" placeholder="영상 분석 결과, 핵심 팩트, 나레이션 대본 등을 입력하면 콘텐츠 밀도가 극대화됩니다."></textarea>
+              </div>
+
+              <div class="control-group">
+                <label for="marketingModeSelect"><i class="fa-solid fa-cubes"></i> 생성 채널 모드</label>
+                <select id="marketingModeSelect" class="form-select">
+                  <option value="all" selected>🔥 올인원 일괄 생성 (스레드 + 블로그 + 뉴스레터)</option>
+                  <option value="threads">🧵 Threads & X(트위터) 바이럴 스레드 (5~7개 타래)</option>
+                  <option value="blog">✍️ SEO 검색 최적화 장문 블로그 포스트 (H1/H2/H3)</option>
+                  <option value="newsletter">📬 반응형 A/B 테스트 이메일 뉴스레터</option>
+                </select>
+              </div>
+
+              <div class="control-row">
+                <div class="control-group half">
+                  <label for="marketingToneSelect"><i class="fa-solid fa-sliders"></i> 톤앤매너</label>
+                  <select id="marketingToneSelect" class="form-select">
+                    <option value="viral_hook" selected>바이럴 후킹 (자극/궁금증)</option>
+                    <option value="storytelling">스토리텔링 (공감/경험)</option>
+                    <option value="actionable_tips">실전 꿀팁 (단계별 노하우)</option>
+                    <option value="contrarian">반전 통찰 (논쟁 유발)</option>
+                  </select>
+                </div>
+                <div class="control-group half">
+                  <label for="marketingAudienceInput"><i class="fa-solid fa-users"></i> 타겟 독자</label>
+                  <input type="text" id="marketingAudienceInput" class="form-control" value="크리에이터, 직장인, 마케터">
+                </div>
+              </div>
+
+              <button type="submit" id="btnRunMarketingGen" class="btn btn-primary btn-block" style="margin-top: 14px;">
+                <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 마케팅 자산 원클릭 자동 생성</span>
+                <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 마케팅 카피 작성 중...</span>
+              </button>
+            </form>
+
+            <!-- 마케팅 보관함 히스토리 목록 -->
+            <div style="margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+              <h4 style="margin: 0 0 10px 0; font-size: 0.9rem; color: var(--text-secondary);"><i class="fa-solid fa-clock-rotate-left"></i> 최근 생성 보관함</h4>
+              <div id="marketingHistoryList" style="max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+                <div style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 12px;">보관함이 비어 있습니다.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 우측: 마케팅 결과 탭 뷰어 -->
+          <div class="card">
+            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h3 id="marketingResultTitle" style="margin: 0;"><i class="fa-solid fa-envelope-open-text"></i> 멀티채널 생성 결과</h3>
+              <button id="btnCopyCurrentMarketing" class="btn btn-sm btn-outline"><i class="fa-solid fa-copy"></i> 복사</button>
+            </div>
+
+            <!-- 마케팅 채널 서브탭 -->
+            <div class="modal-tabs" style="margin-bottom: 14px;">
+              <button class="tab-btn active" data-market-tab="tabThreads"><i class="fa-brands fa-threads"></i> Threads & X (<span id="threadsCountBadge">0</span>)</button>
+              <button class="tab-btn" data-market-tab="tabBlog"><i class="fa-solid fa-newspaper"></i> SEO 블로그 포스트</button>
+              <button class="tab-btn" data-market-tab="tabNewsletter"><i class="fa-solid fa-paper-plane"></i> 이메일 뉴스레터</button>
+            </div>
+
+            <div id="marketingResultBody">
+              <!-- 스레드 탭 -->
+              <div id="tabThreads" class="tab-pane active">
+                <!-- Threads 실시간 자동 발행 컨트롤 바 -->
+                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-brands fa-threads" style="font-size: 1.1rem; color: #fff;"></i>
+                    <span style="font-size: 0.85rem; font-weight: 600; color: #fff;">Meta Threads 공식 연동</span>
+                    <span id="marketingThreadsStatusBadge" class="badge badge-subtle" style="font-size: 10px;">확인 중...</span>
+                  </div>
+                  <div style="display: flex; gap: 8px; align-items: center;">
+                    <button type="button" id="btnPublishThreadsLive" class="btn btn-sm" style="background: #000; border: 1px solid #fff; color: #fff; font-weight: 600;">
+                      <span class="btn-text"><i class="fa-brands fa-threads"></i> 🚀 Threads에 5개 타래 즉시 자동 발행</span>
+                      <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 타래 연쇄 발행 중...</span>
+                    </button>
+                  </div>
+                </div>
+                <div id="threadsPublishResultBox" style="display: none; margin-bottom: 12px;"></div>
+
+                <div id="threadsPostList" style="display: flex; flex-direction: column; gap: 10px;">
+                  <div class="empty-state-box" style="padding: 30px;">
+                    <i class="fa-brands fa-threads fa-2x"></i>
+                    <p>좌측에서 주제를 입력하고 <strong>[마케팅 자산 원클릭 자동 생성]</strong>을 실행하세요.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 블로그 탭 -->
+              <div id="tabBlog" class="tab-pane" style="display: none;">
+                <div id="blogPostContent" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; font-size: 0.9rem; line-height: 1.7; max-height: 520px; overflow-y: auto;">
+                  <div class="empty-state-box" style="padding: 30px;">
+                    <i class="fa-solid fa-newspaper fa-2x"></i>
+                    <p>생성된 블로그 포스트가 여기에 표시됩니다.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 뉴스레터 탭 -->
+              <div id="tabNewsletter" class="tab-pane" style="display: none;">
+                <div id="newsletterContent" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; font-size: 0.9rem; line-height: 1.7; max-height: 520px; overflow-y: auto;">
+                  <div class="empty-state-box" style="padding: 30px;">
+                    <i class="fa-solid fa-paper-plane fa-2x"></i>
+                    <p>생성된 뉴스레터 제목 A/B 및 본문이 여기에 표시됩니다.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 뷰 6: 에이전트 루나(Agent Luna) AI 음악 자동화 스튜디오 -->
+      <div id="viewMusic" class="view-panel" style="display: none;">
+        <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px;">
+          <!-- 좌측: 루나 AI 음악 작곡 & 기획 폼 -->
+          <div class="card">
+            <div class="panel-header" style="margin-bottom: 16px;">
+              <i class="fa-solid fa-compact-disc" style="color: #c084fc;"></i>
+              <h3>에이전트 루나(Luna) AI 음악 영상 자동화</h3>
+            </div>
+
+            <div style="background: rgba(192, 132, 252, 0.08); border-left: 3px solid #c084fc; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
+              <i class="fa-solid fa-sparkles" style="color: #c084fc; margin-right: 4px;"></i>
+              <strong>루나 무인 음악 채널 파이프라인:</strong><br>
+              Lyria 3 Pro 기반 고음질 완곡(3분) 작곡 ➔ 나노바나나 16:9 감성 비주얼 ➔ ffmpeg 켄번즈 영상 렌더링 ➔ 루나 유튜브 채널(@음악에이전트-c3j) 원클릭 업로드까지 전 과정을 원스톱으로 처리합니다.
+            </div>
+
+            <form id="lunaMusicForm">
+              <div class="control-row">
+                <div class="control-group half">
+                  <label for="lunaGenreSelect"><i class="fa-solid fa-headphones"></i> 음악 장르 (Genre)</label>
+                  <select id="lunaGenreSelect" class="form-select">
+                    <option value="lofi" selected>Lo-Fi / Chillhop (로파이 칠홉)</option>
+                    <option value="ambient">Cinematic Ambient (시네마틱 앰비언트)</option>
+                    <option value="synthwave">Synthwave / Cyberpunk (신스웨이브)</option>
+                    <option value="sleep">Deep Sleep / Meditation (수면/명상 432Hz)</option>
+                    <option value="jazz">Late Night Jazz Cafe (자정의 재즈카페)</option>
+                    <option value="piano">Emotional Piano Solo (서정적 피아노 솔로)</option>
+                  </select>
+                </div>
+                <div class="control-group half">
+                  <label for="lunaMoodSelect"><i class="fa-solid fa-moon"></i> 감성 무드 (Mood)</label>
+                  <select id="lunaMoodSelect" class="form-select">
+                    <option value="dawn" selected>새벽 감성 (Dawn Solitude)</option>
+                    <option value="rainy">비 오는 창가 (Rainy Window)</option>
+                    <option value="focus">깊은 몰입과 집중 (Deep Focus)</option>
+                    <option value="dreamy">몽환적인 우주 (Cosmic Dream)</option>
+                    <option value="warm">따뜻한 위로 (Warm Solace)</option>
+                    <option value="nostalgia">아련한 그리움 (Nostalgia)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="control-group">
+                <label for="lunaTopicInput"><i class="fa-solid fa-feather-pointed"></i> 곡 테마 & 스토리 (선택)</label>
+                <input type="text" id="lunaTopicInput" class="form-control" placeholder="예: 비 오는 밤 도심 카페의 창가에서 듣는 따뜻한 피아노와 로파이 비트">
+              </div>
+
+              <div class="control-row">
+                <div class="control-group half">
+                  <label for="lunaDurationSelect"><i class="fa-solid fa-clock"></i> 음원 길이</label>
+                  <select id="lunaDurationSelect" class="form-select">
+                    <option value="180" selected>3분 완곡 (180초, 유튜브 권장)</option>
+                    <option value="120">2분 (120초)</option>
+                    <option value="60">1분 (60초, 숏클립)</option>
+                  </select>
+                </div>
+                <div class="control-group half">
+                  <label for="lunaVideoQualitySelect"><i class="fa-solid fa-display"></i> 영상 화질</label>
+                  <select id="lunaVideoQualitySelect" class="form-select">
+                    <option value="1080p" selected>1080p Full HD (최고화질)</option>
+                    <option value="720p">720p HD (빠른 렌더)</option>
+                  </select>
+                </div>
+              </div>
+
+              <button type="submit" id="btnRunLunaGen" class="btn btn-primary btn-block" style="margin-top: 14px; background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); border: none;">
+                <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 1. 완곡 작곡 & 앨범아트 생성 (Lyria 3)</span>
+                <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 루나 완곡 작곡 & 앨범아트 생성 중...</span>
+              </button>
+            </form>
+
+            <!-- 루나 최근 생성 히스토리 -->
+            <div style="margin-top: 24px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);"><i class="fa-solid fa-box-archive"></i> 루나 발매 음원 보관함</span>
+                <button type="button" id="btnRefreshLunaHistory" class="btn btn-xs btn-outline"><i class="fa-solid fa-rotate-right"></i> 새로고침</button>
+              </div>
+              <div id="lunaHistoryList" style="display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto;">
+                <div style="text-align: center; color: var(--text-muted); font-size: 0.8rem; padding: 12px;">저장된 루나 음원이 없습니다.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 우측: 생성된 음원 플레이어, 비디오 렌더러, 유튜브 업로드 -->
+          <div class="card">
+            <div class="panel-header" style="margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <i class="fa-solid fa-play" style="color: #38bdf8;"></i>
+                <h3 style="margin: 0;">스튜디오 프리뷰 & 유튜브 업로더</h3>
+              </div>
+              <span id="lunaStatusBadge" class="badge badge-subtle">대기 중</span>
+            </div>
+
+            <!-- 미생성 상태 안내 -->
+            <div id="lunaEmptyState" class="empty-state-box" style="padding: 48px 20px;">
+              <i class="fa-solid fa-music fa-3x" style="color: #a855f7; margin-bottom: 14px;"></i>
+              <h4 style="margin: 0 0 8px 0; font-size: 1.05rem;">루나의 새로운 음악을 기획하세요</h4>
+              <p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.5; margin: 0;">
+                좌측에서 장르와 무드를 고르고 <strong>[완곡 작곡 & 앨범아트 생성]</strong>을 클릭하면<br>
+                Lyria 3 Pro 고음질 완곡 음원과 감성 앨범 커버가 여기에 로드됩니다.
+              </p>
+            </div>
+
+            <!-- 활성화된 결과 뷰 -->
+            <div id="lunaActiveView" style="display: none;">
+              <!-- 1. 곡 기본 정보 및 앨범 커버 / 플레이어 -->
+              <div style="display: flex; gap: 16px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <img id="lunaCoverImg" src="" alt="Album Cover" style="width: 140px; height: 140px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-color); flex-shrink: 0;">
+                <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between;">
+                  <div>
+                    <span id="lunaGenreBadge" class="badge badge-accent" style="font-size: 11px;">Lo-Fi</span>
+                    <h3 id="lunaTrackTitle" style="margin: 6px 0 4px 0; font-size: 1.15rem; color: #c084fc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></h3>
+                    <p id="lunaTrackStory" style="margin: 0; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;"></p>
+                  </div>
+                  <!-- 오디오 플레이어 -->
+                  <div style="margin-top: 10px;">
+                    <audio id="lunaAudioPlayer" controls style="width: 100%; height: 36px;"></audio>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2. 영상 렌더링 액션 바 -->
+              <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;">
+                <div>
+                  <strong style="font-size: 0.85rem;"><i class="fa-solid fa-video"></i> 2. 감성 켄번즈 음악 영상 렌더링</strong>
+                  <div style="font-size: 0.75rem; color: var(--text-secondary);">시네마틱 줌인 + 타이포그래피 자막 합성</div>
+                </div>
+                <button type="button" id="btnRenderLunaVideo" class="btn btn-sm btn-accent" style="background: #6366f1; border: none;">
+                  <span class="btn-text"><i class="fa-solid fa-clapperboard"></i> 비디오 렌더링 시작</span>
+                  <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 렌더링 중...</span>
+                </button>
+              </div>
+
+              <!-- 렌더링된 비디오 플레이어 영역 -->
+              <div id="lunaVideoPlayerBox" style="display: none; margin-bottom: 16px;">
+                <video id="lunaVideoPlayer" controls style="width: 100%; border-radius: 6px; max-height: 240px; background: #000; border: 1px solid var(--border-color);"></video>
+                <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+                  <a id="lunaVideoDownloadBtn" href="#" download class="btn btn-xs btn-outline"><i class="fa-solid fa-download"></i> 완성 비디오 MP4 다운로드</a>
+                </div>
+              </div>
+
+              <!-- 3. 루나 공식 유튜브 업로드 섹션 -->
+              <div style="background: rgba(244, 63, 94, 0.05); border: 1px solid rgba(244, 63, 94, 0.2); border-radius: 8px; padding: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: #f43f5e;">
+                    <i class="fa-brands fa-youtube"></i> 3. 루나 채널 원클릭 업로드 (@음악에이전트-c3j)
+                  </span>
+                  <select id="lunaPrivacySelect" class="form-select" style="width: auto; padding: 4px 8px; font-size: 0.8rem;">
+                    <option value="public" selected>공개 (Public)</option>
+                    <option value="unlisted">일부공개 (Unlisted)</option>
+                    <option value="private">비공개 (Private)</option>
+                  </select>
+                </div>
+
+                <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 10px;">
+                  <div><strong>제목:</strong> <span id="lunaYtTitlePreview" style="color: #fff;"></span></div>
+                  <div style="margin-top: 4px;"><strong>태그:</strong> <span id="lunaYtTagsPreview" style="color: #a78bfa;"></span></div>
+                </div>
+
+                <button type="button" id="btnUploadLunaYt" class="btn btn-primary btn-block" style="background: #e11d48; border: none;">
+                  <span class="btn-text"><i class="fa-solid fa-cloud-arrow-up"></i> 🚀 루나 유튜브 채널에 즉시 업로드</span>
+                  <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 유튜브 업로드 중...</span>
+                </button>
+                <div id="lunaUploadResultBadge" style="display: none; margin-top: 8px; text-align: center;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </main>
 
@@ -396,7 +1289,7 @@
       </div>
     </div>
 
-    <!-- 상세 모달창 (메타데이터 탭을 기본으로 배치) -->
+    <!-- 상세 모달창 -->
     <div id="detailModal" class="modal-overlay" style="display: none;">
       <div class="modal-content">
         <div class="modal-header">
@@ -404,41 +1297,144 @@
           <button class="modal-close" id="btnCloseModal"><i class="fa-solid fa-xmark"></i></button>
         </div>
         
-        <!-- 모달 탭 메뉴 (메타데이터를 첫 번째 탭으로) -->
         <div class="modal-tabs">
-          <button class="tab-btn active" data-tab="tabOverview"><i class="fa-solid fa-chart-pie"></i> 기본 메타데이터 요약</button>
+          <button class="tab-btn active" data-tab="tabOverview"><i class="fa-solid fa-chart-pie"></i> 기본 메타데이터</button>
           <button class="tab-btn" data-tab="tabComments"><i class="fa-solid fa-comments"></i> 댓글 여론 분석 (<span id="modalCommentCount">0</span>)</button>
-          <button class="tab-btn" data-tab="tabTranscript"><i class="fa-solid fa-closed-captioning"></i> 자막 전문 (Transcript)</button>
+          <button class="tab-btn" data-tab="tabTranscript"><i class="fa-solid fa-closed-captioning"></i> 타임스탬프 자막 전문</button>
           <button class="tab-btn" data-tab="tabAiReport"><i class="fa-solid fa-robot" style="color:#a78bfa;"></i> AI 심층 분석 리포트</button>
           <button class="tab-btn" data-tab="tabChapters"><i class="fa-solid fa-list-ol"></i> 챕터 (<span id="modalChapterCount">0</span>)</button>
           <button class="tab-btn" data-tab="tabRawJson"><i class="fa-solid fa-code"></i> 원본 JSON</button>
         </div>
 
         <div class="modal-body" id="modalBody">
-          <!-- 탭 1: 기본 메타데이터 요약 -->
           <div id="tabOverview" class="tab-pane active"></div>
-          <!-- 탭 2: 댓글 여론 분석 -->
           <div id="tabComments" class="tab-pane"></div>
-          <!-- 탭 3: 자막 전문 -->
           <div id="tabTranscript" class="tab-pane"></div>
-          <!-- 탭 4: AI 분석 리포트 -->
           <div id="tabAiReport" class="tab-pane"></div>
-          <!-- 탭 5: 챕터 목록 -->
           <div id="tabChapters" class="tab-pane"></div>
-          <!-- 탭 6: 원본 JSON -->
           <div id="tabRawJson" class="tab-pane"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⚙️ API 키 및 환경설정 통합 관리 모달창 -->
+    <div id="envSettingsModal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="max-width: 620px;">
+        <div class="modal-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <i class="fa-solid fa-key" style="color: #c084fc;"></i>
+            <h3 style="margin: 0;">API 키 & 시스템 환경설정 통합 관리</h3>
+          </div>
+          <button class="modal-close" id="btnCloseEnvSettingsModal"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+
+        <div class="modal-body" style="padding: 20px;">
+          <!-- 1. Google Gemini API 키 설정 -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div>
+                <strong style="font-size: 0.95rem; color: #fff;"><i class="fa-brands fa-google" style="color: #4285F4;"></i> Google Gemini API 키</strong>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">나노바나나(이미지) • Gemini Omni(영상) • 루나(Lyria 3 음악) 공통 키</div>
+              </div>
+              <span id="envGeminiKeyBadge" class="badge badge-subtle">확인 중...</span>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 10px;">
+              <input type="password" id="envGeminiKeyInput" class="form-control" placeholder="AIzaSy... (Gemini API 키 입력)" style="flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem;">
+              <button type="button" id="btnToggleGeminiKeyVisibility" class="btn btn-outline" title="키 표시/숨김"><i class="fa-solid fa-eye"></i></button>
+              <button type="button" id="btnSaveGeminiKey" class="btn btn-primary" style="background: #a855f7; border: none;"><i class="fa-solid fa-floppy-disk"></i> .env 저장</button>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" style="font-size: 0.75rem; color: #38bdf8; text-decoration: none;">
+                <i class="fa-solid fa-arrow-up-right-from-square"></i> Google AI Studio에서 무료 키 발급받기
+              </a>
+              <button type="button" id="btnImportLunaKeys" class="btn btn-xs btn-outline" style="border-color: #a855f7; color: #c084fc;">
+                <i class="fa-solid fa-bolt"></i> 기존 루나 키 자동 가져오기
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. YouTube Data API v3 OAuth 상태 -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div>
+                <strong style="font-size: 0.95rem; color: #fff;"><i class="fa-brands fa-youtube" style="color: #f43f5e;"></i> YouTube Data API v3 OAuth</strong>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">채널 브랜딩 자동 등록 • 완성 영상 & 루나 음악 자동 업로드</div>
+              </div>
+              <span id="envYtAuthBadge" class="badge badge-subtle">확인 중...</span>
+            </div>
+
+            <div style="font-size: 0.82rem; line-height: 1.6; color: var(--text-secondary); margin-top: 8px; background: rgba(0,0,0,0.2); padding: 10px; border-radius: 6px;">
+              <div>• <code>client_secret.json</code> 상태: <strong id="envClientSecretStatus" style="color: #fff;">확인 중</strong></div>
+              <div style="margin-top: 6px;">• 연결된 채널 <span style="opacity:.7;">(업로드·브랜딩에 사용할 채널을 선택하세요)</span></div>
+              <div id="envYtChannelList" style="margin-top: 8px; display: flex; flex-direction: column; gap: 6px;">
+                <div style="opacity:.6;">확인 중...</div>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px;">
+              <button type="button" id="btnConnectYoutube" class="btn btn-xs btn-accent">
+                <i class="fa-brands fa-google"></i> 채널 추가 연결
+              </button>
+              <button type="button" id="btnDisconnectYoutube" class="btn btn-xs btn-outline" style="color: #f43f5e;">
+                <i class="fa-solid fa-link-slash"></i> 전체 연결 해제
+              </button>
+            </div>
+          </div>
+
+          <!-- 3. Meta Threads API 설정 -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div>
+                <strong style="font-size: 0.95rem; color: #fff;"><i class="fa-brands fa-threads" style="color: #fff;"></i> Meta Threads API 연동</strong>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">스레드 5개 바이럴 타래 순차 연쇄 자동 발행</div>
+              </div>
+              <span id="envThreadsBadge" class="badge badge-subtle">확인 중...</span>
+            </div>
+
+            <div style="margin-top: 10px;">
+              <label style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">
+                <strong>Threads User Access Token 입력</strong> (Meta for Developers 발급)
+              </label>
+              <div style="display: flex; gap: 8px;">
+                <input type="password" id="envThreadsTokenInput" class="form-control" placeholder="THQW... (User Access Token)" style="flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                <input type="text" id="envThreadsUserIdInput" class="form-control" placeholder="User ID (선택)" style="width: 140px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                <button type="button" id="btnSaveThreadsToken" class="btn btn-sm" style="background: #000; border: 1px solid #fff; color: #fff;"><i class="fa-solid fa-floppy-disk"></i> 저장</button>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 0.75rem;">
+              <span id="envThreadsAccountInfo" style="color: #38bdf8;">연결된 계정 없음</span>
+              <button type="button" id="btnDisconnectThreads" class="btn btn-xs btn-outline" style="color: #f43f5e;">연결 해제</button>
+            </div>
+          </div>
+
+          <!-- 4. 시스템 엔진 및 렌더러 상태 -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px;">
+            <strong style="font-size: 0.9rem; color: #fff;"><i class="fa-solid fa-server"></i> 로컬 AI & 미디어 렌더러 엔진</strong>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 0.8rem;">
+              <div style="background: rgba(0,0,0,0.2); padding: 8px 10px; border-radius: 6px;">
+                <span style="color: var(--text-secondary);">로컬 AI (기획/대본):</span>
+                <strong id="envLlmPreference" style="display: block; color: #34d399; margin-top: 2px;">Auto (자동 감지)</strong>
+              </div>
+              <div style="background: rgba(0,0,0,0.2); padding: 8px 10px; border-radius: 6px;">
+                <span style="color: var(--text-secondary);">ffmpeg (영상/음향 렌더러):</span>
+                <strong id="envFfmpegStatus" style="display: block; color: #34d399; margin-top: 2px;">설치됨</strong>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- 하단 상태 바 -->
     <footer class="app-footer">
-      <span><i class="fa-solid fa-bolt"></i> yt-dlp 메타데이터 & Google Flow / AutoFlow-Pro AI 프롬프트 스튜디오</span>
-      <span>저장 위치: <code>./data/</code> (JSON, CSV, _리포트.txt)</span>
+      <span><i class="fa-solid fa-bolt"></i> TubeInsight AI • 8초 씬 비디오 기획 & 무료 Edge-TTS / Qwen-TTS</span>
+      <span>저장 위치: <code>./data/</code> (JSON, CSV, ZIP, _리포트.txt)</span>
     </footer>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=20260906-fallbackfix"></script>
 </body>
 </html>
-
