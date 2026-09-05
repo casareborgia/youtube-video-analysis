@@ -405,12 +405,17 @@ def media_view(plan_id):
 
 # ── 나노바나나(Gemini) 이미지 생성 ────────────────────────────────────────
 
-def _redline_prompt_text(block):
-    """레드라인 JSON 프롬프트를 이미지 모델용 지시문으로 감쌉니다."""
+def _redline_prompt_text(block, concept_key=None):
+    """JSON 프롬프트를 이미지 모델용 지시문으로 감쌉니다.
+
+    그래픽 오버레이 허용 여부는 컨셉마다 다르므로 팩의 지시문을 사용한다.
+    (이전에는 레드라인 지시문이 하드코딩돼 인물 컨셉에도 빨간 화살표가 그려졌다.)
+    """
+    directive = concept_packs.model_directive(concept_key)
     return (
         "Generate a single image following this JSON specification exactly. "
         "Render every string in text_layer verbatim in Korean with correct spelling, add no other text or letters. "
-        "Red engineering annotation overlay must point at the described targets.\n\n"
+        + (directive + "\n\n" if directive else "\n\n")
         + json.dumps(block, ensure_ascii=False, indent=2)
     )
 
@@ -519,7 +524,9 @@ def generate_images(plan, slots=None, progress=None):
             errors.append({"slot": slot, "error": "프롬프트 없음"})
             continue
         try:
-            prompt = f"{STYLE}. {_redline_prompt_text(block)}"
+            # 렌더 톤은 기획서의 컨셉을 따른다 (모듈 상수 STYLE 은 기본 팩 값일 뿐)
+            plan_style = concept_packs.render_style(plan.get("concept_key")) or STYLE
+            prompt = f"{plan_style}. {_redline_prompt_text(block, plan.get('concept_key'))}"
             data, mime = _generate_single_image(prompt, aspect, key)
             ext = ".jpg" if "jpeg" in mime else ".png"
             fname = f"{'thumbnail' if slot == 'thumbnail' else 'scene_%02d' % int(slot)}{ext}"

@@ -58,6 +58,7 @@ CONCEPT_PACKS: Dict[str, Dict[str, Any]] = {
                 "bounding_boxes": ["red dashed rectangular technical bounding box around central focal point"],
                 "focus_reticles": ["concentric red technical reticle with millimeter calibration crosshairs"],
             },
+            "model_directive": "Red engineering annotation overlay must point at the described targets.",
             "render_style_thumb": "photorealistic photography with sharp redline engineering annotations overlay",
             "render_style_scene": "photorealistic photography with redline graphics for AI video first frame",
             "composition": {
@@ -93,6 +94,7 @@ CONCEPT_PACKS: Dict[str, Dict[str, Any]] = {
             "scene_rule": "인물의 시선·손·자세와 공간의 정서로 장면을 설명. 그래픽 요소 금지",
             "schema_annotation": None,
             "annotation_defaults": None,
+            "model_directive": "Photographic frame only. Do not draw arrows, lines, boxes, reticles, diagrams or any graphic overlay.",
             "render_style_thumb": "natural light cinematic portrait photography, filmic grain",
             "render_style_scene": "natural light cinematic still for AI video first frame",
             "composition": {
@@ -124,6 +126,11 @@ def image_spec(key: str = None) -> Dict[str, Any]:
 
 def has_layer(key: str, layer: str) -> bool:
     return layer in (get_pack(key).get("image", {}).get("layers") or [])
+
+
+def model_directive(key: str = None) -> str:
+    """이미지 모델에 주는 추가 지시문. 컨셉마다 그래픽 오버레이 허용 여부가 다르다."""
+    return get_pack(key).get("image", {}).get("model_directive", "")
 
 
 def render_style(key: str = None) -> str:
