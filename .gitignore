@@ -88,6 +88,10 @@ output/*
 data/trends/*
 data/marketing/*
 data/renders/*
+
+# 생성된 씬 기획서 (사용자 데이터)
+data/scene_plans/*
+!data/scene_plans/.gitkeep
 data/channels/*
 data/youtube/*
 data/luna_music/*
