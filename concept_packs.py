@@ -59,6 +59,8 @@ CONCEPT_PACKS: Dict[str, Dict[str, Any]] = {
                 "focus_reticles": ["concentric red technical reticle with millimeter calibration crosshairs"],
             },
             "model_directive": "Red engineering annotation overlay must point at the described targets.",
+            # 화면 텍스트 허용 범위. 씬 첫 프레임은 영상으로 변환되므로 컨셉마다 다르다.
+            "text_policy": {"thumbnail": True, "scene": True},
             "render_style_thumb": "photorealistic photography with sharp redline engineering annotations overlay",
             "render_style_scene": "photorealistic photography with redline graphics for AI video first frame",
             "composition": {
@@ -95,6 +97,8 @@ CONCEPT_PACKS: Dict[str, Dict[str, Any]] = {
             "schema_annotation": None,
             "annotation_defaults": None,
             "model_directive": "Photographic frame only. Do not draw arrows, lines, boxes, reticles, diagrams or any graphic overlay.",
+            # 인물 프레임에 글자가 얹히면 몰입을 깬다. 씬에는 텍스트를 넣지 않는다.
+            "text_policy": {"thumbnail": True, "scene": False},
             "render_style_thumb": "natural light cinematic portrait photography, filmic grain",
             "render_style_scene": "natural light cinematic still for AI video first frame",
             "composition": {
@@ -126,6 +130,12 @@ def image_spec(key: str = None) -> Dict[str, Any]:
 
 def has_layer(key: str, layer: str) -> bool:
     return layer in (get_pack(key).get("image", {}).get("layers") or [])
+
+
+def allows_text(key: str = None, slot: str = "scene") -> bool:
+    """해당 슬롯(thumbnail/scene)에 화면 텍스트를 허용하는지."""
+    policy = get_pack(key).get("image", {}).get("text_policy") or {}
+    return bool(policy.get(slot, True))
 
 
 def model_directive(key: str = None) -> str:

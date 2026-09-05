@@ -430,11 +430,15 @@ class PromptGenerator:
                     "environment": s_scene.get("environment") or sc.get("lighting") or "Moody cinematic lighting with realistic ambient occlusion",
                     "camera_angle": s_scene.get("camera_angle") or sc.get("camera") or "Cinematic slow motion framing"
                 },
-                "text_layer": {
-                    "label": clean_lbl  # 최대 1개
-                },
                 "constraints": fixed_constraints
             }
+            if concept_packs.allows_text(concept_key, "scene"):
+                frame_prompt["text_layer"] = {"label": clean_lbl}  # 최대 1개
+            else:
+                # 텍스트를 쓰지 않는 컨셉은 레이어를 빼고 모델에 명시적으로 금지시킨다
+                frame_prompt["constraints"] = list(fixed_constraints) + [
+                    "Render no text, letters, numbers or captions anywhere in the image"
+                ]
             if use_annotation:
                 scene_ad = {
                     "dimension_lines": ["subtle red horizontal measurement line"],

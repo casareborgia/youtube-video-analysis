@@ -412,9 +412,15 @@ def _redline_prompt_text(block, concept_key=None):
     (이전에는 레드라인 지시문이 하드코딩돼 인물 컨셉에도 빨간 화살표가 그려졌다.)
     """
     directive = concept_packs.model_directive(concept_key)
+    # text_layer 가 없는 블록에 "text_layer 를 렌더링하라"고 지시하면 모델이 문장을
+    # 지어내 그린다. 레이어 유무에 따라 지시문 자체를 바꾼다.
+    if block.get("text_layer"):
+        text_rule = "Render every string in text_layer verbatim in Korean with correct spelling, add no other text or letters. "
+    else:
+        text_rule = "Render no text, letters, numbers, captions or watermarks anywhere in the image. "
     return (
         "Generate a single image following this JSON specification exactly. "
-        "Render every string in text_layer verbatim in Korean with correct spelling, add no other text or letters. "
+        + text_rule
         + (directive + "\n\n" if directive else "\n\n")
         + json.dumps(block, ensure_ascii=False, indent=2)
     )
