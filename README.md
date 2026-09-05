@@ -56,6 +56,7 @@
 
 - **실시간 인기 급상승 Top 20** 수집 (YouTube Data API v3, 카테고리·지역 지정)
 - 수집된 트렌드를 로컬 LLM이 분석해 **훅 패턴 · 핵심 키워드 · 추천 소재** 리포트 생성
+- 추천 주제마다 **차별화 앵글과 어울리는 컨셉 팩을 함께 제안**합니다. `[이 주제로 기획]` 을 누르면 주제·앵글·컨셉이 그대로 3단계로 넘어갑니다 (LLM 호출은 늘지 않습니다)
 - **개별 영상 심층 수집** — `yt-dlp`로 메타데이터·챕터·자막·댓글을 수집하고 보관함에 저장
 - 수집 데이터 CSV 내보내기, 저장된 리포트 다운로드
 - **5단계 전략 리포트는 현재 CLI 전용입니다** — 웹 UI에는 생성 버튼이 없고 `analyze.py`로만 만들 수 있습니다.
@@ -74,17 +75,29 @@
 
 ### 3. 씬 기획 & 나레이션
 
+- **컨셉 팩 선택** — 서사 골격·이미지 레이어 구성·렌더 톤이 한 세트로 바뀝니다
+
+  | 팩 | 서사 골격 | 이미지 |
+  |---|---|---|
+  | 레드라인 공학 다큐 *(기본)* | 도입 훅 → 갈등/스케일 → 공학적 난제 → 해결 → 여운 | 청록 디오라마 + 빨간 치수선·화살표 |
+  | 인물·서사 중심 | 일상 → 균열 → 선택 → 대가 → 여운 | 자연광 인물 사진, 주석·글자 없음 |
+  | 정보·지식 정리형 | 질문 → 통념 → 반전 근거 → 검증 → 결론 | 배경 정리된 에디토리얼, 라벨만 |
+  | 리뷰·제품 검증형 | 기대 → 첫인상 → 한계 → 비교 → 판정 | 스튜디오 제품컷 + 최소 콜아웃 |
+
 - 주제 하나로 **8초 단위 씬 스토리보드** 생성 — 씬별 타임스탬프, 서사 단계, 나레이션, 카메라 무빙, 조명, 현장 효과음(SFX), 영어 영상 프롬프트
 - **길이 규격 검증** — 45자를 넘으면 경고를 표시합니다. 대본은 그대로 유지되며 다듬을지는 사용자가 판단합니다.
 - **제목 후보 3종 · SEO 설명 · 인게이지먼트 질문 · 고정 댓글 초안** 동시 생성
 - **첫 프레임 레드라인 JSON** — 썸네일/첫 프레임 이미지 생성용 규격화 프롬프트
 - **음성 합성** — Qwen3-TTS(프리셋 성우 / Voice Clone / Voice Design) 및 edge-tts
 - AutoFlow-Pro `.txt`, CSV, JSON 내보내기
+- **[4단계 비디오 제작]** 버튼이 씬 기획서를 저장하고 영상 합성 탭으로 넘깁니다
 
 ### 4. 영상 제작 & 업로드
 
+- **Gemini 씬 이미지 자동 생성** — 미디어가 없는 씬과 썸네일을 컨셉 팩의 스타일로 생성한 뒤 합성합니다. 진행률은 이미지 40% / 합성 60% 로 배분됩니다.
 - `ffmpeg` 기반 합성 — 씬 이미지 + 나레이션 + 자막 번인, 씬 간 크로스페이드, 나레이션 구간 배경음 덕킹
-- 진행률 추적(BackgroundTasks)
+- **나레이션 자동 싱크** — 대사가 8초를 넘으면 씬 길이를 늘려 맞춥니다
+- 진행률 추적(BackgroundTasks), 완성 후 정지 구간 품질 검사
 - **CapCut 프로젝트 내보내기** — 클립·오디오·자막을 타임라인에 자동 배치
 - **YouTube 원클릭 업로드** — 재개 가능(resumable) 업로드, 썸네일 설정, 예약 공개, 댓글 등록
 - **다중 채널 연결** — 브랜드 채널을 여러 개 연결해 두고 업로드할 채널을 골라 씁니다.
@@ -119,13 +132,17 @@ graph TD
     R -.->|성공 공식 추출| F
 
     D --> E[채널 빌더: 8대 세팅 + 진단]
-    D --> F[8초 씬 스토리보드 · 나레이션]
-    F --> G[제목·SEO·고정댓글·레드라인 프롬프트]
+    D -->|주제·앵글·컨셉| F[8초 씬 스토리보드 · 나레이션]
+    CP[컨셉 팩: 서사·레이어·톤] --> F
+    F --> G[제목·SEO·고정댓글·이미지 프롬프트]
 
     F --> H[Qwen3-TTS / edge-tts 음성]
-    G --> I[Gemini 이미지·영상 생성]
-    H --> J[ffmpeg 합성: 자막·크로스페이드·덕킹]
-    I --> J
+    F --> S[(씬 기획서 저장소)]
+    G --> S
+    H --> S
+    S --> I[Gemini 씬 이미지·썸네일 생성]
+    CP --> I
+    I --> J[ffmpeg 합성: 자막·크로스페이드·덕킹]
     J --> K[CapCut 프로젝트 내보내기]
 
     J --> L[YouTube 업로드 · 다중 채널]
@@ -144,7 +161,7 @@ graph TD
 | 항목 | 필수 | 용도 |
 |---|:---:|---|
 | Python 3.11+ | ✅ | 런타임 |
-| ffmpeg | ✅ | 영상 합성 · 오디오 변환 |
+| ffmpeg (drawtext 지원) | ✅ | 영상 합성 · 자막 번인 |
 | **LM Studio** 또는 **Ollama** | ✅ | 대본·기획·마케팅 생성 |
 | YouTube OAuth 클라이언트 | 선택 | 트렌드 수집, 채널 연동, 업로드 |
 | Gemini API 키 | 선택 | 이미지·영상·음악 생성 |
@@ -153,6 +170,8 @@ graph TD
 ```bash
 brew install ffmpeg
 ```
+
+> **자막 번인에는 `drawtext` 필터가 필요합니다.** libfreetype 없이 빌드된 ffmpeg 는 이 필터가 없어 자막과 플레이스홀더 렌더가 실패합니다. 앱이 PATH 의 ffmpeg 를 검사해 `drawtext` 가 없으면 `requirements.txt` 에 포함된 **imageio-ffmpeg 번들 바이너리로 자동 대체**하므로 별도 조치 없이 동작합니다. 시스템 ffmpeg 를 고치려면 `brew reinstall ffmpeg` 를 실행하세요.
 
 로컬 LLM은 둘 중 하나만 있으면 됩니다.
 
@@ -222,16 +241,17 @@ GEMINI_API_KEY=...
 
 ## API 개요
 
-FastAPI 라우트 **56개**. 전체 스펙은 서버 실행 후 http://localhost:8765/docs 에서 확인할 수 있습니다.
+FastAPI 라우트 **61개**. 전체 스펙은 서버 실행 후 http://localhost:8765/docs 에서 확인할 수 있습니다.
 
 | 그룹 | 주요 엔드포인트 |
 |---|---|
 | 분석 | `POST /api/analyze` · `GET /api/metadata/{video_id}` · `GET /api/ai-report/{video_id}/download` · `GET /api/history` · `GET /api/export/csv` |
 | 트렌드 | `GET /api/trends/top20` · `POST /api/trends/analyze` |
 | 채널 | `GET /api/channel/check-handle` · `POST /api/channel/generate` · `GET /api/channel/my-status` · `POST /api/channel/apply-branding` |
-| 씬 기획 | `GET /api/prompt/options` · `POST /api/prompt/generate-custom` · `POST /api/prompt/export` |
+| 씬 기획 | `GET /api/prompt/concepts` · `GET /api/prompt/options` · `POST /api/prompt/generate-custom` · `POST /api/prompt/export` |
+| 씬 기획서 | `POST /api/scenes/save` · `GET /api/scenes/list` · `GET\|DELETE /api/scenes/{plan_id}` |
 | 음성 | `GET /api/tts/voices` · `POST /api/tts/generate-scene` · `POST /api/tts/upload-voice` |
-| 제작 | `POST /api/producer/build` · `GET /api/producer/status/{job_id}` · `POST /api/capcut/export` |
+| 제작 | `POST /api/producer/build` · `POST /api/producer/images` · `GET /api/producer/status/{job_id}` · `POST /api/capcut/export` |
 | 유튜브 | `GET /api/youtube/channels` · `POST /api/youtube/channels/select` · `GET /api/youtube/auth/login` · `POST /api/youtube/upload` |
 | 마케팅 | `POST /api/marketing/generate` · `GET /api/marketing/history` |
 | 스레드 | `GET /api/threads/status` · `POST /api/threads/publish` |
@@ -248,7 +268,9 @@ youtube-video-analysis/
 ├── llm_client.py           # LM Studio / Ollama 통합 클라이언트, JSON 복원 파서
 ├── trend_scout.py          # 급상승 Top 20 수집 및 트렌드 분석
 ├── channel_builder.py      # 채널 8대 세팅 기획 · 핸들 검사 · 채널 진단
-├── prompt_generator.py     # 8초 씬 스토리보드 · 나레이션 · 레드라인 프롬프트
+├── concept_packs.py        # 컨셉 팩 — 서사 골격 · 이미지 레이어 · 렌더 톤 · 텍스트 정책
+├── prompt_generator.py     # 8초 씬 스토리보드 · 나레이션 · 이미지 프롬프트
+├── scene_store.py          # 씬 기획서 저장소 (3단계 → 4단계 전달)
 ├── tts_service.py          # Qwen3-TTS / Voice Clone 브릿지
 ├── qwen_tts_runner.py      # Qwen-TTS 격리 실행 러너
 ├── producer.py             # 이미지·영상 생성 및 ffmpeg 합성
@@ -261,6 +283,8 @@ youtube-video-analysis/
 ├── run.sh                  # 원클릭 실행
 ├── data/                   # 수집 데이터 · 생성 산출물 (Git 제외)
 │   ├── youtube/            # OAuth 자격증명 및 채널별 토큰
+│   ├── scene_plans/        # 씬 기획서 (영상 합성 입력)
+│   ├── renders/            # 생성 이미지 · 합성 결과 mp4
 │   ├── audio/  voices/     # 합성 음성 · Voice Clone 참조
 │   └── marketing/  luna_music/  renders/
 └── static/                 # 대시보드 (index.html · app.js · style.css)
@@ -288,13 +312,16 @@ youtube-video-analysis/
 
 정직하게 적어 둡니다.
 
-- **SEO 블로그 생성이 약 20% 확률로 템플릿 폴백됩니다.** 로컬 모델이 장문 마크다운을 JSON에 담을 때 간헐적으로 복구 불가능한 형태로 깨집니다. 이 경우 응답에 `is_fallback: true`가 표시됩니다.
+- **LLM 응답 파싱에 실패하면 템플릿으로 대체됩니다.** 씬 대본·마케팅 모두 이 경우 응답에 `is_fallback: true` 가 실리고 화면에 경고가 뜹니다. **경고 없이 나온 결과만 실제 생성물입니다.** 씬 개수를 줄이거나 다시 생성하면 대개 해결됩니다.
+- **SEO 블로그 생성이 간헐적으로 폴백됩니다.** 로컬 모델이 장문 마크다운을 JSON 에 담을 때 복구 불가능한 형태로 깨지는 경우가 있습니다(관측 약 20%).
 - **댓글 고정(pin)은 API로 불가능합니다.** YouTube Data API v3가 지원하지 않아 댓글 등록까지만 수행하며, 고정은 유튜브 스튜디오에서 직접 해야 합니다.
 - **`blog_length` 파라미터는 동작하지 않습니다.** 생성 엔진에 길이 조절 인자가 없습니다. 대신 `blog_platform`으로 문체를 조절하세요.
-- **`google-genai` 미설치 시** 이미지·영상·음악 생성이 비활성화됩니다. 나머지 기능은 정상 동작합니다.
-- **영상 합성(producer) 파이프라인은 실사용 검증이 부족합니다.** 라우트와 의존성은 갖춰져 있으나 전 구간 실행 확인은 아직입니다.
 - **`POST /api/analyze`의 `auto_generate_ai_report` 필드는 동작하지 않습니다.** 요청 스키마에 남아 있지만 참조하는 코드가 없습니다. 리포트는 `analyze.py`로 생성하세요.
-- **긴 생성 작업은 1~3분이 걸립니다.** 8초 씬 4개 기준 약 2분, OSMU 통합 생성은 3분 이상 소요될 수 있습니다.
+- **`google-genai` 없이도 앱은 뜨지만** 이미지·영상·음악 생성이 비활성화됩니다. `requirements.txt` 에 포함돼 있습니다.
+- **컨셉 팩의 내부 이름은 아직 레드라인 기준입니다.** `generate_redline_image_prompts()`, `first_frame_redline` 등 함수·필드명이 그대로라, 인물 컨셉 결과도 `redline` 이 붙은 키에 담깁니다. 동작에는 영향이 없습니다.
+- **`info_breakdown` · `product_review` 팩은 프롬프트 구조까지만 확인했습니다.** 실제 이미지 생성으로 눈으로 검증한 것은 레드라인과 인물·서사 두 팩입니다.
+- **실제 유튜브 업로드는 미검증입니다.** 인자 불일치는 해소했고 다중 채널 연결은 동작하지만, 진짜 영상을 올려본 적은 없습니다.
+- **생성 시간** — 씬 6개 약 2분, 10~12개 약 3분, 이미지 생성 포함 합성은 씬당 20~40초가 추가됩니다. OSMU 통합 마케팅은 3분 이상.
 - **macOS 기준으로 개발되었습니다.** 폴더 열기(`open`), 시스템 TTS 폴백(`say`) 등 일부 기능은 macOS 전용입니다.
 
 ---
