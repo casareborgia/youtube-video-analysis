@@ -107,6 +107,84 @@ CONCEPT_PACKS: Dict[str, Dict[str, Any]] = {
             },
         },
     },
+
+    "info_breakdown": {
+        "name": "정보·지식 정리형",
+        "description": "통념을 뒤집는 근거를 단계로 쌓아 결론에 도달하는 설명형. 라벨로 핵심을 짚되 도면 그래픽은 쓰지 않는다",
+        "plot": "질문(왜 그런가) -> 통념(다들 이렇게 안다) -> 반전 근거(사실은) -> 검증(어떻게 아는가) -> 결론(그래서 무엇을)",
+        "image_aesthetic": {
+            "aesthetic": "clean editorial explanatory photography, uncluttered composition, single clear subject",
+            "palette": "neutral bright tones with one saturated accent on the key object",
+            "framing": "centered or symmetric framing that isolates the thing being explained",
+            "overall_mood": "calm, precise, textbook-clear",
+        },
+        "image_constraints": [
+            "Do not render any text other than explicitly specified in text_layer",
+            "All text must strictly use English/Korean exactly as quoted in double quotes",
+            "Text strings must be under 10 characters",
+            "Keep the background uncluttered so the labelled subject reads instantly",
+            "No diagram lines, no measurement marks, no HUD graphics over {style}",
+        ],
+        "render_style": "밝고 정갈한 에디토리얼 설명 사진, 균일한 조명, 배경 정리, 핵심 사물에 시선 집중",
+        "image": {
+            "persona": "지식 설명 콘텐츠의 시각 디렉터이자 에디토리얼 사진 감독",
+            "layers": ["scene", "text_layer"],
+            "thumbnail_rule": "설명 대상 하나를 크고 명확하게. 핵심 단어 라벨 1개만 허용",
+            "scene_rule": "설명 대상을 배경 정리된 화면에 단독으로 배치. 도면 그래픽 금지",
+            "schema_annotation": None,
+            "annotation_defaults": None,
+            "model_directive": "Clean editorial photograph. No diagram lines, arrows or overlays; only the labelled subject.",
+            "text_policy": {"thumbnail": True, "scene": True},
+            "render_style_thumb": "clean editorial product photography, even lighting",
+            "render_style_scene": "clean editorial still for AI video first frame",
+            "composition": {
+                "thumb_h": "horizontal 16:9 composition, single centered subject, generous clean background",
+                "scene_h": "horizontal 16:9 framing, isolated subject with uncluttered surroundings",
+            },
+        },
+    },
+
+    "product_review": {
+        "name": "리뷰·제품 검증형",
+        "description": "기대와 실제의 간극을 짚고 비교로 판정하는 리뷰. 스펙을 가리키는 최소한의 콜아웃만 사용한다",
+        "plot": "기대(왜 궁금한가) -> 첫인상(실제로 보니) -> 한계(걸리는 점) -> 비교(대안과 견주면) -> 판정(누구에게 맞는가)",
+        "image_aesthetic": {
+            "aesthetic": "crisp studio product photography with tactile material detail",
+            "palette": "neutral studio grey with controlled specular highlights",
+            "framing": "three-quarter product angle showing form and key controls",
+            "overall_mood": "objective, hands-on, close inspection",
+        },
+        "image_constraints": [
+            "Do not render any text other than explicitly specified in text_layer",
+            "All text must strictly use English/Korean exactly as quoted in double quotes",
+            "Text strings must be under 10 characters",
+            "Only use numerical facts actually mentioned in the script, never fabricate specs",
+            "Callouts stay minimal and never cover the product over {style}",
+        ],
+        "render_style": "정밀 스튜디오 제품 사진, 재질감 강조, 통제된 반사광, 중립 배경",
+        "image": {
+            "persona": "테크 리뷰 채널의 제품 사진 디렉터",
+            "layers": ["scene", "annotation_layer", "text_layer"],
+            "thumbnail_rule": "제품을 크게, 판정을 암시하는 짧은 문구 1개",
+            "scene_rule": "짚는 부위를 향한 최소한의 콜아웃만. 치수선·레티클은 쓰지 않는다",
+            "schema_annotation": {
+                "callout_arrows": ["thin neutral arrow pointing at the control being discussed"],
+                "bounding_boxes": ["subtle corner brackets around the detail in question"],
+            },
+            "annotation_defaults": {
+                "callout_arrows": ["thin light-grey arrow indicating the key control"],
+                "bounding_boxes": ["subtle thin corner brackets framing the detail"],
+            },
+            "model_directive": "Keep callouts minimal and unobtrusive; never cover or obscure the product itself.",
+            "text_policy": {"thumbnail": True, "scene": True},
+            "render_style_thumb": "studio product photography with soft gradient backdrop",
+            "render_style_scene": "studio product still for AI video first frame",
+            "composition": {
+                "thumb_h": "horizontal 16:9 composition, product hero angle filling the frame",
+                "scene_h": "horizontal 16:9 framing, product three-quarter view with clean margins",
+            },
+        },
+    },
 }
 
 

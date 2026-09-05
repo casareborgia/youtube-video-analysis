@@ -830,11 +830,16 @@ document.addEventListener('DOMContentLoaded', () => {
     promptTopicInput.addEventListener('input', () => { pendingTopicAngle = ''; });
   }
 
-  window.openPromptStudioForTopic = function(topicText, angleText) {
+  window.openPromptStudioForTopic = function(topicText, angleText, conceptKey) {
     switchMainView('promptStudio');
     if (promptTopicInput) {
       promptTopicInput.value = topicText;
       pendingTopicAngle = (angleText || '').trim();
+      // 트렌드 분석이 제안한 컨셉이 있으면 드롭다운을 맞춘다 (사용자가 바꿀 수 있음)
+      if (conceptKey && promptConcept && [...promptConcept.options].some(o => o.value === conceptKey)) {
+        promptConcept.value = conceptKey;
+        updateConceptDesc();
+      }
       triggerPromptGeneration();
     }
   };
@@ -1572,18 +1577,20 @@ document.addEventListener('DOMContentLoaded', () => {
               <div style="flex:1; min-width:0;">
                 <strong>• ${escapeHtml(t.topic || '')}</strong><br>
                 <span class="text-muted" style="font-size:0.8rem;">${escapeHtml(t.angle || '')}</span>
+                ${t.concept_name ? `<div style="font-size:0.72rem; opacity:.75; margin-top:2px;"><i class="fa-solid fa-layer-group"></i> 추천 컨셉: ${escapeHtml(t.concept_name)}</div>` : ''}
               </div>
               <button type="button" class="btn btn-xs btn-accent js-plan-topic"
                       data-topic="${escapeHtml(t.topic || '')}" data-angle="${escapeHtml(t.angle || '')}"
+                      data-concept="${escapeHtml(t.concept || '')}"
                       style="flex:none; white-space:nowrap;"
-                      title="이 주제와 앵글로 8초 씬 기획을 바로 시작합니다">
+                      title="이 주제·앵글·컨셉으로 8초 씬 기획을 바로 시작합니다">
                 <i class="fa-solid fa-wand-magic-sparkles"></i> 이 주제로 기획
               </button>
             </div>`).join('');
 
           trendRecommendedTopics.querySelectorAll('.js-plan-topic').forEach((btn) => {
             btn.addEventListener('click', () => {
-              window.openPromptStudioForTopic(btn.dataset.topic, btn.dataset.angle);
+              window.openPromptStudioForTopic(btn.dataset.topic, btn.dataset.angle, btn.dataset.concept);
             });
           });
         }

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 import llm_client
+import concept_packs
 import uploader
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -181,6 +182,9 @@ def analyze_trends_with_llm(trends_payload: Dict[str, Any]) -> Dict[str, Any]:
 
     titles_text = "\n".join(summary_corpus)
 
+    concept_list = "\n".join(
+        f"    - {c['key']}: {c['name']} — {c['description'][:44]}" for c in concept_packs.list_packs()
+    )
     system_prompt = """당신은 유튜브 알고리즘 및 바이럴 영상 분석 전문가 '에이전트 레오(Agent Leo)'입니다.
 현재 실시간 인기 급상승 Top 영상들의 제목, 채널, 조회수 데이터를 분석하여 크리에이터가 즉시 실행할 수 있는 고밀도 트렌드 인사이트를 도출해야 합니다.
 
@@ -192,6 +196,8 @@ def analyze_trends_with_llm(trends_payload: Dict[str, Any]) -> Dict[str, Any]:
 - recommended_topics: **반드시 3개** (최소 2개 미만은 허용되지 않음).
   서로 다른 소재·타깃·포맷으로 확실히 구분되게 제안하고, 같은 주제를 표현만 바꿔
   반복하지 마세요.
+  각 주제마다 concept 을 아래 목록에서 하나 골라 지정하세요(다른 값 금지):
+{concept_list}
 
 ```json
 {
@@ -202,13 +208,13 @@ def analyze_trends_with_llm(trends_payload: Dict[str, Any]) -> Dict[str, Any]:
   ],
   "audience_triggers": "시청자들이 지금 이 영상들에 폭발적으로 반응하고 댓글을 다는 핵심 심리 요인 (2~3문장)",
   "recommended_topics": [
-    {"topic": "추천 기획 주제 1", "angle": "어떤 차별화된 앵글과 8초 훅으로 진입해야 하는지"},
-    {"topic": "추천 기획 주제 2 (1번과 다른 소재·타깃)", "angle": "차별화된 앵글과 8초 훅"},
-    {"topic": "추천 기획 주제 3 (1·2번과 다른 소재·타깃)", "angle": "차별화된 앵글과 8초 훅"}
+    {"topic": "추천 기획 주제 1", "angle": "어떤 차별화된 앵글과 8초 훅으로 진입해야 하는지", "concept": "컨셉키"},
+    {"topic": "추천 기획 주제 2 (1번과 다른 소재·타깃)", "angle": "차별화된 앵글과 8초 훅", "concept": "컨셉키"},
+    {"topic": "추천 기획 주제 3 (1·2번과 다른 소재·타깃)", "angle": "차별화된 앵글과 8초 훅", "concept": "컨셉키"}
   ],
   "leo_algorithm_tip": "에이전트 레오의 원포인트 알고리즘 성장 팁 (CTR, 체류시간, 시청 지속시간 극대화 전략)"
 }
-```"""
+```""".replace("{concept_list}", concept_list)
 
     user_prompt = f"""[카테고리: {cat_name} 실시간 급상승 영상 목록]
 {titles_text}
@@ -241,6 +247,18 @@ recommended_topics 는 서로 다른 소재로 반드시 3개를 채워주세요
             ],
             "leo_algorithm_tip": "도입부 3초 안에 시청자의 기존 통념을 깨는 의문을 던지고, 아웃트로에서 양자택일 밸런스 질문으로 댓글 참여를 폭발시키세요."
         }
+
+    # 모델이 목록에 없는 컨셉 키를 지어낼 수 있으므로 서버에서 검증하고
+    # 이름을 함께 실어 UI 가 바로 표시할 수 있게 한다
+    valid = {c["key"]: c["name"] for c in concept_packs.list_packs()}
+    for t in (parsed.get("recommended_topics") or []):
+        if not isinstance(t, dict):
+            continue
+        key = t.get("concept")
+        if key not in valid:
+            key = concept_packs.DEFAULT_CONCEPT
+        t["concept"] = key
+        t["concept_name"] = valid[key]
 
     return {
         "status": "success",
