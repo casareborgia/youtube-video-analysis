@@ -1,0 +1,1125 @@
+{
+  "plan_id": "scenes_1788627946_극단적_환경_속에서_설계된_극한_장비_의_해",
+  "topic": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석",
+  "title": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석: 숨겨진 진실과 냉혹한 현실",
+  "aspect_ratio": "16:9",
+  "scene_seconds": 8.0,
+  "language": "korean",
+  "concept_key": "redline_engineering",
+  "concept_name": "레드라인 공학 다큐",
+  "model": "runway_kling",
+  "seo_description": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석에 대한 심층 분석 다큐멘터리입니다.",
+  "title_candidates": [
+    "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 숨겨진 진실",
+    "아무도 몰랐던 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석",
+    "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석 프로젝트의 결말"
+  ],
+  "engagement_question": "과연 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 미래는 혁신일까요, 아니면 돌이킬 수 없는 재앙일까요?",
+  "pinned_comment": "📌 끝까지 시청해주셔서 감사합니다! 여러분은 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석에 대해 어떻게 생각하시나요? 여러분의 생각을 댓글로 들려주세요!",
+  "thumbnail_redline": {
+    "format": {
+      "aspect_ratio": "16:9",
+      "render_style": "photorealistic photography with sharp redline engineering annotations overlay",
+      "composition_layout": "horizontal cinematic 16:9 composition, centered focal subject, balanced technical annotations, left-to-right engineering HUD read flow"
+    },
+    "style": {
+      "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+      "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+      "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+      "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+      "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+    },
+    "scene": {
+      "subject": "Massive, complex hyper-engineered device undergoing forensic deconstruction",
+      "environment": "Deep shadow contrast, illuminated by harsh crimson analytical lasers and volumetric dust particles",
+      "camera_angle": "Extreme low-angle cinematic close-up, focusing on the intersection of failure points"
+    },
+    "text_layer": {
+      "hook_text": "\"극한 환경 분석\"",
+      "labels": [
+        "\"CRITICAL C\"",
+        "\"FAILURE PO\""
+      ],
+      "dimensions": [
+        "\"8초\""
+      ]
+    },
+    "constraints": [
+      "Do not render any text other than explicitly specified in text_layer",
+      "All text must strictly use English/Korean exactly as quoted in double quotes",
+      "Text strings must be under 10 characters",
+      "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+      "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+    ],
+    "annotation_layer": {
+      "dimension_lines": [
+        "brilliant red measurement grid spanning the device's chassis"
+      ],
+      "callout_arrows": [
+        "thick, aggressive crimson arrow pointing to the critical structural weak point"
+      ],
+      "bounding_boxes": [
+        "flashing red technical bounding box isolating the core failure area"
+      ],
+      "focus_reticles": [
+        "concentric red crosshairs centered on the device's main power conduit"
+      ]
+    }
+  },
+  "thumbnail_prompt": {
+    "format": {
+      "aspect_ratio": "16:9",
+      "render_style": "photorealistic photography with sharp redline engineering annotations overlay",
+      "composition_layout": "horizontal cinematic 16:9 composition, centered focal subject, balanced technical annotations, left-to-right engineering HUD read flow"
+    },
+    "style": {
+      "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+      "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+      "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+      "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+      "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+    },
+    "scene": {
+      "subject": "Massive, complex hyper-engineered device undergoing forensic deconstruction",
+      "environment": "Deep shadow contrast, illuminated by harsh crimson analytical lasers and volumetric dust particles",
+      "camera_angle": "Extreme low-angle cinematic close-up, focusing on the intersection of failure points"
+    },
+    "text_layer": {
+      "hook_text": "\"극한 환경 분석\"",
+      "labels": [
+        "\"CRITICAL C\"",
+        "\"FAILURE PO\""
+      ],
+      "dimensions": [
+        "\"8초\""
+      ]
+    },
+    "constraints": [
+      "Do not render any text other than explicitly specified in text_layer",
+      "All text must strictly use English/Korean exactly as quoted in double quotes",
+      "Text strings must be under 10 characters",
+      "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+      "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+    ],
+    "annotation_layer": {
+      "dimension_lines": [
+        "brilliant red measurement grid spanning the device's chassis"
+      ],
+      "callout_arrows": [
+        "thick, aggressive crimson arrow pointing to the critical structural weak point"
+      ],
+      "bounding_boxes": [
+        "flashing red technical bounding box isolating the core failure area"
+      ],
+      "focus_reticles": [
+        "concentric red crosshairs centered on the device's main power conduit"
+      ]
+    }
+  },
+  "structured_scenes": [
+    {
+      "scene_num": 1,
+      "seconds": 8.0,
+      "subtitle": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 1번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "narration": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 1번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "time_range": "00:00 ~ 00:08",
+      "dramatic_beat": "씬 1 전개",
+      "camera": "Cinematic slow push-in shot",
+      "lighting": "Volumetric dramatic lighting",
+      "sfx": "ambient environmental room tone, subtle atmospheric wind",
+      "prompt_en": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark",
+      "visual_description_ko": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석 씬 1 비주얼",
+      "first_frame_redline": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "An exploded view of the extreme equipment's primary protective casing, floating in microgravity",
+          "environment": "Sterile lab setting flooded with deep blue and high-contrast red analytical light",
+          "camera_angle": "Mid-shot tracking the movement of the separated components"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"LAYER 1\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "thin red vector lines indicating stress vectors"
+          ],
+          "callout_arrows": [
+            "small, precise red arrow tagging the outer layer"
+          ],
+          "bounding_boxes": [
+            "translucent red box outlining the structural integrity zone"
+          ],
+          "focus_reticles": [
+            "distant targeting reticle in the background"
+          ]
+        }
+      },
+      "image_prompt_json": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "An exploded view of the extreme equipment's primary protective casing, floating in microgravity",
+          "environment": "Sterile lab setting flooded with deep blue and high-contrast red analytical light",
+          "camera_angle": "Mid-shot tracking the movement of the separated components"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"LAYER 1\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "thin red vector lines indicating stress vectors"
+          ],
+          "callout_arrows": [
+            "small, precise red arrow tagging the outer layer"
+          ],
+          "bounding_boxes": [
+            "translucent red box outlining the structural integrity zone"
+          ],
+          "focus_reticles": [
+            "distant targeting reticle in the background"
+          ]
+        }
+      },
+      "visual_prompt": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark"
+    },
+    {
+      "scene_num": 2,
+      "seconds": 8.0,
+      "subtitle": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 2번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "narration": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 2번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "time_range": "00:08 ~ 00:16",
+      "dramatic_beat": "씬 2 전개",
+      "camera": "Cinematic slow push-in shot",
+      "lighting": "Volumetric dramatic lighting",
+      "sfx": "ambient environmental room tone, subtle atmospheric wind",
+      "prompt_en": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark",
+      "visual_description_ko": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석 씬 2 비주얼",
+      "first_frame_redline": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "Extreme close-up on a microscopic fissure forming in the high-density alloy material",
+          "environment": "Hyper-detailed macro shot, dramatic subsurface scattering lighting emphasizing the flaw",
+          "camera_angle": "Ultra-macro lens perspective, almost touching the surface"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"POINT 2\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "fine red scale measurement lines mapping the fissure growth"
+          ],
+          "callout_arrows": [
+            "microscopic crimson pointer tracking the flaw's origin point"
+          ],
+          "bounding_boxes": [
+            "tight red frame isolating the microscopic defect cluster"
+          ],
+          "focus_reticles": [
+            "pulsing laser focus ring surrounding the fissure"
+          ]
+        }
+      },
+      "image_prompt_json": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "Extreme close-up on a microscopic fissure forming in the high-density alloy material",
+          "environment": "Hyper-detailed macro shot, dramatic subsurface scattering lighting emphasizing the flaw",
+          "camera_angle": "Ultra-macro lens perspective, almost touching the surface"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"POINT 2\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "fine red scale measurement lines mapping the fissure growth"
+          ],
+          "callout_arrows": [
+            "microscopic crimson pointer tracking the flaw's origin point"
+          ],
+          "bounding_boxes": [
+            "tight red frame isolating the microscopic defect cluster"
+          ],
+          "focus_reticles": [
+            "pulsing laser focus ring surrounding the fissure"
+          ]
+        }
+      },
+      "visual_prompt": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark"
+    },
+    {
+      "scene_num": 3,
+      "seconds": 8.0,
+      "subtitle": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 3번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "narration": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 3번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "time_range": "00:16 ~ 00:24",
+      "dramatic_beat": "씬 3 전개",
+      "camera": "Cinematic slow push-in shot",
+      "lighting": "Volumetric dramatic lighting",
+      "sfx": "ambient environmental room tone, subtle atmospheric wind",
+      "prompt_en": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark",
+      "visual_description_ko": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석 씬 3 비주얼",
+      "first_frame_redline": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "The internal circuit board of the device glowing ominously, overheating after operation",
+          "environment": "Dark, moody atmosphere pierced by the glowing orange heat signature of the components",
+          "camera_angle": "Overhead drone shot descending into the operational core"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"SYSTEM 3\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "red thermal gradient overlay mapping heat dissipation"
+          ],
+          "callout_arrows": [
+            "directional red arrow indicating failure cascade path"
+          ],
+          "bounding_boxes": [
+            "pulsing red box around the overheating component array"
+          ],
+          "focus_reticles": [
+            "stable measurement grid overlaid on the circuit traces"
+          ]
+        }
+      },
+      "image_prompt_json": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "The internal circuit board of the device glowing ominously, overheating after operation",
+          "environment": "Dark, moody atmosphere pierced by the glowing orange heat signature of the components",
+          "camera_angle": "Overhead drone shot descending into the operational core"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"SYSTEM 3\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "red thermal gradient overlay mapping heat dissipation"
+          ],
+          "callout_arrows": [
+            "directional red arrow indicating failure cascade path"
+          ],
+          "bounding_boxes": [
+            "pulsing red box around the overheating component array"
+          ],
+          "focus_reticles": [
+            "stable measurement grid overlaid on the circuit traces"
+          ]
+        }
+      },
+      "visual_prompt": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark"
+    },
+    {
+      "scene_num": 4,
+      "seconds": 8.0,
+      "subtitle": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 4번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "narration": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 4번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "time_range": "00:24 ~ 00:32",
+      "dramatic_beat": "씬 4 전개",
+      "camera": "Cinematic slow push-in shot",
+      "lighting": "Volumetric dramatic lighting",
+      "sfx": "ambient environmental room tone, subtle atmospheric wind",
+      "prompt_en": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark",
+      "visual_description_ko": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석 씬 4 비주얼",
+      "first_frame_redline": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "A dynamic simulation rendering of the device operating under simulated extreme pressure",
+          "environment": "Digital visualization in a zero-G simulation chamber, high contrast blue/red data overlays",
+          "camera_angle": "Wide shot showing the device encased in a transparent pressure vessel"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"TEST 4\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "moving red pressure wave visualization lines"
+          ],
+          "callout_arrows": [
+            "dynamic vector arrow showing stress propagation through the frame"
+          ],
+          "bounding_boxes": [
+            "scaling red box representing operational limits"
+          ],
+          "focus_reticles": [
+            "simulated pressure gauges in the corner"
+          ]
+        }
+      },
+      "image_prompt_json": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "A dynamic simulation rendering of the device operating under simulated extreme pressure",
+          "environment": "Digital visualization in a zero-G simulation chamber, high contrast blue/red data overlays",
+          "camera_angle": "Wide shot showing the device encased in a transparent pressure vessel"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"TEST 4\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "moving red pressure wave visualization lines"
+          ],
+          "callout_arrows": [
+            "dynamic vector arrow showing stress propagation through the frame"
+          ],
+          "bounding_boxes": [
+            "scaling red box representing operational limits"
+          ],
+          "focus_reticles": [
+            "simulated pressure gauges in the corner"
+          ]
+        }
+      },
+      "visual_prompt": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark"
+    },
+    {
+      "scene_num": 5,
+      "seconds": 8.0,
+      "subtitle": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 5번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "narration": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 5번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "time_range": "00:32 ~ 00:40",
+      "dramatic_beat": "씬 5 전개",
+      "camera": "Cinematic slow push-in shot",
+      "lighting": "Volumetric dramatic lighting",
+      "sfx": "ambient environmental room tone, subtle atmospheric wind",
+      "prompt_en": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark",
+      "visual_description_ko": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석 씬 5 비주얼",
+      "first_frame_redline": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "The thermal management system components separated and displayed, showing residue from extreme heat exposure",
+          "environment": "Clinical white environment with sharp spotlights emphasizing dust and residue particles",
+          "camera_angle": "Medium shot, panning slowly across the intricate internal mechanisms"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"FLAW 5\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "red scale bar measuring thermal degradation depth"
+          ],
+          "callout_arrows": [
+            "focused red arrow pointing to specific residue deposits"
+          ],
+          "bounding_boxes": [
+            "segmented red boxes labeling different thermal zones"
+          ],
+          "focus_reticles": [
+            "thermal mapping overlay displayed on the metal surface"
+          ]
+        }
+      },
+      "image_prompt_json": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "The thermal management system components separated and displayed, showing residue from extreme heat exposure",
+          "environment": "Clinical white environment with sharp spotlights emphasizing dust and residue particles",
+          "camera_angle": "Medium shot, panning slowly across the intricate internal mechanisms"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"FLAW 5\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "red scale bar measuring thermal degradation depth"
+          ],
+          "callout_arrows": [
+            "focused red arrow pointing to specific residue deposits"
+          ],
+          "bounding_boxes": [
+            "segmented red boxes labeling different thermal zones"
+          ],
+          "focus_reticles": [
+            "thermal mapping overlay displayed on the metal surface"
+          ]
+        }
+      },
+      "visual_prompt": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark"
+    },
+    {
+      "scene_num": 6,
+      "seconds": 8.0,
+      "subtitle": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 6번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "narration": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 6번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "time_range": "00:40 ~ 00:48",
+      "dramatic_beat": "씬 6 전개",
+      "camera": "Cinematic slow push-in shot",
+      "lighting": "Volumetric dramatic lighting",
+      "sfx": "ambient environmental room tone, subtle atmospheric wind",
+      "prompt_en": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark",
+      "visual_description_ko": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석 씬 6 비주얼",
+      "first_frame_redline": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "A structural joint under immense load simulation, viewed via X-ray analysis",
+          "environment": "High-tech dark environment, the joint glows faintly red where stress is highest",
+          "camera_angle": "X-ray view, penetrating the material to reveal internal strain"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"STRESS 6\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "vibrating red lines illustrating molecular bond strain"
+          ],
+          "callout_arrows": [
+            "focused crimson arrow pointing to the microscopic point of yielding"
+          ],
+          "bounding_boxes": [
+            "dynamic red box highlighting the load-bearing section"
+          ],
+          "focus_reticles": [
+            "structural integrity visualization grid"
+          ]
+        }
+      },
+      "image_prompt_json": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "A structural joint under immense load simulation, viewed via X-ray analysis",
+          "environment": "High-tech dark environment, the joint glows faintly red where stress is highest",
+          "camera_angle": "X-ray view, penetrating the material to reveal internal strain"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"STRESS 6\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "vibrating red lines illustrating molecular bond strain"
+          ],
+          "callout_arrows": [
+            "focused crimson arrow pointing to the microscopic point of yielding"
+          ],
+          "bounding_boxes": [
+            "dynamic red box highlighting the load-bearing section"
+          ],
+          "focus_reticles": [
+            "structural integrity visualization grid"
+          ]
+        }
+      },
+      "visual_prompt": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark"
+    },
+    {
+      "scene_num": 7,
+      "seconds": 8.0,
+      "subtitle": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 7번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "narration": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 7번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "time_range": "00:48 ~ 00:56",
+      "dramatic_beat": "씬 7 전개",
+      "camera": "Cinematic slow push-in shot",
+      "lighting": "Volumetric dramatic lighting",
+      "sfx": "ambient environmental room tone, subtle atmospheric wind",
+      "prompt_en": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark",
+      "visual_description_ko": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석 씬 7 비주얼",
+      "first_frame_redline": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "The power coupling mechanism disassembled, showing signs of corrosive environmental exposure",
+          "environment": "Wet, metallic environment simulating the harsh operational conditions; dramatic reflections",
+          "camera_angle": "Extreme close-up on the corroded surfaces, showing crystalline growths"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"CONTAMINAN\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "red lines mapping the corrosive path across the surface"
+          ],
+          "callout_arrows": [
+            "pointer arrow tracing the ingress point of the contaminant"
+          ],
+          "bounding_boxes": [
+            "red frame isolating the affected power transfer components"
+          ],
+          "focus_reticles": [
+            "chemical reaction visualization overlay"
+          ]
+        }
+      },
+      "image_prompt_json": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "The power coupling mechanism disassembled, showing signs of corrosive environmental exposure",
+          "environment": "Wet, metallic environment simulating the harsh operational conditions; dramatic reflections",
+          "camera_angle": "Extreme close-up on the corroded surfaces, showing crystalline growths"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"CONTAMINAN\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "red lines mapping the corrosive path across the surface"
+          ],
+          "callout_arrows": [
+            "pointer arrow tracing the ingress point of the contaminant"
+          ],
+          "bounding_boxes": [
+            "red frame isolating the affected power transfer components"
+          ],
+          "focus_reticles": [
+            "chemical reaction visualization overlay"
+          ]
+        }
+      },
+      "visual_prompt": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark"
+    },
+    {
+      "scene_num": 8,
+      "seconds": 8.0,
+      "subtitle": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 8번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "narration": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 8번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "time_range": "00:56 ~ 01:04",
+      "dramatic_beat": "씬 8 전개",
+      "camera": "Cinematic slow push-in shot",
+      "lighting": "Volumetric dramatic lighting",
+      "sfx": "ambient environmental room tone, subtle atmospheric wind",
+      "prompt_en": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark",
+      "visual_description_ko": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석 씬 8 비주얼",
+      "first_frame_redline": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "The control unit's sensor array being analyzed for data corruption after mission completion",
+          "environment": "Cold, dimly lit laboratory bench; the unit is pristinely clean but analyzed under harsh light",
+          "camera_angle": "Eye-level shot focusing on the crystalline sensor elements"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"SENSOR DAT\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "red oscilloscope trace overlaying the sensor readings"
+          ],
+          "callout_arrows": [
+            "rapid red arrow indicating data packet loss or noise spike"
+          ],
+          "bounding_boxes": [
+            "flashing red box around the corrupted data memory cluster"
+          ],
+          "focus_reticles": [
+            "digital readout display of error codes"
+          ]
+        }
+      },
+      "image_prompt_json": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "The control unit's sensor array being analyzed for data corruption after mission completion",
+          "environment": "Cold, dimly lit laboratory bench; the unit is pristinely clean but analyzed under harsh light",
+          "camera_angle": "Eye-level shot focusing on the crystalline sensor elements"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"SENSOR DAT\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "red oscilloscope trace overlaying the sensor readings"
+          ],
+          "callout_arrows": [
+            "rapid red arrow indicating data packet loss or noise spike"
+          ],
+          "bounding_boxes": [
+            "flashing red box around the corrupted data memory cluster"
+          ],
+          "focus_reticles": [
+            "digital readout display of error codes"
+          ]
+        }
+      },
+      "visual_prompt": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark"
+    },
+    {
+      "scene_num": 9,
+      "seconds": 8.0,
+      "subtitle": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 9번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "narration": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 9번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "time_range": "01:04 ~ 01:12",
+      "dramatic_beat": "씬 9 전개",
+      "camera": "Cinematic slow push-in shot",
+      "lighting": "Volumetric dramatic lighting",
+      "sfx": "ambient environmental room tone, subtle atmospheric wind",
+      "prompt_en": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark",
+      "visual_description_ko": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석 씬 9 비주얼",
+      "first_frame_redline": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "The main chassis components being scanned by a high-energy particle beam, revealing internal stresses",
+          "environment": "High-tech vacuum chamber setting; the particle beam leaves glowing trails against darkness",
+          "camera_angle": "Side profile shot through the scanning beam's path"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"STRUCTURAL\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "red particle track lines mapping the scanning path"
+          ],
+          "callout_arrows": [
+            "focused crimson arrow pointing to a specific structural anomaly revealed by the scan"
+          ],
+          "bounding_boxes": [
+            "scanning grid projected onto the chassis surface"
+          ],
+          "focus_reticles": [
+            "particle impact visualization ring"
+          ]
+        }
+      },
+      "image_prompt_json": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "The main chassis components being scanned by a high-energy particle beam, revealing internal stresses",
+          "environment": "High-tech vacuum chamber setting; the particle beam leaves glowing trails against darkness",
+          "camera_angle": "Side profile shot through the scanning beam's path"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"STRUCTURAL\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "red particle track lines mapping the scanning path"
+          ],
+          "callout_arrows": [
+            "focused crimson arrow pointing to a specific structural anomaly revealed by the scan"
+          ],
+          "bounding_boxes": [
+            "scanning grid projected onto the chassis surface"
+          ],
+          "focus_reticles": [
+            "particle impact visualization ring"
+          ]
+        }
+      },
+      "visual_prompt": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark"
+    },
+    {
+      "scene_num": 10,
+      "seconds": 8.0,
+      "subtitle": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 10번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "narration": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석의 10번째 핵심 이야기로 8초 동안 깊은 몰입감을 전달합니다.",
+      "time_range": "01:12 ~ 01:20",
+      "dramatic_beat": "씬 10 전개",
+      "camera": "Cinematic slow push-in shot",
+      "lighting": "Volumetric dramatic lighting",
+      "sfx": "ambient environmental room tone, subtle atmospheric wind",
+      "prompt_en": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark",
+      "visual_description_ko": "극단적 환경 속에서 설계된 '극한 장비'의 해체 분석 씬 10 비주얼",
+      "first_frame_redline": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "The final assembly diagram of the equipment, floating in a holographic projection",
+          "environment": "Deep space blue background with flickering schematics and floating data streams",
+          "camera_angle": "Extreme wide shot, pulling back from the complex, perfect model"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"FULL ASSEM\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "perfect red measurement lines completing the full assembly diagram"
+          ],
+          "callout_arrows": [
+            "final, slow-moving red arrow indicating operational readiness"
+          ],
+          "bounding_boxes": [
+            "full schematic diagram enclosed in a clean red boundary"
+          ],
+          "focus_reticles": [
+            "stable operational parameters displayed around the model"
+          ]
+        }
+      },
+      "image_prompt_json": {
+        "format": {
+          "aspect_ratio": "16:9",
+          "render_style": "photorealistic photography with redline graphics for AI video first frame",
+          "composition_layout": "horizontal 16:9 framing, rule of thirds subject with redline callout graphics"
+        },
+        "style": {
+          "aesthetic": "NanoBanana Redline technical blueprint and engineering annotation aesthetic",
+          "annotation_color": "vivid crimson red (#FF0000 / bright neon red)",
+          "line_weights": "crisp 1px - 2px precision vector lines, technical arrows, circular reticles, bounding measurement boxes",
+          "overall_mood": "documentary investigative deep-dive, cyber-engineering HUD analysis",
+          "render_style": "hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        },
+        "scene": {
+          "subject": "The final assembly diagram of the equipment, floating in a holographic projection",
+          "environment": "Deep space blue background with flickering schematics and floating data streams",
+          "camera_angle": "Extreme wide shot, pulling back from the complex, perfect model"
+        },
+        "constraints": [
+          "Do not render any text other than explicitly specified in text_layer",
+          "All text must strictly use English/Korean exactly as quoted in double quotes",
+          "Text strings must be under 10 characters",
+          "Only use numerical facts actually mentioned in the script, never fabricate random numbers",
+          "Redline graphics must be pure sharp red (#FF0000) over hyperrealistic 8k cinematic photography, shot on ARRI Alexa Mini LF, Master Prime lenses, natural skin and material textures, highly detailed"
+        ],
+        "text_layer": {
+          "label": "\"FULL ASSEM\""
+        },
+        "annotation_layer": {
+          "dimension_lines": [
+            "perfect red measurement lines completing the full assembly diagram"
+          ],
+          "callout_arrows": [
+            "final, slow-moving red arrow indicating operational readiness"
+          ],
+          "bounding_boxes": [
+            "full schematic diagram enclosed in a clean red boundary"
+          ],
+          "focus_reticles": [
+            "stable operational parameters displayed around the model"
+          ]
+        }
+      },
+      "visual_prompt": "Cinematic documentary footage of 극단적 환경 속에서 설계된 '극한 장비'의 해체 분석, silent observers with closed mouths, 8k, photorealistic, cinematic lighting. Audio: ambient environmental room tone, subtle atmospheric wind. (SFX and ambience only — no voice, no speech, no dialogue, no , no , no on-screen text) --ar 16:9 --no voice, speech, dialogue, singing, , , text, watermark"
+    }
+  ],
+  "audio_data": {
+    "scenes_audio": []
+  },
+  "created_at": 1788627946.843947
+}

@@ -325,9 +325,9 @@
               <div class="control-group half">
                 <label for="promptSceneCount"><i class="fa-solid fa-film"></i> 씬 분할 (8초 단위)</label>
                 <select id="promptSceneCount" class="form-select">
-                  <option value="6">6개 씬 (48초 분량)</option>
+                  <option value="6" selected>6개 씬 (48초 분량 - 권장)</option>
                   <option value="8">8개 씬 (64초 분량)</option>
-                  <option value="10" selected>10개 씬 (80초 완결 - 권장)</option>
+                  <option value="10">10개 씬 (80초 완결)</option>
                   <option value="12">12개 씬 (96초 상세)</option>
                 </select>
               </div>
@@ -755,7 +755,6 @@
                 </select>
               </div>
 
-              <div class="control-row">
               <!-- 🎵 배경음악(BGM) 선택 (루나 스튜디오 음원 자동 연계) -->
               <div class="control-group" style="margin-bottom: 14px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
@@ -1436,6 +1435,6 @@
     </footer>
   </div>
 
-  <script src="/static/app.js?v=20260906-autoconcept"></script>
+  <script src="/static/app.js?v=20260906-fallbackfix"></script>
 </body>
 </html>

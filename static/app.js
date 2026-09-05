@@ -888,6 +888,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       currentGeneratedBatch = await res.json();
+      // 파싱 실패로 템플릿 대사가 나갔으면 조용히 넘어가지 않고 알린다
+      if (currentGeneratedBatch.is_fallback) {
+        showAlert(currentGeneratedBatch.fallback_note || 'AI 응답 해석에 실패해 기본 템플릿 대사로 대체됐습니다. 씬 개수를 줄이거나 다시 생성해주세요.', 'error');
+      }
       renderThumbnailRedline(currentGeneratedBatch);
       renderEngagementCard(currentGeneratedBatch);
       renderStudioScenes(currentGeneratedBatch);

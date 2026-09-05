@@ -75,6 +75,21 @@ NARRATION_MAX_CHARS = 45
 KO_CHARS_PER_SEC = 5.2  # 한국어 다큐 어조 기준 초당 발화 글자수
 
 
+# 응답 길이는 씬 개수에 비례한다. 고정 4096 으로는 10씬부터 잘려
+# JSON 파싱이 실패하고 폴백 템플릿 대사가 나갔다.
+TOKEN_CEILING = 16384
+
+
+def scene_plan_tokens(scene_count: int) -> int:
+    """씬 대본 생성에 필요한 출력 토큰. 씬당 나레이션·프롬프트·SFX·메타를 감안한다."""
+    return min(TOKEN_CEILING, max(4096, 1500 + 800 * int(scene_count or 1)))
+
+
+def image_prompt_tokens(scene_count: int) -> int:
+    """씬별 첫 프레임 + 썸네일 이미지 프롬프트 생성에 필요한 출력 토큰."""
+    return min(TOKEN_CEILING, max(3500, 1200 + 600 * int(scene_count or 1)))
+
+
 def sanitize_input_text(text: str) -> str:
     """사용자 입력 텍스트에서 프롬프트 인젝션 의심 구문 및 제어 문자 정제"""
     if not text:
@@ -317,7 +332,7 @@ class PromptGenerator:
             {"role": "user", "content": prompt}
         ]
 
-        raw_resp = llm_client.call_llm(messages, max_tokens=3500, temperature=0.6)
+        raw_resp = llm_client.call_llm(messages, max_tokens=image_prompt_tokens(len(scenes)), temperature=0.6)
 
         parsed = None
         json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', raw_resp)
@@ -558,7 +573,7 @@ class PromptGenerator:
             {"role": "user", "content": prompt}
         ]
 
-        raw_response = llm_client.call_llm(messages, max_tokens=4096, temperature=0.7)
+        raw_response = llm_client.call_llm(messages, max_tokens=scene_plan_tokens(scene_count), temperature=0.7)
 
         # JSON 파싱 시도
         parsed_data = None
@@ -577,8 +592,10 @@ class PromptGenerator:
             except Exception:
                 pass
 
-        # 파싱 실패 시 기본 씬 구조 생성
+        # 파싱 실패 시 기본 씬 구조 생성 (템플릿 대사 — 호출자에게 반드시 알린다)
+        used_fallback = False
         if not parsed_data or "scenes" not in parsed_data:
+            used_fallback = True
             scenes = []
             for idx, time_tag in enumerate(time_segments, start=1):
                 scenes.append({
@@ -689,6 +706,11 @@ class PromptGenerator:
 
         result_payload = {
             "status": "success",
+            "is_fallback": used_fallback,
+            "fallback_note": (
+                "AI 응답을 JSON으로 해석하지 못해 기본 템플릿 대사로 대체했습니다. "
+                "씬 개수를 줄이거나 다시 생성해 주세요."
+            ) if used_fallback else "",
             "concept_key": concept_key or concept_packs.DEFAULT_CONCEPT,
             "concept_name": concept.get("name", ""),
             "topic": safe_topic,
