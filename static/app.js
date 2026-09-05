@@ -1904,6 +1904,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // 15. [Phase 4] 영상 자동 제작 (Producer) & 유튜브 업로더
   // ==============================================================
   const producerPlanSelect = document.getElementById('producerPlanSelect');
+  const producerAutoImages = document.getElementById('producerAutoImages');
   const producerResSelect = document.getElementById('producerResSelect');
   const producerTransitionSelect = document.getElementById('producerTransitionSelect');
   const producerBurnSubtitles = document.getElementById('producerBurnSubtitles');
@@ -2017,7 +2018,8 @@ document.addEventListener('DOMContentLoaded', () => {
             resolution: producerResSelect ? producerResSelect.value : '1080p',
             burn_subtitles: producerBurnSubtitles ? producerBurnSubtitles.checked : true,
             fit_narration: producerFitNarration ? producerFitNarration.checked : true,
-            transition: producerTransitionSelect ? producerTransitionSelect.value : 'fade'
+            transition: producerTransitionSelect ? producerTransitionSelect.value : 'fade',
+            generate_images: producerAutoImages ? producerAutoImages.checked : true
           })
         });
 

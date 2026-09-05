@@ -62,6 +62,10 @@ def build_plan(batch: Dict[str, Any], scene_seconds: float = 8.0) -> Dict[str, A
             "prompt_en": sc.get("prompt_en", ""),
             "visual_description_ko": sc.get("visual_description_ko", ""),
             "first_frame_redline": sc.get("first_frame_redline"),
+            # producer.generate_images() 가 읽는 이름으로도 함께 담는다.
+            # (레드라인 블록이 없으면 영어 영상 프롬프트를 피사체 설명으로 대체)
+            "image_prompt_json": sc.get("first_frame_redline"),
+            "visual_prompt": sc.get("prompt_en") or sc.get("visual_description_ko") or "",
         })
         # 씬 기획 탭에서 이미 합성한 음성이 있으면 함께 넘긴다
         audio_file = sc.get("audio_file")
@@ -84,6 +88,7 @@ def build_plan(batch: Dict[str, Any], scene_seconds: float = 8.0) -> Dict[str, A
         "engagement_question": batch.get("engagement_question", ""),
         "pinned_comment": batch.get("pinned_comment", ""),
         "thumbnail_redline": batch.get("thumbnail_redline"),
+        "thumbnail_prompt": batch.get("thumbnail_redline"),  # producer 가 읽는 이름
         "structured_scenes": structured,
         "audio_data": {"scenes_audio": audio_scenes},
         "created_at": time.time(),

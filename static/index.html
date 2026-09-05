@@ -853,6 +853,11 @@
                     <span class="custom-checkbox"></span>
                     발화시간 씬 자동 싱크
                   </label>
+                  <label class="checkbox-label" title="미디어가 없는 씬을 Gemini 이미지로 먼저 채운 뒤 합성합니다 (Gemini API 키 필요)">
+                    <input type="checkbox" id="producerAutoImages" checked>
+                    <span class="custom-checkbox"></span>
+                    씬 이미지 자동 생성
+                  </label>
                 </div>
 
                 <button type="submit" id="btnStartRender" class="btn btn-primary btn-block">
@@ -1423,6 +1428,6 @@
     </footer>
   </div>
 
-  <script src="/static/app.js?v=20260905-scenestore"></script>
+  <script src="/static/app.js?v=20260906-autoimages"></script>
 </body>
 </html>

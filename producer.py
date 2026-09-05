@@ -496,10 +496,10 @@ def generate_images(plan, slots=None, progress=None):
     aspect = plan.get("aspect_ratio") or "16:9"
     idx = list_media(plan_id)
     scenes = plan.get("structured_scenes") or []
+    d = render_dir(plan_id)
     targets = [str(s) for s in slots] if slots else [str(s["scene_num"]) for s in scenes] + ["thumbnail"]
     targets = [t for t in targets if t not in idx or (slots and idx[t].get("type") == "video" and not _first_frame_path(d, t, idx[t]))]
     done, errors = [], []
-    d = render_dir(plan_id)
 
     for n, slot in enumerate(targets, 1):
         if progress:

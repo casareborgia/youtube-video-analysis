@@ -818,18 +818,40 @@ class ProducerBuildRequest(BaseModel):
     fit_narration: Optional[bool] = True
     transition: Optional[str] = "fade"
     sfx_volume: Optional[float] = 0.35
+    generate_images: Optional[bool] = True  # 미디어가 없는 씬을 Gemini 이미지로 먼저 채운다
 
 def _run_build_worker(job_id: str, plan_dict: dict, options: dict):
+    # 이미지 생성은 전체 진행률의 앞 40%, 합성이 뒤 60% 를 차지하도록 배분한다
+    span = {"base": 0, "scale": 1.0}
+
     def on_progress(step, msg, pct):
+        p = pct if pct is not None else 0
         _producer_jobs[job_id] = {
             "status": "processing",
             "step": step,
             "message": msg,
-            "percent": pct
+            "percent": int(span["base"] + p * span["scale"])
         }
 
+    image_result = None
     try:
+        if options.pop("generate_images", False):
+            span["base"], span["scale"] = 0, 0.40
+            try:
+                image_result = producer.generate_images(plan_dict, progress=on_progress)
+            except Exception as img_err:
+                # 이미지가 없어도 플레이스홀더로 합성은 가능하므로 중단하지 않는다
+                image_result = {"generated": [], "errors": [{"slot": "-", "error": str(img_err)[:200]}]}
+        span["base"], span["scale"] = (40, 0.60) if image_result else (0, 1.0)
+
         res = producer.build_video(plan_dict, options=options, progress=on_progress)
+        if image_result:
+            res["images_generated"] = image_result.get("generated", [])
+            res["image_errors"] = image_result.get("errors", [])
+            for e in image_result.get("errors", []):
+                res.setdefault("warnings", []).append(
+                    f"이미지 생성 실패(슬롯 {e.get('slot')}): {str(e.get('error'))[:120]}"
+                )
         _producer_jobs[job_id] = {
             "status": "completed",
             "percent": 100,
@@ -924,11 +946,35 @@ async def build_video_endpoint(req: ProducerBuildRequest, background_tasks: Back
         "subtitle_style": req.subtitle_style or "clean",
         "fit_narration": req.fit_narration,
         "transition": req.transition or "fade",
-        "sfx_volume": req.sfx_volume or 0.35
+        "sfx_volume": req.sfx_volume or 0.35,
+        "generate_images": bool(req.generate_images)
     }
 
     background_tasks.add_task(_run_build_worker, job_id, plan, options)
     return {"status": "success", "job_id": job_id}
+
+class ProducerImagesRequest(BaseModel):
+    plan_id: str
+    slots: Optional[List[str]] = None
+
+
+@app.post("/api/producer/images")
+async def generate_plan_images(req: ProducerImagesRequest):
+    """저장된 기획서의 씬 이미지를 Gemini 로 생성한다 (합성과 별개로 단독 실행)."""
+    plan = _resolve_plan(req.plan_id)
+    if not plan:
+        raise HTTPException(status_code=404, detail="기획서를 찾을 수 없습니다.")
+    if not plan.get("structured_scenes"):
+        raise HTTPException(status_code=400, detail="이 기획서에는 씬 데이터가 없습니다.")
+    try:
+        loop = asyncio.get_event_loop()
+        res = await loop.run_in_executor(
+            None, lambda: producer.generate_images(plan, slots=req.slots)
+        )
+        return {"status": "success", **res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"이미지 생성 실패: {e}")
+
 
 @app.get("/api/producer/status/{job_id}")
 async def get_producer_status(job_id: str):
