@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SCENES_DIR = os.path.join(BASE_DIR, "data", "scene_plans")
+AUDIO_DIR = os.path.join(BASE_DIR, "data", "audio")
 os.makedirs(SCENES_DIR, exist_ok=True)
 
 PLAN_ID_RE = re.compile(r"^scenes_[0-9]+(?:_[\w가-힣-]+)?$")
@@ -35,6 +36,30 @@ def _path(plan_id: str) -> str:
     if not PLAN_ID_RE.match(safe):
         raise ValueError("올바르지 않은 기획서 ID 형식입니다.")
     return os.path.join(SCENES_DIR, f"{safe}.json")
+
+
+def _resolve_audio(sc: Dict[str, Any]) -> str:
+    """씬의 음성 파일 경로를 찾는다.
+
+    TTS 응답은 재생용 URL(/api/audio/<파일명>)과 filename 만 돌려주고
+    프론트엔드는 audio_url 로 보관한다. 합성은 실제 경로가 필요하므로
+    세 형태를 모두 받아 data/audio/ 아래의 파일로 해석한다.
+    """
+    direct = sc.get("audio_file")
+    if direct and os.path.exists(direct):
+        return direct
+
+    name = sc.get("filename")
+    if not name:
+        url = sc.get("audio_url") or ""
+        if url:
+            name = os.path.basename(url.split("?")[0])
+
+    if name:
+        path = os.path.join(AUDIO_DIR, os.path.basename(name))
+        if os.path.exists(path):
+            return path
+    return ""
 
 
 def build_plan(batch: Dict[str, Any], scene_seconds: float = 8.0) -> Dict[str, Any]:
@@ -68,9 +93,10 @@ def build_plan(batch: Dict[str, Any], scene_seconds: float = 8.0) -> Dict[str, A
             "visual_prompt": sc.get("prompt_en") or sc.get("visual_description_ko") or "",
         })
         # 씬 기획 탭에서 이미 합성한 음성이 있으면 함께 넘긴다
-        audio_file = sc.get("audio_file")
-        if audio_file and os.path.exists(audio_file):
+        audio_file = _resolve_audio(sc)
+        if audio_file:
             audio_scenes.append({"scene_num": num, "audio_file": audio_file})
+            structured[-1]["audio_file"] = audio_file
 
     topic = batch.get("topic") or "씬 기획"
     plan_id = f"scenes_{int(time.time())}_{_slug(topic)}"
