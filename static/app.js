@@ -2109,6 +2109,14 @@ document.addEventListener('DOMContentLoaded', () => {
           if (producerVideoPlayer && r.video_url) producerVideoPlayer.src = r.video_url;
           if (btnDownloadRenderedVideo && r.video_url) btnDownloadRenderedVideo.href = r.video_url;
           if (ytUploadVideoPath && r.video_file) ytUploadVideoPath.value = r.video_file;
+          if (ytUploadTitle && !ytUploadTitle.value) {
+            const selectedOpt = producerPlanSelect?.options[producerPlanSelect.selectedIndex];
+            const planTitle = selectedOpt ? selectedOpt.text.split('—')[0].trim() : 'AI 쇼츠 비디오';
+            ytUploadTitle.value = planTitle || 'AI 쇼츠 비디오';
+          }
+          if (ytUploadDesc && !ytUploadDesc.value) {
+            ytUploadDesc.value = 'AI로 자동 제작된 유튜브 쇼츠 영상입니다. #Shorts #AI영상';
+          }
 
           showAlert('영상 렌더링 합성이 성공적으로 완료되었습니다!', 'success');
         } else if (job.status === 'failed') {
@@ -2704,13 +2712,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
-      if (!confirm(`'${currentLunaTrack.title}' 음악 영상을 루나 유튜브 채널에 즉시 업로드하시겠습니까?`)) {
-        return;
-      }
-
       btnUploadLunaYt.disabled = true;
       btnUploadLunaYt.querySelector('.btn-text').style.display = 'none';
       btnUploadLunaYt.querySelector('.spinner').style.display = 'inline-block';
+      if (lunaStatusBadge) {
+        lunaStatusBadge.className = 'badge badge-accent';
+        lunaStatusBadge.textContent = '유튜브 채널 업로드 중...';
+      }
 
       const privacy = lunaPrivacySelect ? lunaPrivacySelect.value : 'public';
 
@@ -2779,6 +2787,12 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
         `;
       }).join('');
+
+      // 최초 로드 시 또는 새로고침 시 가장 최근 트랙을 자동으로 선택하여 작업대에 로드
+      if (!currentLunaTrack && tracks.length > 0) {
+        currentLunaTrack = tracks[0];
+        renderLunaTrackView(tracks[0]);
+      }
 
       lunaHistoryList.querySelectorAll('.btn-load-luna-track, .luna-track-card').forEach(elem => {
         elem.addEventListener('click', async (e) => {
