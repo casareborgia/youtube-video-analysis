@@ -43,7 +43,7 @@
           <i class="fa-solid fa-bullhorn"></i> 5. 멀티 마케팅 (OSMU)
         </button>
         <button id="navTabMusic" class="nav-tab">
-          <i class="fa-solid fa-compact-disc" style="color: #c084fc;"></i> 6. AI 음악 스튜디오 (Luna)
+          <i class="fa-solid fa-compact-disc" style="color: #c084fc;"></i> 6. 레오 ✕ 루나 음악 스튜디오
         </button>
       </nav>
 
@@ -1078,36 +1078,73 @@
         </div>
       </div>
 
-      <!-- 뷰 6: 에이전트 루나(Agent Luna) AI 음악 자동화 스튜디오 -->
+      <!-- 뷰 6: 에이전트 루나(Agent Luna) ✕ 레오(Leo) AI 음악 자동화 스튜디오 -->
       <div id="viewMusic" class="view-panel" style="display: none;">
+        <!-- 상단: 4단계 워크플로우 인디케이터 배너 -->
+        <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 20px; margin-bottom: 20px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <i class="fa-solid fa-wand-magic-sparkles" style="color: #c084fc; font-size: 1.2rem;"></i>
+            <div>
+              <strong style="font-size: 0.95rem; color: #fff;">레오 ✕ 루나 4단계 무인 음악 제작 & 업로드 파이프라인</strong>
+              <div style="font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px;">
+                ① 레오 트렌드 스카우팅 ➔ ② 루나에게 브리프 전달 & 완곡 작곡 ➔ ③ 켄번즈 렌더링 ➔ ④ 레오 고정댓글 & 업로드
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; font-size: 0.78rem; align-items: center;">
+            <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3); padding: 4px 8px;">1. 레오 트렌드 스카우팅</span>
+            <span style="color: var(--text-muted);">➔</span>
+            <span class="badge" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.3); padding: 4px 8px;">2. 루나 완곡 작곡</span>
+            <span style="color: var(--text-muted);">➔</span>
+            <span class="badge" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); padding: 4px 8px;">3. 켄번즈 렌더링</span>
+            <span style="color: var(--text-muted);">➔</span>
+            <span class="badge" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.3); padding: 4px 8px;">4. 레오 고정댓글 업로드</span>
+          </div>
+        </div>
+
+        <!-- 1단계: 에이전트 레오의 실시간 음악 트렌드 스카우터 (풀 와이드 메인 카드) -->
+        <div class="card" style="margin-bottom: 24px; border: 1px solid rgba(56, 189, 248, 0.35); background: linear-gradient(180deg, rgba(56, 189, 248, 0.05) 0%, rgba(255,255,255,0.01) 100%);">
+          <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <i class="fa-solid fa-chart-line" style="color: #38bdf8; font-size: 1.2rem;"></i>
+              <div>
+                <h3 style="margin: 0; font-size: 1.05rem; color: #38bdf8;">[1단계] 에이전트 레오의 실시간 음악 트렌드 스카우터</h3>
+                <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                  유튜브 실시간 음악(Music, 카테고리 10) 인기 급상승 차트를 분석하여 루나 전용 기획 브리프 3선을 도출합니다.
+                </div>
+              </div>
+            </div>
+            <button type="button" id="btnFetchMusicTrends" class="btn btn-sm btn-primary" style="background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%); border: none; padding: 6px 14px;">
+              <span class="btn-text"><i class="fa-solid fa-bolt"></i> 실시간 음악 트렌드 스카우팅 실행</span>
+              <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 차트 스카우팅 중...</span>
+            </button>
+          </div>
+
+          <!-- 트렌드 브리프 컨테이너 -->
+          <div id="leoMusicBriefBox">
+            <!-- 차트 인사이트 요약 바 -->
+            <div id="leoChartInsights" style="font-size: 0.82rem; color: var(--text-secondary); background: rgba(0,0,0,0.25); border-left: 3px solid #38bdf8; padding: 10px 14px; border-radius: 6px; margin-bottom: 14px; line-height: 1.5;">
+              <i class="fa-solid fa-circle-info" style="color: #38bdf8;"></i> 상단의 <strong>[실시간 음악 트렌드 스카우팅 실행]</strong> 버튼을 누르면 인기 급상승 차트를 분석하고 루나 맞춤 브리프 3선이 자동 생성됩니다.
+            </div>
+
+            <!-- 3대 브리프 카드 그리드 -->
+            <div id="leoBriefList" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;">
+              <!-- 동적으로 3개 카드가 삽입됨 -->
+            </div>
+          </div>
+        </div>
+
         <div style="display: grid; grid-template-columns: 1fr 1.2fr; gap: 24px;">
-          <!-- 좌측: 루나 AI 음악 작곡 & 기획 폼 -->
+          <!-- 좌측: 2단계 루나 AI 음악 작곡 & 기획 폼 -->
           <div class="card">
             <div class="panel-header" style="margin-bottom: 16px;">
               <i class="fa-solid fa-compact-disc" style="color: #c084fc;"></i>
-              <h3>에이전트 루나(Luna) AI 음악 영상 자동화</h3>
+              <h3>[2단계] 에이전트 루나 AI 완곡 작곡 스튜디오</h3>
             </div>
 
             <div style="background: rgba(192, 132, 252, 0.08); border-left: 3px solid #c084fc; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
               <i class="fa-solid fa-sparkles" style="color: #c084fc; margin-right: 4px;"></i>
-              <strong>루나 무인 음악 채널 파이프라인:</strong><br>
-              Lyria 3 Pro 기반 고음질 완곡(3분) 작곡 ➔ 나노바나나 16:9 감성 비주얼 ➔ ffmpeg 켄번즈 영상 렌더링 ➔ 루나 유튜브 채널(@음악에이전트-c3j) 원클릭 업로드까지 전 과정을 원스톱으로 처리합니다.
-            </div>
-
-            <!-- 레오의 실시간 음악 트렌드 분석 브리프 연동 -->
-            <div style="background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;">
-              <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span style="font-size: 0.85rem; font-weight: 600; color: #38bdf8;">
-                  <i class="fa-solid fa-chart-line"></i> 1단계: 레오의 실시간 음악 트렌드 스카우팅
-                </span>
-                <button type="button" id="btnFetchMusicTrends" class="btn btn-xs btn-outline" style="border-color: #38bdf8; color: #38bdf8;">
-                  <i class="fa-solid fa-bolt"></i> 트렌드 브리프 분석
-                </button>
-              </div>
-              <div id="leoMusicBriefBox" style="display: none; margin-top: 10px;">
-                <div id="leoChartInsights" style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 8px; background: rgba(0,0,0,0.2); padding: 6px 10px; border-radius: 4px;"></div>
-                <div id="leoBriefList" style="display: flex; flex-direction: column; gap: 6px;"></div>
-              </div>
+              <strong>루나 작업대:</strong> 상단의 레오 트렌드 브리프를 선택하면 장르, 무드, 스토리 및 사운드 스펙이 자동 주입됩니다.
             </div>
 
             <form id="lunaMusicForm">
@@ -1257,7 +1294,7 @@
                 <div style="background: rgba(168, 85, 247, 0.08); border: 1px dashed rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
                     <strong style="font-size: 0.78rem; color: #c084fc;"><i class="fa-solid fa-thumbtack"></i> 레오의 추천 고정 댓글 (Pinned Comment)</strong>
-                    <button type="button" id="btnCopyPinnedComment" class="btn btn-xs btn-outline" style="font-size: 10px; padding: 2px 6px;">복사</button>
+                    <button type="button" id="btnCopyLunaPinnedComment" class="btn btn-xs btn-outline" style="font-size: 10px; padding: 2px 6px;">복사</button>
                   </div>
                   <div id="lunaPinnedCommentPreview" style="font-size: 0.78rem; color: var(--text-secondary); line-height: 1.4; white-space: pre-wrap;"></div>
                 </div>
@@ -1460,6 +1497,6 @@
     </footer>
   </div>
 
-  <script src="/static/app.js?v=20260906-fallbackfix"></script>
+  <script src="/static/app.js?v=20260921-leoluna-fix"></script>
 </body>
 </html>

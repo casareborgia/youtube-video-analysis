@@ -654,6 +654,11 @@ document.addEventListener('DOMContentLoaded', () => {
       loadMarketingHistory();
     } else if (targetId === 'music') {
       loadLunaHistory();
+      const briefList = document.getElementById('leoBriefList');
+      const fetchBtn = document.getElementById('btnFetchMusicTrends');
+      if (briefList && !briefList.children.length && fetchBtn) {
+        fetchBtn.click();
+      }
     }
   }
 
@@ -2398,7 +2403,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const leoChartInsights = document.getElementById('leoChartInsights');
   const leoBriefList = document.getElementById('leoBriefList');
   const lunaPinnedCommentPreview = document.getElementById('lunaPinnedCommentPreview');
-  const btnCopyPinnedComment = document.getElementById('btnCopyPinnedComment');
+  const btnCopyLunaPinnedComment = document.getElementById('btnCopyLunaPinnedComment');
 
   let currentLunaTrack = null;
   let currentLeoBrief = null;
@@ -2407,7 +2412,14 @@ document.addEventListener('DOMContentLoaded', () => {
   if (btnFetchMusicTrends) {
     btnFetchMusicTrends.addEventListener('click', async () => {
       btnFetchMusicTrends.disabled = true;
-      btnFetchMusicTrends.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 분석 중...';
+      const textSpan = btnFetchMusicTrends.querySelector('.btn-text');
+      const spinnerSpan = btnFetchMusicTrends.querySelector('.spinner');
+      if (textSpan) textSpan.style.display = 'none';
+      if (spinnerSpan) spinnerSpan.style.display = 'inline-block';
+
+      if (leoChartInsights) {
+        leoChartInsights.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="color:#38bdf8;"></i> 유튜브 실시간 음악 인기 급상승 차트를 수집하고 Gemini 3.6 Flash로 분석 중입니다...';
+      }
 
       try {
         const res = await fetch('/api/trends/music-for-luna?region=KR');
@@ -2420,44 +2432,85 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (leoMusicBriefBox) leoMusicBriefBox.style.display = 'block';
         if (leoChartInsights) {
-          leoChartInsights.innerHTML = `<strong><i class="fa-solid fa-lightbulb" style="color:#38bdf8;"></i> 레오의 차트 인사이트:</strong> ${analysis.chart_insights || ''} <span style="color:#a78bfa; margin-left:6px;">#${(analysis.top_keywords || []).join(' #')}</span>`;
+          leoChartInsights.innerHTML = `<strong><i class="fa-solid fa-lightbulb" style="color:#38bdf8;"></i> 레오의 실시간 차트 인사이트:</strong> ${analysis.chart_insights || ''} <span style="color:#a78bfa; margin-left:6px;">#${(analysis.top_keywords || []).join(' #')}</span>`;
         }
 
         if (leoBriefList) {
           leoBriefList.innerHTML = briefs.map((b, idx) => `
-            <div class="leo-brief-item" data-idx="${idx}" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 8px 10px; cursor: pointer; transition: all 0.2s;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                <strong style="font-size: 0.82rem; color: #38bdf8;">${b.title_concept || '트렌드 기획 ' + (idx+1)}</strong>
-                <span class="badge badge-accent" style="font-size: 10px;">${b.genre_name || b.genre} • ${b.mood_name || b.mood}</span>
+            <div class="leo-brief-card" data-idx="${idx}" style="background: rgba(255,255,255,0.02); border: 1.5px solid rgba(56, 189, 248, 0.3); border-radius: 8px; padding: 14px; transition: all 0.25s; display: flex; flex-direction: column; justify-content: space-between;">
+              <div>
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
+                  <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-size: 11px; font-weight: 700;">추천 브리프 ${b.brief_id || (idx+1)}</span>
+                  <span class="badge badge-accent" style="font-size: 11px;">${b.genre_name || b.genre}</span>
+                </div>
+                <h4 style="margin: 0 0 6px 0; font-size: 0.95rem; color: #fff; font-weight: 600;">${b.title_concept || '트렌드 기획 ' + (idx+1)}</h4>
+                <div style="font-size: 0.78rem; color: var(--text-secondary); line-height: 1.4; margin-bottom: 8px;">${b.topic}</div>
+                <div style="font-size: 0.74rem; color: #38bdf8; background: rgba(56, 189, 248, 0.08); padding: 6px 8px; border-radius: 4px; margin-bottom: 8px;">
+                  <i class="fa-solid fa-user-tag"></i> <strong>타깃:</strong> ${b.target_audience || '감성 리스너'}
+                </div>
+                <div style="font-size: 0.74rem; color: #c084fc; background: rgba(192, 132, 252, 0.08); padding: 6px 8px; border-radius: 4px; margin-bottom: 12px;">
+                  <i class="fa-solid fa-bolt"></i> <strong>30초 후킹:</strong> ${b.angle}
+                </div>
               </div>
-              <div style="font-size: 0.74rem; color: var(--text-secondary); line-height: 1.3;">${b.topic}</div>
-              <div style="font-size: 0.7rem; color: #a78bfa; margin-top: 3px;"><i class="fa-solid fa-bolt"></i> <strong>후킹 포인트:</strong> ${b.angle}</div>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <button type="button" class="btn btn-xs btn-primary btn-auto-generate" data-idx="${idx}" style="background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); border: none; width: 100%; padding: 7px 0; font-weight: 600;">
+                  <i class="fa-solid fa-wand-magic-sparkles"></i> 이 브리프로 바로 작곡 시작 🎵
+                </button>
+                <button type="button" class="btn btn-xs btn-outline btn-select-brief" data-idx="${idx}" style="border-color: #38bdf8; color: #38bdf8; width: 100%; padding: 5px 0;">
+                  <i class="fa-solid fa-arrow-down"></i> 폼에 브리프 세팅만 하기
+                </button>
+              </div>
             </div>
           `).join('');
 
-          // 각 브리프 클릭 시 폼 자동 세팅
-          leoBriefList.querySelectorAll('.leo-brief-item').forEach((item) => {
-            item.addEventListener('click', () => {
-              const idx = parseInt(item.getAttribute('data-idx'), 10);
+          // 폼에 세팅하는 헬퍼 함수
+          const applyBriefToForm = (selectedBrief, cardEl) => {
+            currentLeoBrief = selectedBrief;
+            if (lunaGenreSelect && selectedBrief.genre) lunaGenreSelect.value = selectedBrief.genre;
+            if (lunaMoodSelect && selectedBrief.mood) lunaMoodSelect.value = selectedBrief.mood;
+            if (lunaTopicInput) lunaTopicInput.value = selectedBrief.topic || selectedBrief.title_concept;
+
+            leoBriefList.querySelectorAll('.leo-brief-card').forEach(el => {
+              el.style.borderColor = 'rgba(56, 189, 248, 0.3)';
+              el.style.background = 'rgba(255,255,255,0.02)';
+              el.style.boxShadow = 'none';
+            });
+            if (cardEl) {
+              cardEl.style.borderColor = '#c084fc';
+              cardEl.style.background = 'rgba(192, 132, 252, 0.08)';
+              cardEl.style.boxShadow = '0 0 15px rgba(192, 132, 252, 0.2)';
+            }
+          };
+
+          // 각 버튼 이벤트 바인딩
+          leoBriefList.querySelectorAll('.btn-select-brief').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const idx = parseInt(btn.getAttribute('data-idx'), 10);
+              const card = btn.closest('.leo-brief-card');
               const selectedBrief = briefs[idx];
               if (!selectedBrief) return;
+              applyBriefToForm(selectedBrief, card);
+              if (lunaMusicForm) {
+                lunaMusicForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }
+              showAlert(`[1단계 ➔ 2단계] 레오의 트렌드 브리프 '${selectedBrief.title_concept}'가 루나 작업대에 설정되었습니다!`, 'success');
+            });
+          });
 
-              currentLeoBrief = selectedBrief;
-
-              // 폼 필드 자동 완성
-              if (lunaGenreSelect && selectedBrief.genre) lunaGenreSelect.value = selectedBrief.genre;
-              if (lunaMoodSelect && selectedBrief.mood) lunaMoodSelect.value = selectedBrief.mood;
-              if (lunaTopicInput) lunaTopicInput.value = selectedBrief.topic || selectedBrief.title_concept;
-
-              // 하이라이트 표시
-              leoBriefList.querySelectorAll('.leo-brief-item').forEach(el => {
-                el.style.borderColor = 'rgba(56, 189, 248, 0.25)';
-                el.style.background = 'rgba(255,255,255,0.03)';
-              });
-              item.style.borderColor = '#c084fc';
-              item.style.background = 'rgba(192, 132, 252, 0.1)';
-
-              showAlert(`레오의 트렌드 브리프 '${selectedBrief.title_concept}'가 루나 기획 폼에 자동 반영되었습니다!`, 'success');
+          leoBriefList.querySelectorAll('.btn-auto-generate').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const idx = parseInt(btn.getAttribute('data-idx'), 10);
+              const card = btn.closest('.leo-brief-card');
+              const selectedBrief = briefs[idx];
+              if (!selectedBrief) return;
+              applyBriefToForm(selectedBrief, card);
+              if (lunaMusicForm) {
+                lunaMusicForm.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                // 폼 서브밋 트리거로 루나 곡 생성 즉시 시작
+                lunaMusicForm.dispatchEvent(new Event('submit', { cancelable: true }));
+              }
             });
           });
         }
@@ -2465,14 +2518,15 @@ document.addEventListener('DOMContentLoaded', () => {
         showAlert('레오 음악 트렌드 분석 오류: ' + err.message, 'error');
       } finally {
         btnFetchMusicTrends.disabled = false;
-        btnFetchMusicTrends.innerHTML = '<i class="fa-solid fa-bolt"></i> 트렌드 브리프 분석';
+        if (textSpan) textSpan.style.display = 'inline-block';
+        if (spinnerSpan) spinnerSpan.style.display = 'none';
       }
     });
   }
 
   // 고정 댓글 복사 기능
-  if (btnCopyPinnedComment && lunaPinnedCommentPreview) {
-    btnCopyPinnedComment.addEventListener('click', () => {
+  if (btnCopyLunaPinnedComment && lunaPinnedCommentPreview) {
+    btnCopyLunaPinnedComment.addEventListener('click', () => {
       const text = lunaPinnedCommentPreview.textContent || '';
       if (!text) return;
       navigator.clipboard.writeText(text).then(() => {
