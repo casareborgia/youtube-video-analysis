@@ -1124,6 +1124,7 @@ class LunaTrackGenerateRequest(BaseModel):
     mood: str = "dawn"
     custom_topic: Optional[str] = ""
     duration_seconds: Optional[int] = 180
+    leo_brief: Optional[dict] = None
 
 class LunaRenderVideoRequest(BaseModel):
     track_id: str
@@ -1141,18 +1142,37 @@ async def get_luna_presets():
         "moods": luna_engine.MOOD_PRESETS
     }
 
+@app.get("/api/trends/music-for-luna")
+async def get_music_trends_for_luna(region: str = "KR"):
+    """
+    [레오 1단계] 유튜브 실시간 음악 차트를 분석하여
+    루나 맞춤형 '음악 기획 브리프 3선'을 반환합니다.
+    """
+    try:
+        res = trend_scout.analyze_music_trends_for_luna(region_code=region)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"음악 트렌드 분석 실패: {e}")
+
 @app.post("/api/luna/generate")
 async def generate_luna_track(req: LunaTrackGenerateRequest):
-    """에이전트 루나 AI 음악 콘셉트 기획 및 Lyria 3 Pro 완곡 음원 & 앨범아트 생성"""
+    """
+    [루나 3단계 & 레오 4단계]
+    레오의 트렌드 브리프와 장르 독립 스펙을 결합하여
+    음원 콘셉트 기획, Lyria 3 Pro 완곡 음원, Imagen 앨범아트, 레오의 고정댓글 메타데이터까지 자동 생성
+    """
     try:
         concept = luna_engine.generate_music_concept(
             genre=req.genre,
             mood=req.mood,
-            custom_topic=req.custom_topic or ""
+            custom_topic=req.custom_topic or "",
+            leo_brief=req.leo_brief
         )
         track_id = f"luna_{int(time.time())}"
         concept["track_id"] = track_id
         concept["created_at"] = time.time()
+        if req.leo_brief:
+            concept["leo_brief"] = req.leo_brief
         
         # 음원 생성 (Lyria 3 Pro / 오토 신스)
         track_with_audio = luna_engine.generate_luna_audio(concept, duration_seconds=req.duration_seconds or 180)
@@ -1160,7 +1180,7 @@ async def generate_luna_track(req: LunaTrackGenerateRequest):
         # 앨범 커버 생성 (나노바나나)
         full_track = luna_engine.generate_luna_cover(track_with_audio)
         
-        # 메타데이터 생성 및 저장
+        # 레오의 4단계 알고리즘 메타데이터 생성 (고정댓글 포함) 및 저장
         meta = luna_engine.build_luna_metadata(full_track)
         full_track["metadata"] = meta
         luna_engine.save_track(full_track)

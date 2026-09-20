@@ -20,7 +20,7 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 LUNA_DIR = os.path.join(DATA_DIR, "luna_music")
 os.makedirs(LUNA_DIR, exist_ok=True)
 
-# ── 장르 및 무드 프리셋 ──────────────────────────────────────────────────
+# ── 장르 및 무드 독립 스펙 (하드코딩 닻내림 방지 & 완전 분리) ───────────────
 GENRE_PRESETS = [
     {"id": "lofi", "name": "Lo-Fi / Chillhop", "desc": "따뜻한 바이닐 노이즈와 칠한 비트, 공부/코딩/휴식용"},
     {"id": "ambient", "name": "Cinematic Ambient", "desc": "깊은 공간감과 서정적인 패드 사운드, 명상/수면용"},
@@ -29,6 +29,51 @@ GENRE_PRESETS = [
     {"id": "jazz", "name": "Late Night Jazz Cafe", "desc": "감미로운 피아노 트리오와 잔잔한 콘트라베이스"},
     {"id": "piano", "name": "Emotional Piano Solo", "desc": "한 편의 영화 같은 서정적이고 감동적인 피아노 멜로디"}
 ]
+
+GENRE_SPECS = {
+    "lofi": {
+        "name": "Lo-Fi / Chillhop",
+        "bpm_range": "70-85 BPM",
+        "instruments": "warm Fender Rhodes chords, dusty vinyl crackle, gentle acoustic bass, relaxed 75 bpm swing drums, mellow night jazz guitar licks",
+        "sound_texture": "warm analog tape saturation, cozy nostalgic bedroom ambience, relaxed chillhop swing",
+        "visual_style": "aesthetic Lo-Fi anime room at rainy night, cozy warm desk lamp, steaming cup of coffee next to glowing vintage radio, blurry city lights, Studio Ghibli inspired, ultra-detailed 8k, no text"
+    },
+    "ambient": {
+        "name": "Cinematic Ambient",
+        "bpm_range": "50-65 BPM or beatless",
+        "instruments": "lush evolving synthesizer pads, 432Hz harmonic soundscape, deep sub drone, shimmering ethereal reverb textures, subtle distant thunder and rain field recordings",
+        "sound_texture": "vast cosmic space, deep meditative stillness, healing ethereal overtones, no harsh beats, purely transcendent",
+        "visual_style": "cinematic vast cosmic nebula, calm starry mountain lake under glowing aurora borealis, solitary silhouette gazing at infinity, ethereal and breathtaking, 8k, no text"
+    },
+    "synthwave": {
+        "name": "Synthwave / Cyberpunk",
+        "bpm_range": "110-128 BPM",
+        "instruments": "vintage analog synthesizers (Juno-106, Moog bassline), driving 16th-note arpeggios, gated reverb 80s LinnDrum snare, punchy cybernetic kick, retro neon synth lead",
+        "sound_texture": "80s retro-futuristic night drive, high dynamic energy, pulsing highway groove, analog warmth with modern punch",
+        "visual_style": "cyberpunk neon-lit highway at midnight, sleek retro sports car speeding towards glowing wireframe grid horizon, vibrant magenta and cyan lighting, aesthetic 80s synthwave wallpaper, 8k, no text"
+    },
+    "sleep": {
+        "name": "Deep Sleep / Meditation",
+        "bpm_range": "45-55 BPM or beatless",
+        "instruments": "432Hz and 528Hz healing delta-theta brainwave tones, ultra-soft Tibetan singing bowl whispers, warm oceanic ambient pad swell, gentle bedtime rain soundscape, peaceful harp touches",
+        "sound_texture": "deep restorative relaxation, zero percussive attack, profound tranquility, anxiety-melting acoustic cocoon",
+        "visual_style": "deep indigo twilight sky, silver crescent moon illuminating calm tranquil ocean ripples, floating soft clouds, dreamlike peaceful oasis, 8k, no text"
+    },
+    "jazz": {
+        "name": "Late Night Jazz Cafe",
+        "bpm_range": "65-80 BPM",
+        "instruments": "warm grand piano chords with lyrical improvisation, walking acoustic double bass, brushed jazz snare drum and ride cymbal, muted brass accents",
+        "sound_texture": "smoky midnight jazz club, authentic live acoustic ensemble feel, sophisticated soulfulness, intimate cafe warmth",
+        "visual_style": "dimly lit vintage late-night jazz cafe, amber warm lighting, wooden grand piano with warm brass reflections, rain-slicked cobblestone street outside the window, cinematic mood, 8k, no text"
+    },
+    "piano": {
+        "name": "Emotional Piano Solo",
+        "bpm_range": "55-75 BPM",
+        "instruments": "solo concert grand piano with felt damping intimacy, expressive acoustic hammer and pedal resonance, subtle cinematic string quartet swell in background",
+        "sound_texture": "deeply emotional cinematic storytelling, expressive dynamic touch from pianissimo to forte, poignant and heart-touching melody",
+        "visual_style": "minimalist grand piano standing beside floor-to-ceiling glass window, soft golden hour sunlight breaking through mist, fallen autumn leaves, poetic elegance, cinematic depth of field, 8k, no text"
+    }
+}
 
 MOOD_PRESETS = [
     {"id": "dawn", "name": "새벽 감성 (Dawn Solitude)"},
@@ -40,68 +85,98 @@ MOOD_PRESETS = [
 ]
 
 
-# ── 1. 음악 콘셉트 및 프롬프트 AI 기획 ─────────────────────────────────
+# ── 1. 음악 콘셉트 및 프롬프트 동적 AI 기획 ─────────────────────────────
 
-def generate_music_concept(genre="lofi", mood="dawn", custom_topic=""):
+def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief=None):
     """
-    LLM을 활용하여 루나 표준 곡 제목, 감성 서사, Lyria 3 음악 프롬프트, 앨범아트 프롬프트를 생성합니다.
+    LLM(Gemini 3.6 Flash)을 활용하여 장르별 독립 스펙과 레오의 트렌드 브리프를 결합,
+    하드코딩 닻내림 없는 독창적인 곡 제목, 감성 서사, Lyria 3 작곡 프롬프트, 앨범아트 프롬프트를 생성합니다.
     """
-    genre_info = next((g for g in GENRE_PRESETS if g["id"] == genre), GENRE_PRESETS[0])
+    genre_key = genre if genre in GENRE_SPECS else "lofi"
+    genre_spec = GENRE_SPECS[genre_key]
+    genre_info = next((g for g in GENRE_PRESETS if g["id"] == genre_key), GENRE_PRESETS[0])
     mood_info = next((m for m in MOOD_PRESETS if m["id"] == mood), MOOD_PRESETS[0])
 
-    prompt = f"""당신은 전 세계 사람들에게 영혼의 위로와 깊은 몰입을 선사하는 AI 음악 아티스트 '에이전트 루나(Agent Luna)'의 수석 총괄 프로듀서입니다.
-새로운 싱글 음원 발매를 위해 음악 콘셉트, Lyria 3 작곡 프롬프트, 앨범 커버 비주얼 프롬프트를 완벽하게 기획하세요.
+    # 레오의 트렌드 브리프 정보 결합
+    trend_context = ""
+    if leo_brief and isinstance(leo_brief, dict):
+        trend_context = f"""
+[에이전트 레오(Leo)의 유튜브 실시간 음악 트렌드 분석 브리프]
+- 트렌드 핵심 테마: {leo_brief.get('topic', '')}
+- 시청자 심리 및 니즈: {leo_brief.get('audience_triggers', '')}
+- 추천 후킹 앵글: {leo_brief.get('angle', '')}
+- 핵심 트렌드 키워드: {', '.join(leo_brief.get('keywords', []))}
+"""
 
-[입력 조건]
-- 음악 장르: {genre_info['name']} ({genre_info['desc']})
+    prompt = f"""당신은 글로벌 AI 음악 아티스트 '에이전트 루나(Agent Luna)'의 수석 총괄 프로듀서이자 작곡가입니다.
+새로운 싱글 음원을 위해 주어진 장르 고유의 음악적 정체성을 철저히 지키면서, 독창적이고 감각적인 음악 콘셉트와 작곡/비주얼 프롬프트를 완성하세요.
+
+[필수 음악 사양 — 장르: {genre_spec['name']}]
+- 권장 BPM: {genre_spec['bpm_range']}
+- 필수 악기 편성: {genre_spec['instruments']}
+- 사운드 질감 & 무드: {genre_spec['sound_texture']}
+- 비주얼 기본 톤: {genre_spec['visual_style']}
 - 감성 무드: {mood_info['name']}
-- 사용자 추가 요청사항: {custom_topic or "자연스럽고 완성도 높은 시그니처 사운드"}
+- 추가 테마/요청: {custom_topic or "리스너의 깊은 몰입과 감정적 해소를 이끄는 완성도 높은 사운드"}
+{trend_context}
 
-[루나 브랜딩 표준 지침]
-1. 곡 제목(title): 시적이고 세련된 영문 제목 + 괄호 안 한글 부제 (예: Starlight Groove (별빛의 춤), Midnight Rain (자정의 비))
-2. 감성 서사(story): 시청자가 음악을 들으며 눈을 감고 상상할 수 있는 아련하고 서정적인 2~3문장의 한국어 스토리.
-3. Lyria 3 작곡 프롬프트(lyria_prompt): 
+[기획 원칙 (중요: 상투적인 클리셰와 특정 장르 편향 절대 금지)]
+1. 곡 제목(title): 장르와 무드의 정서를 압축한 감각적인 '영문 제목 (한글 부제)' 형식.
+   - 흔해 빠진 단어(Starlight, Midnight, Cafe 등)의 기계적 반복을 지양하고, 곡의 서사에 맞는 독창적인 단어를 선택할 것.
+2. 감성 서사(story): 시청자가 음악을 들으며 깊이 공감할 수 있는 2~3문장의 아련하고 서정적인 한국어 스토리.
+3. Lyria 3 작곡 프롬프트(lyria_prompt):
    - 반드시 '영문(English)'으로 작성.
-   - BPM, 핵심 악기 편성(Fender Rhodes, 따뜻한 서브베이스, 칠한 재즈 드럼, 바이닐 크랙클 등), 음악적 톤과 질감을 구체적으로 서술.
+   - 위에 명시된 {genre_spec['name']}의 [권장 BPM]과 [필수 악기 편성]을 반드시 포함할 것.
+   - 타 장르의 악기나 분위기(예: 신스웨이브에 어쿠스틱 기타를 넣거나, 앰비언트에 드럼비트를 넣는 행위)를 절대 섞지 말 것.
    - 'No vocals, purely instrumental, master quality, rich analog warmth' 필수 포함.
 4. 앨범 커버 프롬프트(visual_prompt):
    - 나노바나나/Imagen 생성용 영문 프롬프트 (16:9 와이드).
-   - 감성적인 로파이 애니메이션/시네마틱 실사 일러스트 씬, 미학적 조명, cozy atmosphere, ultra-detailed 8k, no text, no watermark.
+   - {genre_spec['name']}의 [비주얼 기본 톤]에 맞춘 시네마틱 씬 서술, 8k, no text, no watermark.
 5. 연관 태그(tags): 장르, 무드, 리스닝 상황을 아우르는 8개 태그 배열.
 
 [반환 형식 — 반드시 순수 JSON만 출력하세요]
 {{
-  "title": "Midnight Reverie (한밤의 몽상)",
-  "genre": "{genre_info['name']}",
+  "title": "영문 제목 (한글 부제)",
+  "genre": "{genre_spec['name']}",
   "mood": "{mood_info['name']}",
-  "story": "모두가 잠든 자정, 창밖으로 떨어지는 빗소리를 들으며 따뜻한 차 한 잔과 함께 나만의 생각에 빠져드는 시간...",
-  "lyria_prompt": "Warm lofi hip hop beat with cozy Fender Rhodes chords, dusty vinyl crackle, gentle acoustic bass, relaxed 75 bpm swing drums, mellow night ambience, melodic and melancholic, no vocals, purely instrumental, studio mastering quality",
-  "visual_prompt": "Cinematic aesthetic Lo-Fi anime room at rainy midnight, cozy warm interior lighting, desk with steaming cup of coffee next to glowing vintage lamp, raindrops on panoramic window showing blurry city lights, Studio Ghibli inspired, ultra-detailed 8k, atmospheric, no text",
-  "tags": ["에이전트루나", "AgentLuna", "로파이", "수면음악", "공부할때듣는음악", "Chillhop", "LofiBeats", "새벽감성"]
+  "story": "한국어 감성 서사 2~3문장",
+  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (BPM 및 장르 고유 악기 편성 포함)",
+  "visual_prompt": "영문 앨범 커버 프롬프트 (16:9)",
+  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"]
 }}"""
 
     messages = [
-        {"role": "system", "content": "You are the chief producer of AI music artist Agent Luna. Always output valid JSON only."},
+        {"role": "system", "content": "You are the chief producer of AI music artist Agent Luna. Output pure JSON only."},
         {"role": "user", "content": prompt}
     ]
 
     concept = None
     try:
-        parsed, raw = llm_client.call_llm_json(messages, max_tokens=2048, temperature=0.7)
-        if isinstance(parsed, dict) and parsed.get("title"):
+        parsed, raw = llm_client.call_llm_json(messages, max_tokens=2048, temperature=0.75)
+        if isinstance(parsed, dict) and parsed.get("title") and parsed.get("lyria_prompt"):
             concept = parsed
     except Exception as e:
-        print(f"[LunaEngine] LLM concept generation fallback: {e}")
+        print(f"[LunaEngine] LLM concept generation error: {e}")
 
+    # 장르별 독립 멀티 Fallback (LLM 불가 시에도 장르 구분이 확실히 되도록 보장)
     if not concept:
+        fallback_titles = {
+            "lofi": ("Velvet Afterglow (벨벳빛 노을)", "비 내린 오후, 젖은 아스팔트 위로 번지는 주황빛 가로등을 바라보며 나만의 작은 방에서 즐기는 온전한 휴식."),
+            "ambient": ("Aetherial Drift (에테르의 유영)", "끝없이 펼쳐진 은하수 사이로 고요히 흘러가는 시간, 온몸의 긴장이 풀리고 우주의 품에 안기는 순간."),
+            "synthwave": ("Neon Horizon (네온의 지평선)", "보랏빛 안개가 자욱한 자정의 고속도로, 끝없는 네온 불빛을 가르며 미래로 질주하는 드라이브의 전율."),
+            "sleep": ("Cradle of Stars (별들의 요람)", "오늘 하루 무거웠던 모든 생각과 불안을 밤하늘에 띄워 보내고, 부드러운 달빛 속에서 깊은 단잠으로 빠져듭니다."),
+            "jazz": ("Blue Hour Reverie (푸른 시간의 몽상)", "오래된 재즈 바 구석, 얼음 녹는 소리와 함께 스며드는 감미로운 피아노 선율이 귓가를 다정하게 스칩니다."),
+            "piano": ("Whispering Raindrops (빗방울의 속삭임)", "창가를 두드리는 빗방울 하나하나가 건반 위에 내려앉아, 가슴속 깊이 묻어둔 아련한 기억들을 깨웁니다.")
+        }
+        f_title, f_story = fallback_titles.get(genre_key, fallback_titles["lofi"])
         concept = {
-            "title": f"Starlight Serenade ({mood_info['name'].split(' ')[0]})",
-            "genre": genre_info["name"],
+            "title": f_title,
+            "genre": genre_spec["name"],
             "mood": mood_info["name"],
-            "story": "도심의 불빛이 하나둘 꺼져갈 때, 밤하늘의 고요한 별빛이 지친 마음에 건네는 다정한 위로의 멜로디.",
-            "lyria_prompt": f"Cozy {genre_info['name']} with warm analog chords, gentle acoustic guitar, ambient pads, mellow 72 bpm beat, peaceful night atmosphere, purely instrumental, no vocals, high fidelity 8k audio",
-            "visual_prompt": "A solitary figure looking out a cozy window at starry night sky, warm room lighting, aesthetic lofi anime style, dreamy and nostalgic, peaceful, 8k, no text",
-            "tags": ["에이전트루나", "AgentLuna", "AI음악", "힐링음악", "수면음악", "로파이", "Chillout", "BGM"]
+            "story": f_story,
+            "lyria_prompt": f"Masterpiece {genre_spec['name']} with {genre_spec['instruments']}, {genre_spec['bpm_range']}, {genre_spec['sound_texture']}, purely instrumental, no vocals, studio mastering quality",
+            "visual_prompt": genre_spec["visual_style"],
+            "tags": ["에이전트루나", "AgentLuna", "AI음악", genre_key, mood_info["name"].split(" ")[0], "BGM", "힐링음악", "몰입음악"]
         }
 
     return concept
@@ -406,37 +481,91 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
 
 # ── 5. 루나 표준 SEO 메타데이터 빌더 ─────────────────────────────────────
 
+# ── 5. 레오 ✕ 루나 알고리즘 SEO & 인게이지먼트 메타데이터 패키징 ─────────────
+
 def build_luna_metadata(track_data):
     """
-    에이전트 루나 공식 브랜딩 규격에 맞추어 유튜브 제목, 설명란, 태그를 조립합니다.
+    에이전트 레오의 유튜브 알고리즘 최적화 공식을 결합하여,
+    클릭률(CTR) 극대화 제목, 감성 SEO 설명란, 시청자 반응 유도용 고정 댓글(Pinned Comment)을 생성합니다.
     """
-    title = track_data.get("title") or "Midnight Serenade"
-    genre = track_data.get("genre") or "Lo-Fi"
+    title = track_data.get("title") or "Velvet Midnight"
+    genre = track_data.get("genre") or "Lo-Fi / Chillhop"
     mood = track_data.get("mood") or "새벽 감성"
     story = track_data.get("story") or "지친 하루의 끝, 마음을 편안하게 안아주는 루나의 멜로디."
+    duration_sec = int(track_data.get("duration_seconds") or 180)
+    duration_str = time.strftime('%M:%S', time.gmtime(duration_sec))
 
-    # 1. 제목 표준: 에이전트 루나 (Agent Luna) - [제목] | [무드] [장르]
-    yt_title = f"에이전트 루나 (Agent Luna) - {title} | {mood} {genre}"[:100]
+    # Gemini를 활용하여 레오의 감성 + 알고리즘 최적화 카피 동적 생성
+    prompt = f"""당신은 유튜브 알고리즘 마케팅 전문가 '에이전트 레오(Agent Leo)'입니다.
+음악 아티스트 '에이전트 루나(Agent Luna)'의 신곡 발매를 위해 유튜브 클릭률(CTR)과 댓글 참여율을 극대화하는 메타데이터를 작성하세요.
 
-    # 2. 설명란 표준 (감성 서사 + 타임라인 + 채널 구독 링크)
-    yt_desc = f"""{story}
+[곡 정보]
+- 곡 제목: {title}
+- 음악 장르: {genre}
+- 감성 무드: {mood}
+- 곡 서사 스토리: {story}
+- 곡 길이: {duration_str}
+
+[작성 요구사항]
+1. 유튜브 제목(youtube_title):
+   - '에이전트 루나 (Agent Luna) - {title} | [후킹 상황/감성] [장르]' 형식 (최대 90자).
+   - 예: 에이전트 루나 (Agent Luna) - {title} | 지친 하루 끝 깊은 수면을 위한 {genre}
+2. 레오의 고정 댓글(pinned_comment):
+   - 시청자가 영상을 끝까지 듣고 댓글을 달고 싶게 만드는 따뜻하고 도발적인 질문 (2~3문장).
+   - "가장 마음에 와닿은 멜로디 순간(타임스탬프)을 남겨주시면 루나가 답글을 전합니다 🌙" 포함.
+3. 감성 설명란(youtube_description):
+   - 1) 감성 서사 스토리
+   - 2) 프로듀싱 정보 (작곡: 에이전트 루나, 마케팅: 에이전트 레오, 엔진: Lyria 3 Pro)
+   - 3) 채널 구독 안내 문구
+   - 4) [Timeline] (0:00 {title} ~ {duration_str} Outro)
+   - 5) 해시태그 8개
+
+[반환 형식 — 순수 JSON만 출력]
+{{
+  "youtube_title": "유튜브 제목",
+  "pinned_comment": "고정 댓글 내용",
+  "youtube_description": "전체 설명란 내용"
+}}"""
+
+    messages = [
+        {"role": "system", "content": "You are Agent Leo, expert in YouTube growth and viral marketing. Output pure JSON only."},
+        {"role": "user", "content": prompt}
+    ]
+
+    meta_llm = None
+    try:
+        parsed, _ = llm_client.call_llm_json(messages, max_tokens=1500, temperature=0.7)
+        if isinstance(parsed, dict) and parsed.get("youtube_title"):
+            meta_llm = parsed
+    except Exception as e:
+        print(f"[LunaEngine] Leo metadata LLM generation error: {e}")
+
+    if meta_llm:
+        yt_title = meta_llm.get("youtube_title")[:100]
+        pinned_comment = meta_llm.get("pinned_comment") or f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? 0:00 {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 (가장 좋았던 순간을 타임스탬프로 남겨주세요)"
+        yt_desc = meta_llm.get("youtube_description") or ""
+    else:
+        # 안전 Fallback
+        yt_title = f"에이전트 루나 (Agent Luna) - {title} | {mood} {genre}"[:100]
+        pinned_comment = f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 (가장 좋았던 멜로디 순간을 타임스탬프로 남겨주시면 루나가 답글을 남겨드립니다)"
+        yt_desc = f"""{story}
 
 작곡 & 프로듀싱: 에이전트 루나 (Agent Luna)
+마케팅 & 채널 디렉팅: 에이전트 레오 (Agent Leo)
 사운드 엔진: Google DeepMind Lyria 3 Pro
 장르: {genre} | 분위기: {mood}
 
-✨ 에이전트 루나의 음악은 매일 새벽 당신의 휴식, 공부, 수면을 함께합니다.
+✨ 에이전트 루나의 음악은 매일 당신의 깊은 몰입과 평온한 수면을 함께합니다.
 구독과 좋아요로 루나의 다음 음악 여정에 함께해주세요 🌙
 👉 구독하기: https://www.youtube.com/@음악에이전트-c3j?sub_confirmation=1
 
 [Timeline]
 0:00 {title}
-{time.strftime('%M:%S', time.gmtime(int(track_data.get('duration_seconds') or 180)))} Outro
+{duration_str} Outro
 
-#에이전트루나 #AgentLuna #AI음악 #로파이 #수면음악 #공부할때듣는음악 #Lyria3 #LofiBeats #힐링음악"""
+#에이전트루나 #AgentLuna #에이전트레오 #AI음악 #수면음악 #공부할때듣는음악 #Lyria3 #힐링음악"""
 
-    # 3. 고정 태그 + 맞춤 태그
-    fixed_tags = ["에이전트 루나", "Agent Luna", "AI음악", "로파이", "수면음악", "공부할때듣는음악", "Lofi", "Chillhop", "Lyria 3", "BGM"]
+    fixed_tags = ["에이전트 루나", "Agent Luna", "에이전트 레오", "AI음악", "수면음악", "공부할때듣는음악", "Lyria 3", "BGM", "힐링음악"]
     custom_tags = track_data.get("tags") or []
     merged_tags = list(dict.fromkeys(fixed_tags + custom_tags))[:15]
 
@@ -444,6 +573,7 @@ def build_luna_metadata(track_data):
         "youtube_title": yt_title,
         "youtube_description": yt_desc,
         "youtube_tags": merged_tags,
+        "pinned_comment": pinned_comment,
         "category_id": 10,  # 10: 음악 (Music)
         "privacy_status": "public"
     }
@@ -479,17 +609,21 @@ def list_tracks():
         try:
             with open(p, encoding="utf-8") as f:
                 d = json.load(f)
+            meta = d.get("metadata") or {}
             tracks.append({
                 "track_id": d.get("track_id"),
                 "title": d.get("title"),
                 "genre": d.get("genre"),
                 "mood": d.get("mood"),
+                "story": d.get("story"),
                 "audio_url": d.get("audio_url"),
                 "cover_url": d.get("cover_url"),
                 "video_url": d.get("video_url"),
                 "duration_seconds": d.get("duration_seconds", 180),
                 "created_at": d.get("created_at") or os.path.getmtime(p),
-                "uploaded_video_id": d.get("uploaded_video_id")
+                "uploaded_video_id": d.get("uploaded_video_id"),
+                "uploaded_url": d.get("uploaded_url"),
+                "pinned_comment": meta.get("pinned_comment") or d.get("pinned_comment")
             })
         except Exception:
             continue
@@ -497,11 +631,12 @@ def list_tracks():
     return tracks
 
 
-# ── 7. 유튜브 루나 채널 원클릭 업로드 ────────────────────────────────────
+# ── 7. 유튜브 루나 채널 원클릭 업로드 & 레오의 고정댓글 자동 등록 ──────────
 
 def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None):
     """
-    렌더링된 루나 음악 영상을 유튜브 채널로 업로드합니다.
+    렌더링된 루나 음악 영상을 유튜브 채널로 업로드하고,
+    레오의 인게이지먼트 최적화 고정 댓글(Pinned Comment)을 자동으로 게시합니다.
     """
     def step(pct, msg):
         if progress_cb:
@@ -519,6 +654,7 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None):
         raise FileNotFoundError("렌더링된 비디오 파일이 없습니다. 먼저 비디오를 렌더링해주세요.")
 
     meta = build_luna_metadata(track)
+    track["metadata"] = meta
 
     step(20, f"유튜브 채널 업로드 준비 중: '{meta['youtube_title']}'...")
     
@@ -530,18 +666,21 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None):
         category_id=10,  # 음악 카테고리
         privacy=privacy_status,
         thumbnail_path=cover_path if os.path.exists(cover_path) else None,
+        pinned_comment=meta.get("pinned_comment"),
         progress=lambda stage, msg, pct: step(20 + int(pct * 0.7), msg)
     )
 
     track["uploaded_video_id"] = result.get("video_id")
     track["uploaded_url"] = result.get("url")
     track["uploaded_at"] = time.time()
+    track["comment_posted"] = result.get("comment_posted", False)
     save_track(track)
 
-    step(100, f"루나 유튜브 채널 업로드 완료! ({result.get('url')})")
+    step(100, f"루나 유튜브 채널 업로드 및 레오 고정댓글 완료! ({result.get('url')})")
     return {
         "status": "success",
         "video_id": result.get("video_id"),
         "url": result.get("url"),
-        "title": meta["youtube_title"]
+        "title": meta["youtube_title"],
+        "pinned_comment": meta.get("pinned_comment")
     }

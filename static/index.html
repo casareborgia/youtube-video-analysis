@@ -1094,6 +1094,22 @@
               Lyria 3 Pro 기반 고음질 완곡(3분) 작곡 ➔ 나노바나나 16:9 감성 비주얼 ➔ ffmpeg 켄번즈 영상 렌더링 ➔ 루나 유튜브 채널(@음악에이전트-c3j) 원클릭 업로드까지 전 과정을 원스톱으로 처리합니다.
             </div>
 
+            <!-- 레오의 실시간 음악 트렌드 분석 브리프 연동 -->
+            <div style="background: rgba(56, 189, 248, 0.06); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-size: 0.85rem; font-weight: 600; color: #38bdf8;">
+                  <i class="fa-solid fa-chart-line"></i> 1단계: 레오의 실시간 음악 트렌드 스카우팅
+                </span>
+                <button type="button" id="btnFetchMusicTrends" class="btn btn-xs btn-outline" style="border-color: #38bdf8; color: #38bdf8;">
+                  <i class="fa-solid fa-bolt"></i> 트렌드 브리프 분석
+                </button>
+              </div>
+              <div id="leoMusicBriefBox" style="display: none; margin-top: 10px;">
+                <div id="leoChartInsights" style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 8px; background: rgba(0,0,0,0.2); padding: 6px 10px; border-radius: 4px;"></div>
+                <div id="leoBriefList" style="display: flex; flex-direction: column; gap: 6px;"></div>
+              </div>
+            </div>
+
             <form id="lunaMusicForm">
               <div class="control-row">
                 <div class="control-group half">
@@ -1144,7 +1160,7 @@
               </div>
 
               <button type="submit" id="btnRunLunaGen" class="btn btn-primary btn-block" style="margin-top: 14px; background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); border: none;">
-                <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 1. 완곡 작곡 & 앨범아트 생성 (Lyria 3)</span>
+                <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 2~3단계. 완곡 작곡 & 앨범아트 생성 (Gemini x Lyria 3)</span>
                 <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 루나 완곡 작곡 & 앨범아트 생성 중...</span>
               </button>
             </form>
@@ -1176,8 +1192,8 @@
               <i class="fa-solid fa-music fa-3x" style="color: #a855f7; margin-bottom: 14px;"></i>
               <h4 style="margin: 0 0 8px 0; font-size: 1.05rem;">루나의 새로운 음악을 기획하세요</h4>
               <p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.5; margin: 0;">
-                좌측에서 장르와 무드를 고르고 <strong>[완곡 작곡 & 앨범아트 생성]</strong>을 클릭하면<br>
-                Lyria 3 Pro 고음질 완곡 음원과 감성 앨범 커버가 여기에 로드됩니다.
+                좌측에서 <strong>[트렌드 브리프 분석]</strong>으로 실시간 차트를 반영하거나<br>
+                직접 장르와 무드를 선택해 <strong>[완곡 작곡 & 앨범아트 생성]</strong>을 진행하세요.
               </p>
             </div>
 
@@ -1202,7 +1218,7 @@
               <!-- 2. 영상 렌더링 액션 바 -->
               <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; margin-bottom: 16px;">
                 <div>
-                  <strong style="font-size: 0.85rem;"><i class="fa-solid fa-video"></i> 2. 감성 켄번즈 음악 영상 렌더링</strong>
+                  <strong style="font-size: 0.85rem;"><i class="fa-solid fa-video"></i> 3단계. 감성 켄번즈 음악 영상 렌더링</strong>
                   <div style="font-size: 0.75rem; color: var(--text-secondary);">시네마틱 줌인 + 타이포그래피 자막 합성</div>
                 </div>
                 <button type="button" id="btnRenderLunaVideo" class="btn btn-sm btn-accent" style="background: #6366f1; border: none;">
@@ -1223,7 +1239,7 @@
               <div style="background: rgba(244, 63, 94, 0.05); border: 1px solid rgba(244, 63, 94, 0.2); border-radius: 8px; padding: 14px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
                   <span style="font-size: 0.85rem; font-weight: 600; color: #f43f5e;">
-                    <i class="fa-brands fa-youtube"></i> 3. 루나 채널 원클릭 업로드 (@음악에이전트-c3j)
+                    <i class="fa-brands fa-youtube"></i> 4단계: 레오의 알고리즘 패키징 & 원클릭 업로드
                   </span>
                   <select id="lunaPrivacySelect" class="form-select" style="width: auto; padding: 4px 8px; font-size: 0.8rem;">
                     <option value="public" selected>공개 (Public)</option>
@@ -1233,12 +1249,21 @@
                 </div>
 
                 <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 10px;">
-                  <div><strong>제목:</strong> <span id="lunaYtTitlePreview" style="color: #fff;"></span></div>
+                  <div><strong>유튜브 제목:</strong> <span id="lunaYtTitlePreview" style="color: #fff;"></span></div>
                   <div style="margin-top: 4px;"><strong>태그:</strong> <span id="lunaYtTagsPreview" style="color: #a78bfa;"></span></div>
                 </div>
 
+                <!-- 레오의 인게이지먼트 고정 댓글 (Pinned Comment) -->
+                <div style="background: rgba(168, 85, 247, 0.08); border: 1px dashed rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                    <strong style="font-size: 0.78rem; color: #c084fc;"><i class="fa-solid fa-thumbtack"></i> 레오의 추천 고정 댓글 (Pinned Comment)</strong>
+                    <button type="button" id="btnCopyPinnedComment" class="btn btn-xs btn-outline" style="font-size: 10px; padding: 2px 6px;">복사</button>
+                  </div>
+                  <div id="lunaPinnedCommentPreview" style="font-size: 0.78rem; color: var(--text-secondary); line-height: 1.4; white-space: pre-wrap;"></div>
+                </div>
+
                 <button type="button" id="btnUploadLunaYt" class="btn btn-primary btn-block" style="background: #e11d48; border: none;">
-                  <span class="btn-text"><i class="fa-solid fa-cloud-arrow-up"></i> 🚀 루나 유튜브 채널에 즉시 업로드</span>
+                  <span class="btn-text"><i class="fa-solid fa-cloud-arrow-up"></i> 🚀 루나 유튜브 채널에 즉시 업로드 & 고정댓글 등록</span>
                   <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 유튜브 업로드 중...</span>
                 </button>
                 <div id="lunaUploadResultBadge" style="display: none; margin-top: 8px; text-align: center;"></div>

@@ -2392,7 +2392,96 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnRefreshLunaHistory = document.getElementById('btnRefreshLunaHistory');
   const lunaHistoryList = document.getElementById('lunaHistoryList');
 
+  // 레오 트렌드 브리프 연동 요소
+  const btnFetchMusicTrends = document.getElementById('btnFetchMusicTrends');
+  const leoMusicBriefBox = document.getElementById('leoMusicBriefBox');
+  const leoChartInsights = document.getElementById('leoChartInsights');
+  const leoBriefList = document.getElementById('leoBriefList');
+  const lunaPinnedCommentPreview = document.getElementById('lunaPinnedCommentPreview');
+  const btnCopyPinnedComment = document.getElementById('btnCopyPinnedComment');
+
   let currentLunaTrack = null;
+  let currentLeoBrief = null;
+
+  // 1단계: 레오의 실시간 음악 트렌드 브리프 가져오기
+  if (btnFetchMusicTrends) {
+    btnFetchMusicTrends.addEventListener('click', async () => {
+      btnFetchMusicTrends.disabled = true;
+      btnFetchMusicTrends.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 분석 중...';
+
+      try {
+        const res = await fetch('/api/trends/music-for-luna?region=KR');
+        if (!res.ok) {
+          throw new Error('음악 트렌드 수집 실패');
+        }
+        const data = await res.json();
+        const analysis = data.analysis || {};
+        const briefs = analysis.luna_briefs || [];
+
+        if (leoMusicBriefBox) leoMusicBriefBox.style.display = 'block';
+        if (leoChartInsights) {
+          leoChartInsights.innerHTML = `<strong><i class="fa-solid fa-lightbulb" style="color:#38bdf8;"></i> 레오의 차트 인사이트:</strong> ${analysis.chart_insights || ''} <span style="color:#a78bfa; margin-left:6px;">#${(analysis.top_keywords || []).join(' #')}</span>`;
+        }
+
+        if (leoBriefList) {
+          leoBriefList.innerHTML = briefs.map((b, idx) => `
+            <div class="leo-brief-item" data-idx="${idx}" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 8px 10px; cursor: pointer; transition: all 0.2s;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <strong style="font-size: 0.82rem; color: #38bdf8;">${b.title_concept || '트렌드 기획 ' + (idx+1)}</strong>
+                <span class="badge badge-accent" style="font-size: 10px;">${b.genre_name || b.genre} • ${b.mood_name || b.mood}</span>
+              </div>
+              <div style="font-size: 0.74rem; color: var(--text-secondary); line-height: 1.3;">${b.topic}</div>
+              <div style="font-size: 0.7rem; color: #a78bfa; margin-top: 3px;"><i class="fa-solid fa-bolt"></i> <strong>후킹 포인트:</strong> ${b.angle}</div>
+            </div>
+          `).join('');
+
+          // 각 브리프 클릭 시 폼 자동 세팅
+          leoBriefList.querySelectorAll('.leo-brief-item').forEach((item) => {
+            item.addEventListener('click', () => {
+              const idx = parseInt(item.getAttribute('data-idx'), 10);
+              const selectedBrief = briefs[idx];
+              if (!selectedBrief) return;
+
+              currentLeoBrief = selectedBrief;
+
+              // 폼 필드 자동 완성
+              if (lunaGenreSelect && selectedBrief.genre) lunaGenreSelect.value = selectedBrief.genre;
+              if (lunaMoodSelect && selectedBrief.mood) lunaMoodSelect.value = selectedBrief.mood;
+              if (lunaTopicInput) lunaTopicInput.value = selectedBrief.topic || selectedBrief.title_concept;
+
+              // 하이라이트 표시
+              leoBriefList.querySelectorAll('.leo-brief-item').forEach(el => {
+                el.style.borderColor = 'rgba(56, 189, 248, 0.25)';
+                el.style.background = 'rgba(255,255,255,0.03)';
+              });
+              item.style.borderColor = '#c084fc';
+              item.style.background = 'rgba(192, 132, 252, 0.1)';
+
+              showAlert(`레오의 트렌드 브리프 '${selectedBrief.title_concept}'가 루나 기획 폼에 자동 반영되었습니다!`, 'success');
+            });
+          });
+        }
+      } catch (err) {
+        showAlert('레오 음악 트렌드 분석 오류: ' + err.message, 'error');
+      } finally {
+        btnFetchMusicTrends.disabled = false;
+        btnFetchMusicTrends.innerHTML = '<i class="fa-solid fa-bolt"></i> 트렌드 브리프 분석';
+      }
+    });
+  }
+
+  // 고정 댓글 복사 기능
+  if (btnCopyPinnedComment && lunaPinnedCommentPreview) {
+    btnCopyPinnedComment.addEventListener('click', () => {
+      const text = lunaPinnedCommentPreview.textContent || '';
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => {
+        showAlert('레오의 고정 댓글이 클립보드에 복사되었습니다!', 'success');
+      }).catch(() => {
+        showAlert('복사에 실패했습니다.', 'error');
+      });
+    });
+  }
 
   if (lunaMusicForm) {
     lunaMusicForm.addEventListener('submit', async (e) => {
@@ -2407,7 +2496,7 @@ document.addEventListener('DOMContentLoaded', () => {
       btnRunLunaGen.querySelector('.spinner').style.display = 'inline-block';
       if (lunaStatusBadge) {
         lunaStatusBadge.className = 'badge badge-accent';
-        lunaStatusBadge.textContent = '작곡 & 앨범아트 생성 중...';
+        lunaStatusBadge.textContent = 'Gemini 기획 & Lyria 완곡 작곡 중...';
       }
 
       try {
@@ -2418,7 +2507,8 @@ document.addEventListener('DOMContentLoaded', () => {
             genre: genre,
             mood: mood,
             custom_topic: customTopic,
-            duration_seconds: duration
+            duration_seconds: duration,
+            leo_brief: currentLeoBrief
           })
         });
 
@@ -2431,7 +2521,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentLunaTrack = track;
         renderLunaTrackView(track);
         loadLunaHistory();
-        showAlert(`'${track.title}' 완곡 음원과 앨범아트가 성공적으로 생성되었습니다!`, 'success');
+        showAlert(`'${track.title}' 완곡 음원과 앨범아트, 레오 메타데이터가 완성되었습니다!`, 'success');
       } catch (err) {
         showAlert('루나 음원 생성 실패: ' + err.message, 'error');
         if (lunaStatusBadge) {
@@ -2463,6 +2553,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const meta = track.metadata || {};
     if (lunaYtTitlePreview) lunaYtTitlePreview.textContent = meta.youtube_title || track.title;
     if (lunaYtTagsPreview) lunaYtTagsPreview.textContent = (meta.youtube_tags || []).slice(0, 5).join(', ') + '...';
+    if (lunaPinnedCommentPreview) {
+      lunaPinnedCommentPreview.textContent = meta.pinned_comment || track.pinned_comment || '';
+    }
 
     if (track.video_url) {
       if (lunaVideoPlayerBox) lunaVideoPlayerBox.style.display = 'block';

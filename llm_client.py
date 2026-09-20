@@ -13,8 +13,17 @@ import urllib.request
 import urllib.error
 from pathlib import Path
 
+import os
+import json
+import re
+import time
+import urllib.request
+import urllib.error
+from pathlib import Path
+
 LMSTUDIO_URL = "http://127.0.0.1:1234"
 OLLAMA_URL = "http://127.0.0.1:11434"
+DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -45,10 +54,10 @@ def _save_settings(data: dict):
 
 def _load_preference() -> str:
     try:
-        return _load_settings().get("llm_backend", "auto")
+        return _load_settings().get("llm_backend", "gemini")
     except Exception:
         pass
-    return "auto"
+    return "gemini"
 
 
 _preference = _load_preference()
@@ -72,8 +81,8 @@ def get_preference() -> str:
 def set_preference(pref: str) -> str:
     """사용자가 선택한 백엔드를 저장합니다 (재시작 후에도 유지)."""
     global _preference
-    if pref not in ("auto", "lmstudio", "ollama"):
-        raise ValueError("backend는 auto / lmstudio / ollama 중 하나여야 합니다.")
+    if pref not in ("gemini", "auto", "lmstudio", "ollama"):
+        raise ValueError("backend는 gemini / auto / lmstudio / ollama 중 하나여야 합니다.")
     _preference = pref
     try:
         data = {}
@@ -130,17 +139,42 @@ def _get_json(url: str, timeout: float = 1.5):
         return json.loads(r.read().decode("utf-8"))
 
 
+def _is_chat_model(model_name: str) -> bool:
+    """TTS, 오디오, 임베딩 모델을 제외하고 순수 텍스트/챗 모델인지 검사"""
+    m = model_name.lower()
+    for bad in ("tts", "voice", "embed", "bge", "rerank", "whisper", "audioldm"):
+        if bad in m:
+            return False
+    return True
+
+
 def detect_backend(force: str = None):
     """
-    실행 중인 로컬 LLM 백엔드를 감지합니다.
-    반환: {"name": "LM Studio"|"Ollama", "base": url, "model": str|None, "port": int} 또는 None
+    실행 중인 LLM 백엔드를 감지합니다.
+    Gemini(클라우드) > LM Studio > Ollama 순서 또는 사용자 설정에 따름.
     """
     global _preference
     force = (
         force
         or os.environ.get("TUBEINSIGHT_LLM_BACKEND", "").lower()
-        or (None if _preference == "auto" else _preference)
+        or (None if _preference in ("auto", "gemini") else _preference)
     )
+
+    # 1. Gemini 클라우드 백엔드 체크 (force in None or gemini)
+    if force in (None, "gemini"):
+        try:
+            import producer
+            key = producer.gemini_key()
+            if key:
+                return {
+                    "name": "Google Gemini",
+                    "backend_type": "gemini",
+                    "base": "https://generativelanguage.googleapis.com",
+                    "model": DEFAULT_GEMINI_MODEL,
+                    "port": 443,
+                }
+        except Exception:
+            pass
 
     now = time.time()
     if force is None and _cache["backend"] is not None and (now - _cache["ts"] < 8):
@@ -148,32 +182,37 @@ def detect_backend(force: str = None):
 
     backend = None
 
-    # 1. LM Studio 체크 (force in None or lmstudio)
+    # 2. LM Studio 체크 (force in None or lmstudio)
     if force in (None, "lmstudio"):
         try:
             data = _get_json(LMSTUDIO_URL + "/v1/models")
-            models = data.get("data") or []
-            model = models[0].get("id") if models else None
-            backend = {
-                "name": "LM Studio",
-                "backend_type": "lmstudio",
-                "base": LMSTUDIO_URL,
-                "model": model or "local",
-                "port": 1234,
-            }
+            all_models = [m.get("id") for m in (data.get("data") or []) if m.get("id")]
+            # TTS/임베딩 모델 제외하고 챗 모델 우선 필터링
+            chat_models = [m for m in all_models if _is_chat_model(m)]
+            selected = chat_models[0] if chat_models else (all_models[0] if all_models else None)
+            if selected:
+                backend = {
+                    "name": "LM Studio",
+                    "backend_type": "lmstudio",
+                    "base": LMSTUDIO_URL,
+                    "model": selected,
+                    "port": 1234,
+                }
         except Exception:
             backend = None
 
-    # 2. Ollama 체크 (force in None or ollama)
+    # 3. Ollama 체크 (force in None or ollama)
     if backend is None and force in (None, "ollama"):
         try:
             data = _get_json(OLLAMA_URL + "/api/tags")
-            models = [m.get("name") for m in (data.get("models") or []) if m.get("name")]
+            all_models = [m.get("name") for m in (data.get("models") or []) if m.get("name")]
+            chat_models = [m for m in all_models if _is_chat_model(m)]
+            selected = chat_models[0] if chat_models else (all_models[0] if all_models else None)
             backend = {
                 "name": "Ollama",
                 "backend_type": "ollama",
                 "base": OLLAMA_URL,
-                "model": models[0] if models else None,
+                "model": selected,
                 "port": 11434,
             }
         except Exception:
@@ -188,14 +227,29 @@ def detect_backend(force: str = None):
 
 def probe_all():
     """
-    두 백엔드의 실행 상태를 각각 확인합니다 (상단 상태 배지용).
-    반환: {"lmstudio": {"online": bool, "model": str, "models": list},
+    백엔드의 실행 상태를 각각 확인합니다 (상단 상태 배지용).
+    반환: {"gemini": {"online": bool, "model": str, "models": list},
+            "lmstudio": {"online": bool, "model": str, "models": list},
             "ollama": {"online": bool, "model": str, "models": list}}
     """
+    gem = {"online": False, "model": None, "models": [DEFAULT_GEMINI_MODEL, "gemini-2.5-flash", "gemini-1.5-pro"]}
+    try:
+        import producer
+        if producer.gemini_key():
+            gem = {
+                "online": True,
+                "model": DEFAULT_GEMINI_MODEL,
+                "models": [DEFAULT_GEMINI_MODEL, "gemini-2.5-flash", "gemini-1.5-pro"],
+            }
+    except Exception:
+        pass
+
     lms = {"online": False, "model": None, "models": []}
     try:
         data = _get_json(LMSTUDIO_URL + "/v1/models", timeout=1.2)
-        model_list = [m.get("id") for m in (data.get("data") or []) if m.get("id")]
+        raw_list = [m.get("id") for m in (data.get("data") or []) if m.get("id")]
+        chat_list = [m for m in raw_list if _is_chat_model(m)]
+        model_list = chat_list if chat_list else raw_list
         lms = {
             "online": True,
             "model": model_list[0] if model_list else "서버 켜짐 (모델 미선택)",
@@ -207,7 +261,9 @@ def probe_all():
     oll = {"online": False, "model": None, "models": []}
     try:
         data = _get_json(OLLAMA_URL + "/api/tags", timeout=1.2)
-        model_list = [m.get("name") for m in (data.get("models") or []) if m.get("name")]
+        raw_list = [m.get("name") for m in (data.get("models") or []) if m.get("name")]
+        chat_list = [m for m in raw_list if _is_chat_model(m)]
+        model_list = chat_list if chat_list else raw_list
         oll = {
             "online": True,
             "model": model_list[0] if model_list else "모델 설치 필요",
@@ -216,11 +272,67 @@ def probe_all():
     except Exception:
         pass
 
-    return {"lmstudio": lms, "ollama": oll}
+    return {"gemini": gem, "lmstudio": lms, "ollama": oll}
 
 
 def get_active_backend(force=None):
     return detect_backend(force=force)
+
+
+def call_gemini(
+    messages: list,
+    model: str = DEFAULT_GEMINI_MODEL,
+    temperature: float = 0.7,
+    max_tokens: int = 4096,
+    json_mode: bool = False,
+) -> str:
+    """Google Gemini 3.6 Flash 클라우드 엔진을 호출합니다."""
+    import producer
+    client = producer.get_genai_client()
+
+    system_text = ""
+    user_parts = []
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content", "")
+        if role == "system":
+            system_text += content + "\n"
+        elif role == "user":
+            user_parts.append(content)
+        elif role == "assistant":
+            user_parts.append(f"[Assistant]: {content}")
+
+    combined_prompt = "\n\n".join(user_parts)
+    if not combined_prompt and system_text:
+        combined_prompt = system_text
+        system_text = ""
+
+    config = {
+        "temperature": temperature,
+        "max_output_tokens": max_tokens,
+    }
+    if system_text:
+        config["system_instruction"] = system_text.strip()
+    if json_mode:
+        config["response_mime_type"] = "application/json"
+
+    try:
+        resp = client.models.generate_content(
+            model=model,
+            contents=combined_prompt,
+            config=config,
+        )
+        return resp.text or ""
+    except Exception as e:
+        if json_mode:
+            config.pop("response_mime_type", None)
+            resp = client.models.generate_content(
+                model=model,
+                contents=combined_prompt,
+                config=config,
+            )
+            return resp.text or ""
+        raise e
 
 
 def call_llm(
@@ -231,20 +343,39 @@ def call_llm(
     json_mode: bool = False,
 ) -> str:
     """
-    사용 가능한 로컬 LLM(LM Studio 또는 Ollama)으로 메시지를 전송합니다.
-    - finish_reason == 'length' 시 자동으로 이어쓰기를 수행합니다.
+    사용 가능한 LLM(Google Gemini 또는 로컬 LM Studio/Ollama)으로 메시지를 전송합니다.
     """
     backend = detect_backend()
 
+    # 1. Gemini 클라우드 백엔드 처리
+    if backend and backend.get("backend_type") == "gemini":
+        model_name = _selected_model or backend.get("model") or DEFAULT_GEMINI_MODEL
+        try:
+            return call_gemini(
+                messages,
+                model=model_name,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                json_mode=json_mode,
+            )
+        except Exception as ge:
+            print(f"[LLM Client] Gemini 호출 실패 -> 로컬 AI fallback 시도: {ge}")
+            # 로컬 백엔드가 있으면 대체
+            local_be = detect_backend(force="lmstudio") or detect_backend(force="ollama")
+            if local_be:
+                backend = local_be
+            else:
+                raise
+
     if backend is None:
-        if _preference != "auto":
+        if _preference not in ("auto", "gemini"):
             name = "LM Studio" if _preference == "lmstudio" else "Ollama"
             raise RuntimeError(
                 f"선택한 {name}이(가) 꺼져 있습니다. {name}을(를) 실행하거나, "
                 "상단의 백엔드 배지를 다시 클릭해 자동(Auto) 모드로 전환해주세요."
             )
         raise RuntimeError(
-            "로컬 AI를 찾을 수 없습니다. LM Studio(포트 1234) 또는 Ollama(포트 11434)를 실행해주세요."
+            "사용 가능한 AI를 찾을 수 없습니다. Gemini API 키를 등록하거나 LM Studio/Ollama를 실행해주세요."
         )
 
     if not backend.get("model"):

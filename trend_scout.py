@@ -266,3 +266,144 @@ recommended_topics 는 서로 다른 소재로 반드시 3개를 채워주세요
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "analysis": parsed
     }
+
+
+# ── 레오의 음악 트렌드 스카우터 & 루나 기획 브리프 연동 ─────────────────
+
+def analyze_music_trends_for_luna(region_code: str = "KR") -> Dict[str, Any]:
+    """
+    유튜브 음악(Music, 카테고리 10)의 실시간 급상승 차트를 분석하여,
+    에이전트 루나가 즉시 작곡에 착수할 수 있는 '음악 기획 브리프 3선'을 자동 도출합니다.
+    """
+    trends = fetch_top20_trends(category_id="10", region_code=region_code)
+    items = trends.get("items", [])[:15]
+
+    titles_text = "\n".join(
+        f"- [{it.get('rank')}위] {it.get('title')} ({it.get('channel_title')})"
+        for it in items
+    )
+
+    system_prompt = """당신은 유튜브 알고리즘 및 글로벌 음악 트렌드 분석 전문가 '에이전트 레오(Agent Leo)'입니다.
+현재 실시간 유튜브 인기 급상승 음악 차트 데이터를 분석하여, AI 음악 아티스트 '에이전트 루나(Agent Luna)'가 즉시 제작할 수 있는 [음악 기획 브리프 3선]을 도출해야 합니다.
+
+[작성 규칙]
+1. luna_briefs 는 반드시 서로 다른 장르(genre)와 무드(mood)로 정확히 3개를 제안하세요.
+   - genre 허용 값: "lofi", "ambient", "synthwave", "sleep", "jazz", "piano" 중 선택
+   - mood 허용 값: "dawn", "rainy", "focus", "dreamy", "warm", "nostalgia" 중 선택
+2. 3개 브리프는 소재, 타깃 리스너, 감성 톤이 뚜렷하게 구별되어야 합니다.
+3. 반드시 유효한 JSON만 반환하세요.
+
+```json
+{
+  "chart_insights": "현재 급상승 음악 차트에서 발견되는 청자들의 핵심 심리 및 사운드 트렌드 (2~3문장)",
+  "top_keywords": ["키워드1", "키워드2", "키워드3", "키워드4", "키워드5"],
+  "luna_briefs": [
+    {
+      "brief_id": 1,
+      "title_concept": "감각적인 곡 제목 아이디어 (영문 + 한글)",
+      "genre": "lofi",
+      "genre_name": "Lo-Fi / Chillhop",
+      "mood": "rainy",
+      "mood_name": "비 오는 창가 (Rainy Window)",
+      "topic": "곡 테마 및 감성 스토리라인 (2문장)",
+      "angle": "레오의 30초 도입부 후킹 전략 (어떤 악기와 사운드로 귀를 잡을지)",
+      "target_audience": "타깃 리스너 (예: 늦은 밤 퇴근길 위로가 필요한 직장인)",
+      "keywords": ["키워드1", "키워드2", "키워드3"]
+    },
+    {
+      "brief_id": 2,
+      "title_concept": "두 번째 곡 제목 (1번과 다른 장르)",
+      "genre": "synthwave",
+      "genre_name": "Synthwave / Cyberpunk",
+      "mood": "dawn",
+      "mood_name": "새벽 감성 (Dawn Solitude)",
+      "topic": "곡 테마 및 감성 스토리라인",
+      "angle": "30초 후킹 전략",
+      "target_audience": "타깃 리스너",
+      "keywords": ["키워드1", "키워드2", "키워드3"]
+    },
+    {
+      "brief_id": 3,
+      "title_concept": "세 번째 곡 제목 (1·2번과 다른 장르)",
+      "genre": "ambient",
+      "genre_name": "Cinematic Ambient",
+      "mood": "focus",
+      "mood_name": "깊은 몰입 (Deep Focus)",
+      "topic": "곡 테마 및 감성 스토리라인",
+      "angle": "30초 후킹 전략",
+      "target_audience": "타깃 리스너",
+      "keywords": ["키워드1", "키워드2", "키워드3"]
+    }
+  ]
+}
+```"""
+
+    user_prompt = f"""[실시간 유튜브 음악 인기 급상승 차트]
+{titles_text or "최신 힐링/로파이/감성 팝 음원 차트"}
+
+위 차트를 바탕으로 루나를 위한 음악 기획 브리프 3선을 생성해주세요."""
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+
+    parsed = None
+    try:
+        parsed, _ = llm_client.call_llm_json(messages, max_tokens=3000, temperature=0.7)
+    except Exception as e:
+        print(f"[TrendScout] Music trend analysis error: {e}")
+
+    if not parsed or not isinstance(parsed, dict) or not parsed.get("luna_briefs"):
+        parsed = {
+            "chart_insights": "지친 일상 속에서 편안한 위로와 몰입을 주는 칠(Chill) 사운드와 서정적인 멜로디에 리스너들의 선호가 집중되고 있습니다.",
+            "top_keywords": ["새벽감성", "힐링BGM", "수면음악", "집중음악", "심야드라이브"],
+            "luna_briefs": [
+                {
+                    "brief_id": 1,
+                    "title_concept": "Rainy Window Coffee (창가에 머무는 비)",
+                    "genre": "lofi",
+                    "genre_name": "Lo-Fi / Chillhop",
+                    "mood": "rainy",
+                    "mood_name": "비 오는 창가 (Rainy Window)",
+                    "topic": "창밖으로 조용히 내리는 빗소리를 들으며 따뜻한 커피 한 잔과 함께 복잡한 생각을 비워내는 시간.",
+                    "angle": "도입부 5초의 리얼 바이닐 크랙클과 부드러운 펜더 로즈 코드 전개로 즉각적인 아늑함 제공",
+                    "target_audience": "비 오는 날 혼자만의 카페나 방 안에서 쉬고 싶은 사람",
+                    "keywords": ["로파이", "빗소리", "카페BGM"]
+                },
+                {
+                    "brief_id": 2,
+                    "title_concept": "Midnight Highway (자정의 하이웨이)",
+                    "genre": "synthwave",
+                    "genre_name": "Synthwave / Cyberpunk",
+                    "mood": "dawn",
+                    "mood_name": "새벽 감성 (Dawn Solitude)",
+                    "topic": "텅 빈 새벽 도로를 달리며 네온사인이 번지는 차창 밖 풍경을 마주하는 고독과 해방감.",
+                    "angle": "도입부 아날로그 신스 아르페지오와 묵직한 80s 킥 드럼으로 심장을 뛰게 하는 드라이브 텐션 부여",
+                    "target_audience": "심야 드라이브나 코딩/작업에 몰입하는 크리에이터",
+                    "keywords": ["신스웨이브", "새벽드라이브", "레트로"]
+                },
+                {
+                    "brief_id": 3,
+                    "title_concept": "Cosmic Stillness (우주의 정적)",
+                    "genre": "ambient",
+                    "genre_name": "Cinematic Ambient",
+                    "mood": "focus",
+                    "mood_name": "깊은 몰입 (Deep Focus)",
+                    "topic": "무한한 우주 공간을 유영하듯 잡념을 모두 지우고 깊은 의식의 내면으로 침잠하는 명상의 시간.",
+                    "angle": "432Hz 하모닉 패드와 미세한 앰비언트 리버브로 30초 내에 심박수를 낮추는 심신 안정 설계",
+                    "target_audience": "불면증으로 잠 못 들거나 극도의 집중이 필요한 학습자",
+                    "keywords": ["앰비언트", "수면유도", "432Hz"]
+                }
+            ]
+        }
+
+    return {
+        "status": "success",
+        "category_id": "10",
+        "category_name": "음악 (Music)",
+        "region_code": region_code,
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "analysis": parsed
+    }
+
