@@ -926,6 +926,7 @@
                   <label for="ytUploadPrivacy"><i class="fa-solid fa-eye"></i> 공개 상태</label>
                   <select id="ytUploadPrivacy" class="form-select">
                     <option value="unlisted" selected>일부 공개 (Unlisted - 권장)</option>
+                    <option value="scheduled">📅 예약 공개 (Scheduled)</option>
                     <option value="private">비공개 (Private)</option>
                     <option value="public">즉시 공개 (Public)</option>
                   </select>
@@ -934,6 +935,28 @@
                   <label for="ytUploadCategory"><i class="fa-solid fa-tag"></i> 카테고리 ID</label>
                   <input type="text" id="ytUploadCategory" class="form-control" value="28">
                 </div>
+              </div>
+
+              <!-- 📅 4단계 예약 공개 일시 설정 박스 -->
+              <div id="ytUploadScheduleBox" style="display: none; background: rgba(0,0,0,0.3); border: 1px dashed rgba(244, 63, 94, 0.4); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
+                <label for="ytUploadScheduleTime" style="font-size: 0.78rem; color: #f43f5e; font-weight: 600; margin-bottom: 4px; display: block;">
+                  <i class="fa-solid fa-clock"></i> 자동 공개 일시 (KST)
+                </label>
+                <input type="datetime-local" id="ytUploadScheduleTime" class="form-control" style="font-size: 0.82rem; padding: 6px 10px;">
+                <div style="display: flex; gap: 6px; margin-top: 6px;">
+                  <button type="button" class="btn btn-xs btn-outline btn-yt-schedule-preset" data-preset="plus2h">+2시간</button>
+                  <button type="button" class="btn btn-xs btn-outline btn-yt-schedule-preset" data-preset="today8pm">오늘 20시</button>
+                  <button type="button" class="btn btn-xs btn-outline btn-yt-schedule-preset" data-preset="tomorrow9am">내일 09시</button>
+                  <button type="button" class="btn btn-xs btn-outline btn-yt-schedule-preset" data-preset="tomorrow8pm">내일 20시</button>
+                </div>
+              </div>
+
+              <!-- 🎧 4단계 유튜브 재생목록 선택 -->
+              <div class="control-group">
+                <label for="ytUploadPlaylist"><i class="fa-solid fa-list-ul"></i> 재생목록 (Playlist) 배정 (선택)</label>
+                <select id="ytUploadPlaylist" class="form-select" style="font-size: 0.82rem;">
+                  <option value="">재생목록 선택 안 함</option>
+                </select>
               </div>
 
               <!-- 레오의 고정 댓글 자동 등록 -->
@@ -1101,7 +1124,10 @@
             <span style="color: var(--text-muted);">➔</span>
             <span class="badge" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.3); padding: 4px 8px;">3. 켄번즈 렌더링</span>
             <span style="color: var(--text-muted);">➔</span>
-            <span class="badge" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.3); padding: 4px 8px;">4. 레오 고정댓글 업로드</span>
+            <span class="badge" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.3); padding: 4px 8px;">4. 레오 고정댓글 & 업로드</span>
+            <button type="button" id="btnOpenPlaylistManagerModal" class="btn btn-xs btn-outline" style="margin-left: 10px; border-color: #38bdf8; color: #38bdf8; font-weight: 600; padding: 4px 10px;">
+              <i class="fa-solid fa-list-check"></i> 🗂️ 플레이리스트 스마트 매니저
+            </button>
           </div>
         </div>
 
@@ -1282,10 +1308,55 @@
                     <i class="fa-brands fa-youtube"></i> 4단계: 레오의 알고리즘 패키징 & 원클릭 업로드
                   </span>
                   <select id="lunaPrivacySelect" class="form-select" style="width: auto; padding: 4px 8px; font-size: 0.8rem;">
-                    <option value="public" selected>공개 (Public)</option>
+                    <option value="public" selected>즉시 공개 (Public)</option>
+                    <option value="scheduled">📅 예약 공개 (Scheduled)</option>
                     <option value="unlisted">일부공개 (Unlisted)</option>
                     <option value="private">비공개 (Private)</option>
                   </select>
+                </div>
+
+                <!-- 📅 예약 공개 시 나타나는 날짜/시간 설정 박스 -->
+                <div id="lunaScheduleBox" style="display: none; background: rgba(0,0,0,0.3); border: 1px dashed rgba(244, 63, 94, 0.4); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label for="lunaScheduleTime" style="font-size: 0.78rem; color: #f43f5e; font-weight: 600; margin: 0;">
+                      <i class="fa-solid fa-clock"></i> 자동 공개 일시 (한국 표준시 KST)
+                    </label>
+                    <span style="font-size: 0.72rem; color: var(--text-muted);">지정 시각까지 비공개로 대기</span>
+                  </div>
+                  <input type="datetime-local" id="lunaScheduleTime" class="form-control" style="font-size: 0.82rem; padding: 6px 10px;">
+                  <div style="display: flex; gap: 6px; margin-top: 6px;">
+                    <button type="button" class="btn btn-xs btn-outline btn-schedule-preset" data-preset="plus2h">+2시간 후</button>
+                    <button type="button" class="btn btn-xs btn-outline btn-schedule-preset" data-preset="today8pm">오늘 저녁 8시</button>
+                    <button type="button" class="btn btn-xs btn-outline btn-schedule-preset" data-preset="tomorrow9am">내일 아침 9시</button>
+                    <button type="button" class="btn btn-xs btn-outline btn-schedule-preset" data-preset="tomorrow8pm">내일 저녁 8시</button>
+                  </div>
+                </div>
+
+                <!-- 🎧 유튜브 재생목록(Playlist) AI 자동 배정 -->
+                <div style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label for="lunaPlaylistSelect" style="font-size: 0.8rem; color: #38bdf8; font-weight: 600; margin: 0;">
+                      <i class="fa-solid fa-list-ul"></i> 유튜브 재생목록 (Playlist) 자동 배정
+                    </label>
+                    <button type="button" id="btnToggleNewPlaylistForm" class="btn btn-xs btn-outline" style="border-color: #38bdf8; color: #38bdf8; font-size: 10px; padding: 2px 6px;">
+                      <i class="fa-solid fa-plus"></i> 새 재생목록 생성
+                    </button>
+                  </div>
+                  <select id="lunaPlaylistSelect" class="form-select" style="font-size: 0.82rem; margin-bottom: 4px;">
+                    <option value="">재생목록 로딩 중...</option>
+                  </select>
+                  <div id="lunaPlaylistAiNotice" style="font-size: 0.74rem; color: #38bdf8; line-height: 1.4; margin-top: 4px;">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> AI 추천 플레이리스트 분석 중...
+                  </div>
+
+                  <!-- 새 재생목록 생성 인라인 폼 -->
+                  <div id="lunaNewPlaylistForm" style="display: none; margin-top: 8px; border-top: 1px dashed rgba(56, 189, 248, 0.3); padding-top: 8px;">
+                    <input type="text" id="newPlaylistTitleInput" class="form-control" placeholder="새 재생목록 제목 (예: [Lo-Fi] Rainy Night Mood)" style="font-size: 0.8rem; margin-bottom: 4px;">
+                    <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                      <button type="button" id="btnCancelCreatePlaylist" class="btn btn-xs btn-outline">취소</button>
+                      <button type="button" id="btnSubmitCreatePlaylist" class="btn btn-xs btn-primary" style="background: #0284c7; border: none;">생성 & 선택</button>
+                    </div>
+                  </div>
                 </div>
 
                 <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 10px;">
@@ -1295,15 +1366,20 @@
 
                 <!-- 레오의 인게이지먼트 고정 댓글 (Pinned Comment) -->
                 <div style="background: rgba(168, 85, 247, 0.08); border: 1px dashed rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
-                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                    <strong style="font-size: 0.78rem; color: #c084fc;"><i class="fa-solid fa-thumbtack"></i> 레오의 추천 고정 댓글 (Pinned Comment)</strong>
-                    <button type="button" id="btnCopyLunaPinnedComment" class="btn btn-xs btn-outline" style="font-size: 10px; padding: 2px 6px;">복사</button>
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                    <label for="lunaPinnedCommentInput" style="margin: 0; font-size: 0.78rem; font-weight: 700; color: #c084fc; cursor: pointer;">
+                      <i class="fa-solid fa-thumbtack"></i> 레오의 추천 고정 댓글 (업로드 시 자동 등록 & 직접 수정 가능)
+                    </label>
+                    <button type="button" id="btnCopyLunaPinnedComment" class="btn btn-xs btn-outline" style="font-size: 10px; padding: 2px 6px;">
+                      <i class="fa-solid fa-copy"></i> 복사
+                    </button>
                   </div>
-                  <div id="lunaPinnedCommentPreview" style="font-size: 0.78rem; color: var(--text-secondary); line-height: 1.4; white-space: pre-wrap;"></div>
+                  <textarea id="lunaPinnedCommentInput" class="form-control" rows="3" style="font-size: 0.8rem; background: rgba(0,0,0,0.5); border-color: rgba(168,85,247,0.4); color: #fff; line-height: 1.4; resize: vertical;" placeholder="업로드 즉시 최상단에 자동 등록할 고정 댓글을 확인하거나 수정하세요."></textarea>
+                  <div id="lunaPinnedCommentPreview" style="display: none;"></div>
                 </div>
 
                 <button type="button" id="btnUploadLunaYt" class="btn btn-primary btn-block" style="background: #e11d48; border: none;">
-                  <span class="btn-text"><i class="fa-solid fa-cloud-arrow-up"></i> 🚀 루나 유튜브 채널에 즉시 업로드 & 고정댓글 등록</span>
+                  <span class="btn-text"><i class="fa-solid fa-cloud-arrow-up"></i> 🚀 루나 유튜브 채널에 즉시/예약 업로드 & 플레이리스트 추가</span>
                   <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 유튜브 업로드 중...</span>
                 </button>
                 <div id="lunaUploadResultBadge" style="display: none; margin-top: 8px; text-align: center;"></div>
@@ -1493,6 +1569,48 @@
       </div>
     </div>
 
+    <!-- 🗂️ 채널 플레이리스트 스마트 매니저 모달 -->
+    <div id="playlistManagerModal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="max-width: 780px; max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid var(--border-color);">
+          <div>
+            <h3 style="margin: 0; font-size: 1.15rem; color: #38bdf8;">
+              <i class="fa-solid fa-list-check"></i> 채널 플레이리스트 스마트 매니저
+            </h3>
+            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px;">
+              업로드된 곡 중 플레이리스트에 배정되지 않은 곡들을 AI가 분석하여 최적의 플레이리스트에 일괄 배정합니다.
+            </div>
+          </div>
+          <button type="button" id="btnClosePlaylistManagerModal" class="btn-close">&times;</button>
+        </div>
+
+        <!-- 일괄 배정 요약 및 액션 바 -->
+        <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="unassignedCountBadge" class="badge" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.3);">
+              미배정 0곡 탐지됨
+            </span>
+            <span style="font-size: 0.78rem; color: var(--text-muted);">AI가 각 곡의 사운드 스펙에 맞춰 최적의 플레이리스트를 배정했습니다.</span>
+          </div>
+          <button type="button" id="btnBatchAssignPlaylists" class="btn btn-sm btn-primary" style="background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%); border: none; font-weight: 600;">
+            <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> ✨ AI 추천대로 전체 일괄 배정하기</span>
+            <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 일괄 배정 처리 중...</span>
+          </button>
+        </div>
+
+        <!-- 미배정 곡 목록 스크롤 영역 -->
+        <div id="unassignedPlaylistList" style="flex: 1; overflow-y: auto; padding: 14px 0; display: flex; flex-direction: column; gap: 10px;">
+          <div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 30px;">
+            <i class="fa-solid fa-circle-notch fa-spin" style="color: #38bdf8;"></i> 미배정 곡 및 AI 추천 플레이리스트 분석 중...
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding-top: 12px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">
+          <button type="button" id="btnCancelPlaylistManagerModal" class="btn btn-sm btn-outline">닫기</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 하단 상태 바 -->
     <footer class="app-footer">
       <span><i class="fa-solid fa-bolt"></i> TubeInsight AI • 8초 씬 비디오 기획 & 무료 Edge-TTS / Qwen-TTS</span>
@@ -1500,6 +1618,6 @@
     </footer>
   </div>
 
-  <script src="/static/app.js?v=20260921-upload-fix-final"></script>
+  <script src="/static/app.js?v=20260922-pinned-comment-fix"></script>
 </body>
 </html>

@@ -2028,6 +2028,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (selectId) producerPlanSelect.value = selectId;
   }
 
+  if (producerPlanSelect) {
+    producerPlanSelect.addEventListener('change', () => {
+      const selectedOpt = producerPlanSelect.options[producerPlanSelect.selectedIndex];
+      if (selectedOpt && selectedOpt.value) {
+        const planTitle = selectedOpt.text.split('—')[0].trim();
+        if (ytUploadTitle && !ytUploadTitle.value) ytUploadTitle.value = planTitle;
+        if (ytUploadDesc && !ytUploadDesc.value) {
+          ytUploadDesc.value = `${planTitle}\n\nAI 프로듀서 레오가 기획·제작한 쇼츠 영상입니다.\n\n#Shorts #AI영상 #트렌드`;
+        }
+        if (ytUploadPinnedComment && !ytUploadPinnedComment.value) {
+          ytUploadPinnedComment.value = '영상 재미있게 시청하셨나요? 여러분의 소중한 생각을 댓글로 남겨주시면 레오가 직접 답글을 남겨드립니다! ✨';
+        }
+      }
+    });
+  }
+
   async function checkYoutubeStatus() {
     if (!ytAuthBadge) return;
     try {
@@ -2117,6 +2133,9 @@ document.addEventListener('DOMContentLoaded', () => {
           if (ytUploadDesc && !ytUploadDesc.value) {
             ytUploadDesc.value = 'AI로 자동 제작된 유튜브 쇼츠 영상입니다. #Shorts #AI영상';
           }
+          if (ytUploadPinnedComment && !ytUploadPinnedComment.value) {
+            ytUploadPinnedComment.value = '영상 재미있게 시청하셨나요? 여러분의 소중한 생각을 댓글로 남겨주시면 레오가 직접 답글을 남겨드립니다! ✨';
+          }
 
           showAlert('영상 렌더링 합성이 성공적으로 완료되었습니다!', 'success');
         } else if (job.status === 'failed') {
@@ -2145,6 +2164,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      const privacy = ytUploadPrivacy ? ytUploadPrivacy.value : 'unlisted';
+      let publishAt = null;
+      let effectivePrivacy = privacy;
+      if (privacy === 'scheduled') {
+        const schedTime = document.getElementById('ytUploadScheduleTime')?.value;
+        if (!schedTime) {
+          showAlert('예약 공개할 일시를 선택해주세요.', 'error');
+          return;
+        }
+        publishAt = toIsoPublishAt(schedTime);
+        if (!publishAt) {
+          showAlert('올바른 예약 공개 일시를 입력해주세요.', 'error');
+          return;
+        }
+        effectivePrivacy = 'private';
+      }
+      const playlistId = document.getElementById('ytUploadPlaylist')?.value || null;
+
       btnSubmitYoutubeUpload.disabled = true;
       btnSubmitYoutubeUpload.querySelector('.btn-text').style.display = 'none';
       btnSubmitYoutubeUpload.querySelector('.spinner').style.display = 'inline-block';
@@ -2157,14 +2194,17 @@ document.addEventListener('DOMContentLoaded', () => {
             video_file: videoPath,
             title: title,
             description: ytUploadDesc ? ytUploadDesc.value : '',
-            privacy_status: ytUploadPrivacy ? ytUploadPrivacy.value : 'unlisted',
+            privacy_status: effectivePrivacy,
+            publish_at: publishAt,
+            playlist_id: playlistId,
             category_id: ytUploadCategory ? ytUploadCategory.value : '28',
             pinned_comment: ytUploadPinnedComment ? ytUploadPinnedComment.value : ''
           })
         });
         const data = await res.json();
         if (data.status === 'success') {
-          showAlert('유튜브 업로드가 성공적으로 완료되었습니다!', 'success');
+          const schedNotice = publishAt ? ` (예약: ${publishAt})` : '';
+          showAlert(`유튜브 업로드가 성공적으로 완료되었습니다!${schedNotice}`, 'success');
         } else {
           showAlert('업로드 오류: ' + JSON.stringify(data), 'error');
         }
@@ -2533,9 +2573,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // 고정 댓글 복사 기능
-  if (btnCopyLunaPinnedComment && lunaPinnedCommentPreview) {
+  if (btnCopyLunaPinnedComment) {
     btnCopyLunaPinnedComment.addEventListener('click', () => {
-      const text = lunaPinnedCommentPreview.textContent || '';
+      const inputEl = document.getElementById('lunaPinnedCommentInput');
+      const text = (inputEl ? inputEl.value : '') || (lunaPinnedCommentPreview ? lunaPinnedCommentPreview.textContent : '') || '';
       if (!text) return;
       navigator.clipboard.writeText(text).then(() => {
         showAlert('레오의 고정 댓글이 클립보드에 복사되었습니다!', 'success');
@@ -2615,8 +2656,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const meta = track.metadata || {};
     if (lunaYtTitlePreview) lunaYtTitlePreview.textContent = meta.youtube_title || track.title;
     if (lunaYtTagsPreview) lunaYtTagsPreview.textContent = (meta.youtube_tags || []).slice(0, 5).join(', ') + '...';
+    const commentVal = meta.pinned_comment || track.pinned_comment || '';
     if (lunaPinnedCommentPreview) {
-      lunaPinnedCommentPreview.textContent = meta.pinned_comment || track.pinned_comment || '';
+      lunaPinnedCommentPreview.textContent = commentVal;
+    }
+    const lunaPinnedCommentInput = document.getElementById('lunaPinnedCommentInput');
+    if (lunaPinnedCommentInput) {
+      lunaPinnedCommentInput.value = commentVal;
     }
 
     if (track.video_url) {
@@ -2641,15 +2687,28 @@ document.addEventListener('DOMContentLoaded', () => {
     if (lunaUploadResultBadge) {
       if (track.uploaded_video_id) {
         lunaUploadResultBadge.style.display = 'block';
+        const schedBadge = track.publish_at 
+          ? `<span class="badge" style="background:rgba(244,63,94,0.15); color:#f43f5e; border:1px solid rgba(244,63,94,0.3); font-size:11px; margin-left:6px;"><i class="fa-solid fa-clock"></i> 📅 ${new Date(track.publish_at).toLocaleString('ko-KR')} 공개 예약</span>` 
+          : '';
+        const plBadge = track.playlist_id
+          ? `<span class="badge" style="background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); font-size:11px; margin-left:6px;"><i class="fa-solid fa-list-ul"></i> 재생목록 배정됨</span>`
+          : '';
         lunaUploadResultBadge.innerHTML = `
-          <a href="https://youtu.be/${track.uploaded_video_id}" target="_blank" class="badge badge-success" style="font-size:12px; padding:6px 12px; text-decoration:none;">
-            <i class="fa-brands fa-youtube"></i> 유튜브 업로드 완료 (youtu.be/${track.uploaded_video_id})
-          </a>
+          <div style="display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:6px;">
+            <a href="https://youtu.be/${track.uploaded_video_id}" target="_blank" class="badge badge-success" style="font-size:12px; padding:6px 12px; text-decoration:none;">
+              <i class="fa-brands fa-youtube"></i> 유튜브 업로드 완료 (youtu.be/${track.uploaded_video_id})
+            </a>
+            ${schedBadge}
+            ${plBadge}
+          </div>
         `;
       } else {
         lunaUploadResultBadge.style.display = 'none';
       }
     }
+
+    // AI 플레이리스트 추천 업데이트
+    updateLunaPlaylistRecommendation(track);
   }
 
   // 2. 비디오 렌더링
@@ -2700,7 +2759,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // 3. 루나 채널 유튜브 업로드
+  // 3. 루나 채널 유튜브 업로드 (즉시/예약 공개 & 재생목록 자동 배정)
   if (btnUploadLunaYt) {
     btnUploadLunaYt.addEventListener('click', async () => {
       if (!currentLunaTrack || !currentLunaTrack.track_id) {
@@ -2712,15 +2771,37 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
 
+      const privacy = lunaPrivacySelect ? lunaPrivacySelect.value : 'public';
+      let publishAt = null;
+      let effectivePrivacy = privacy;
+
+      if (privacy === 'scheduled') {
+        const schedTime = document.getElementById('lunaScheduleTime')?.value;
+        if (!schedTime) {
+          showAlert('예약 공개할 일시를 선택해주세요.', 'error');
+          return;
+        }
+        publishAt = toIsoPublishAt(schedTime);
+        if (!publishAt) {
+          showAlert('올바른 예약 공개 일시를 입력해주세요.', 'error');
+          return;
+        }
+        effectivePrivacy = 'private'; // 유튜브 정책: 예약 공개는 최초 private 상태로 대기
+      }
+
+      const playlistSelect = document.getElementById('lunaPlaylistSelect');
+      const playlistId = playlistSelect ? playlistSelect.value : null;
+
+      const pinnedInput = document.getElementById('lunaPinnedCommentInput');
+      const customPinnedComment = pinnedInput ? pinnedInput.value.trim() : '';
+
       btnUploadLunaYt.disabled = true;
       btnUploadLunaYt.querySelector('.btn-text').style.display = 'none';
       btnUploadLunaYt.querySelector('.spinner').style.display = 'inline-block';
       if (lunaStatusBadge) {
         lunaStatusBadge.className = 'badge badge-accent';
-        lunaStatusBadge.textContent = '유튜브 채널 업로드 중...';
+        lunaStatusBadge.textContent = publishAt ? '유튜브 예약 업로드 중...' : '유튜브 채널 업로드 중...';
       }
-
-      const privacy = lunaPrivacySelect ? lunaPrivacySelect.value : 'public';
 
       try {
         const res = await fetch('/api/luna/upload', {
@@ -2728,7 +2809,10 @@ document.addEventListener('DOMContentLoaded', () => {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             track_id: currentLunaTrack.track_id,
-            privacy_status: privacy
+            privacy_status: effectivePrivacy,
+            publish_at: publishAt,
+            playlist_id: playlistId || null,
+            pinned_comment: customPinnedComment || null
           })
         });
 
@@ -2738,12 +2822,18 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const data = await res.json();
-        showAlert(`루나 유튜브 채널에 성공적으로 업로드되었습니다! (${data.url || ''})`, 'success');
+        const schedMsg = publishAt ? ` (예약 공개 일시: ${new Date(publishAt).toLocaleString('ko-KR')})` : '';
+        const plMsg = data.playlist_added ? ' & 재생목록 추가 완료' : '';
+        showAlert(`루나 유튜브 채널에 성공적으로 업로드되었습니다!${schedMsg}${plMsg}`, 'success');
         if (currentLunaTrack) {
           currentLunaTrack.uploaded_video_id = data.video_id;
+          currentLunaTrack.publish_at = data.publish_at;
+          currentLunaTrack.playlist_id = data.playlist_id;
+          currentLunaTrack.playlist_added = data.playlist_added;
         }
         renderLunaTrackView(currentLunaTrack);
         loadLunaHistory();
+        loadYoutubePlaylists(); // 플레이리스트 곡 수 갱신
       } catch (err) {
         showAlert('유튜브 업로드 실패: ' + err.message + '\n(YouTube 계정 연결 상태를 확인해주세요)', 'error');
       } finally {
@@ -3437,6 +3527,437 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ==============================================================
+  // 21. [Phase 11] 예약 공개 & YouTube 플레이리스트 스마트 매니저
+  // ==============================================================
+  let cachedPlaylists = [];
+
+  // 날짜/시간 프리셋 계산기 -> YYYY-MM-DDTHH:mm 포맷 (datetime-local 용)
+  function calculatePresetDate(presetType) {
+    const now = new Date();
+    let target = new Date(now.getTime());
+
+    if (presetType === 'plus2h') {
+      target.setHours(target.getHours() + 2);
+    } else if (presetType === 'today20') {
+      target.setHours(20, 0, 0, 0);
+      if (target <= now) {
+        target.setDate(target.getDate() + 1); // 이미 20시 지난 경우 내일 20시
+      }
+    } else if (presetType === 'tomorrow09') {
+      target.setDate(target.getDate() + 1);
+      target.setHours(9, 0, 0, 0);
+    } else if (presetType === 'tomorrow20') {
+      target.setDate(target.getDate() + 1);
+      target.setHours(20, 0, 0, 0);
+    }
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const yyyy = target.getFullYear();
+    const mm = pad(target.getMonth() + 1);
+    const dd = pad(target.getDate());
+    const hh = pad(target.getHours());
+    const min = pad(target.getMinutes());
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+  }
+
+  // 1. 4단계(Producer) 예약 공개 이벤트 바인딩
+  const ytScheduledBox = document.getElementById('ytScheduledBox');
+  const ytPublishAtInput = document.getElementById('ytPublishAtInput');
+
+  if (ytUploadPrivacy && ytScheduledBox) {
+    ytUploadPrivacy.addEventListener('change', () => {
+      if (ytUploadPrivacy.value === 'scheduled') {
+        ytScheduledBox.style.display = 'block';
+        if (ytPublishAtInput && !ytPublishAtInput.value) {
+          ytPublishAtInput.value = calculatePresetDate('plus2h');
+        }
+      } else {
+        ytScheduledBox.style.display = 'none';
+      }
+    });
+
+    ytScheduledBox.querySelectorAll('.btn-sched-preset').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const p = btn.dataset.preset;
+        if (ytPublishAtInput) ytPublishAtInput.value = calculatePresetDate(p);
+      });
+    });
+  }
+
+  // 2. 6단계(Luna) 예약 공개 이벤트 바인딩
+  const lunaScheduledBox = document.getElementById('lunaScheduledBox');
+  const lunaPublishAtInput = document.getElementById('lunaPublishAtInput');
+
+  if (lunaPrivacySelect && lunaScheduledBox) {
+    lunaPrivacySelect.addEventListener('change', () => {
+      if (lunaPrivacySelect.value === 'scheduled') {
+        lunaScheduledBox.style.display = 'block';
+        if (lunaPublishAtInput && !lunaPublishAtInput.value) {
+          lunaPublishAtInput.value = calculatePresetDate('plus2h');
+        }
+      } else {
+        lunaScheduledBox.style.display = 'none';
+      }
+    });
+
+    lunaScheduledBox.querySelectorAll('.btn-sched-preset').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const p = btn.dataset.preset;
+        if (lunaPublishAtInput) lunaPublishAtInput.value = calculatePresetDate(p);
+      });
+    });
+  }
+
+  // 3. 유튜브 플레이리스트 목록 조회 및 드롭다운 채우기
+  async function loadYoutubePlaylists() {
+    try {
+      const res = await fetch('/api/youtube/playlists');
+      if (!res.ok) return;
+      const data = await res.json();
+      cachedPlaylists = data.playlists || [];
+
+      // 4단계 업로드 셀렉트 채우기
+      const ytUploadPlaylist = document.getElementById('ytUploadPlaylist');
+      if (ytUploadPlaylist) {
+        const curVal = ytUploadPlaylist.value;
+        let html = '<option value="">플레이리스트에 추가 안 함</option>';
+        cachedPlaylists.forEach((pl) => {
+          html += `<option value="${escapeHtml(pl.id)}">${escapeHtml(pl.title)} (${pl.item_count}곡)</option>`;
+        });
+        ytUploadPlaylist.innerHTML = html;
+        if (curVal) ytUploadPlaylist.value = curVal;
+      }
+
+      // 6단계(루나) 업로드 셀렉트 채우기
+      const lunaPlaylistSelect = document.getElementById('lunaPlaylistSelect');
+      if (lunaPlaylistSelect) {
+        const curVal = lunaPlaylistSelect.value;
+        let html = '<option value="">(선택 안 함 - 플레이리스트 미지정)</option>';
+        cachedPlaylists.forEach((pl) => {
+          html += `<option value="${escapeHtml(pl.id)}">${escapeHtml(pl.title)} (${pl.item_count}곡)</option>`;
+        });
+        lunaPlaylistSelect.innerHTML = html;
+        if (curVal) lunaPlaylistSelect.value = curVal;
+      }
+    } catch (err) {
+      console.warn('플레이리스트 목록 로드 실패:', err);
+    }
+  }
+
+  // 4. 루나 트랙 최적 플레이리스트 AI 자동 추천
+  async function updateLunaPlaylistRecommendation(track) {
+    const lunaAiPlaylistBadge = document.getElementById('lunaAiPlaylistBadge');
+    const lunaPlaylistSelect = document.getElementById('lunaPlaylistSelect');
+    if (!lunaAiPlaylistBadge || !track) return;
+
+    // 만약 이미 업로드되어 플레이리스트가 배정된 경우
+    if (track.playlist_id) {
+      if (lunaPlaylistSelect) lunaPlaylistSelect.value = track.playlist_id;
+      const plObj = cachedPlaylists.find((p) => p.id === track.playlist_id);
+      const plTitle = plObj ? plObj.title : track.playlist_id;
+      lunaAiPlaylistBadge.className = 'badge badge-success';
+      lunaAiPlaylistBadge.innerHTML = `<i class="fa-solid fa-list-check"></i> 배정됨: ${escapeHtml(plTitle)}`;
+      return;
+    }
+
+    lunaAiPlaylistBadge.className = 'badge badge-accent';
+    lunaAiPlaylistBadge.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> ✨ AI 플레이리스트 추천 중...';
+
+    try {
+      const q = new URLSearchParams({
+        title: track.title || '',
+        genre: track.genre || '',
+        mood: track.mood || ''
+      });
+      const res = await fetch(`/api/luna/playlist-recommendation?${q.toString()}`);
+      if (!res.ok) throw new Error('추천 실패');
+      const data = await res.json();
+
+      if (data.recommended_playlist_id) {
+        if (lunaPlaylistSelect) {
+          lunaPlaylistSelect.value = data.recommended_playlist_id;
+        }
+        lunaAiPlaylistBadge.className = 'badge badge-accent';
+        const confPercent = Math.round((data.confidence || 0.9) * 100);
+        lunaAiPlaylistBadge.innerHTML = `✨ AI 추천: ${escapeHtml(data.recommended_playlist_title)} (${confPercent}%)`;
+        lunaAiPlaylistBadge.title = data.reasoning || '';
+      } else {
+        lunaAiPlaylistBadge.className = 'badge badge-subtle';
+        lunaAiPlaylistBadge.innerHTML = '✨ AI 추천: 미분류 (기존 목록 없음)';
+      }
+    } catch (err) {
+      console.warn('AI 플레이리스트 추천 오류:', err);
+      lunaAiPlaylistBadge.className = 'badge badge-subtle';
+      lunaAiPlaylistBadge.innerHTML = '✨ 플레이리스트 선택 가능';
+    }
+  }
+
+  // 5. 새 플레이리스트 인라인 생성 핸들러
+  const btnToggleCreatePlaylist = document.getElementById('btnToggleCreatePlaylist');
+  const lunaCreatePlaylistInline = document.getElementById('lunaCreatePlaylistInline');
+  const btnCancelCreatePlaylist = document.getElementById('btnCancelCreatePlaylist');
+  const btnSubmitCreatePlaylist = document.getElementById('btnSubmitCreatePlaylist');
+  const newPlaylistTitle = document.getElementById('newPlaylistTitle');
+  const newPlaylistDesc = document.getElementById('newPlaylistDesc');
+  const newPlaylistPrivacy = document.getElementById('newPlaylistPrivacy');
+
+  if (btnToggleCreatePlaylist && lunaCreatePlaylistInline) {
+    btnToggleCreatePlaylist.addEventListener('click', () => {
+      const isHidden = lunaCreatePlaylistInline.style.display === 'none';
+      lunaCreatePlaylistInline.style.display = isHidden ? 'block' : 'none';
+      if (isHidden && newPlaylistTitle) newPlaylistTitle.focus();
+    });
+  }
+
+  if (btnCancelCreatePlaylist && lunaCreatePlaylistInline) {
+    btnCancelCreatePlaylist.addEventListener('click', () => {
+      lunaCreatePlaylistInline.style.display = 'none';
+    });
+  }
+
+  if (btnSubmitCreatePlaylist) {
+    btnSubmitCreatePlaylist.addEventListener('click', async () => {
+      const title = newPlaylistTitle ? newPlaylistTitle.value.trim() : '';
+      if (!title) {
+        showAlert('새 재생목록 제목을 입력해주세요.', 'error');
+        return;
+      }
+      const desc = newPlaylistDesc ? newPlaylistDesc.value.trim() : '';
+      const privacy = newPlaylistPrivacy ? newPlaylistPrivacy.value : 'public';
+
+      btnSubmitCreatePlaylist.disabled = true;
+      btnSubmitCreatePlaylist.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 생성 중...';
+
+      try {
+        const res = await fetch('/api/youtube/playlists', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: title,
+            description: desc,
+            privacy_status: privacy
+          })
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || '플레이리스트 생성에 실패했습니다.');
+        }
+
+        const data = await res.json();
+        showAlert(`새 플레이리스트 '${title}'이 생성되었습니다!`, 'success');
+
+        // 목록 새로고침 및 새로 생성된 항목 자동 선택
+        await loadYoutubePlaylists();
+        const lunaPlaylistSelect = document.getElementById('lunaPlaylistSelect');
+        if (lunaPlaylistSelect && data.playlist_id) {
+          lunaPlaylistSelect.value = data.playlist_id;
+        }
+
+        // 인라인 폼 리셋 및 닫기
+        if (newPlaylistTitle) newPlaylistTitle.value = '';
+        if (newPlaylistDesc) newPlaylistDesc.value = '';
+        if (lunaCreatePlaylistInline) lunaCreatePlaylistInline.style.display = 'none';
+      } catch (err) {
+        showAlert('플레이리스트 생성 오류: ' + err.message, 'error');
+      } finally {
+        btnSubmitCreatePlaylist.disabled = false;
+        btnSubmitCreatePlaylist.innerHTML = '<i class="fa-solid fa-plus"></i> 생성';
+      }
+    });
+  }
+
+  // 6. [🗂️ 플레이리스트 스마트 매니저] 모달 로직
+  const btnOpenPlaylistManagerModal = document.getElementById('btnOpenPlaylistManagerModal');
+  const playlistManagerModal = document.getElementById('playlistManagerModal');
+  const btnClosePlaylistManagerModal = document.getElementById('btnClosePlaylistManagerModal');
+  const btnCancelPlaylistManagerModal = document.getElementById('btnCancelPlaylistManagerModal');
+  const btnBatchAssignPlaylists = document.getElementById('btnBatchAssignPlaylists');
+  const unassignedPlaylistList = document.getElementById('unassignedPlaylistList');
+  const unassignedCountBadge = document.getElementById('unassignedCountBadge');
+
+  async function loadUnassignedPlaylistTracks() {
+    if (!unassignedPlaylistList) return;
+    unassignedPlaylistList.innerHTML = `
+      <div style="text-align:center;padding:40px;color:var(--text-secondary);">
+        <i class="fa-solid fa-spinner fa-spin fa-2x" style="color:#38bdf8;"></i>
+        <div style="margin-top:12px;font-size:0.9rem;">채널 내 미배정 영상 및 AI 최적 플레이리스트 매칭 분석 중...</div>
+      </div>
+    `;
+
+    if (btnBatchAssignPlaylists) btnBatchAssignPlaylists.disabled = true;
+
+    try {
+      const res = await fetch('/api/luna/unassigned-playlist-tracks');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || '미배정 트랙 조회 실패');
+      }
+
+      const data = await res.json();
+      const tracks = data.unassigned_tracks || [];
+      const playlists = data.playlists || cachedPlaylists;
+      cachedPlaylists = playlists;
+
+      if (unassignedCountBadge) {
+        unassignedCountBadge.textContent = `미배정 ${tracks.length}곡 탐지됨`;
+      }
+
+      if (tracks.length === 0) {
+        unassignedPlaylistList.innerHTML = `
+          <div style="text-align:center;padding:50px 20px;">
+            <i class="fa-solid fa-circle-check fa-3x" style="color:#34d399;margin-bottom:16px;"></i>
+            <h4 style="color:#fff;font-size:1.1rem;margin-bottom:8px;">모든 유튜브 영상이 플레이리스트에 배정되어 있습니다!</h4>
+            <p style="color:var(--text-secondary);font-size:0.85rem;">미배정된 업로드 트랙이 없습니다. 앞으로 업로드할 트랙도 AI가 자동 배정합니다.</p>
+          </div>
+        `;
+        if (btnBatchAssignPlaylists) btnBatchAssignPlaylists.disabled = true;
+        return;
+      }
+
+      // 트랙 카드 리스트 렌더링
+      let html = '<div style="display:flex;flex-direction:column;gap:10px;">';
+
+      tracks.forEach((t) => {
+        const rec = t.ai_recommendation || {};
+        const recommendedId = rec.recommended_playlist_id || t.ai_recommended_playlist_id || '';
+        const confidence = rec.confidence !== undefined ? rec.confidence : (t.ai_confidence ?? 0.9);
+        const reasoning = rec.reasoning || t.ai_recommendation_reason || '장르 일치';
+        const confPercent = Math.round(confidence * 100);
+
+        const thumbUrl = t.cover_url || t.thumbnail_url || (t.video_id ? `https://i.ytimg.com/vi/${t.video_id}/mqdefault.jpg` : '');
+
+        // 셀렉트 박스 옵션 생성
+        let optionsHtml = '<option value="">(선택 안 함 - 배정 제외)</option>';
+        playlists.forEach((p) => {
+          const isSelected = p.id === recommendedId ? 'selected' : '';
+          optionsHtml += `<option value="${escapeHtml(p.id)}" ${isSelected}>${escapeHtml(p.title)} (${p.item_count}곡)</option>`;
+        });
+
+        html += `
+          <div class="unassigned-track-card" data-track-id="${escapeHtml(t.track_id)}" data-video-id="${escapeHtml(t.video_id)}" style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:8px;padding:12px;display:flex;gap:14px;align-items:center;">
+            <div style="width:96px;height:54px;border-radius:6px;overflow:hidden;background:#000;flex-shrink:0;position:relative;">
+              ${thumbUrl ? `<img src="${escapeHtml(thumbUrl)}" alt="" style="width:100%;height:100%;object-fit:cover;">` : '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#666;"><i class="fa-solid fa-music"></i></div>'}
+              <span style="position:absolute;bottom:2px;right:2px;background:rgba(0,0,0,0.8);color:#fff;font-size:9px;padding:1px 4px;border-radius:2px;">
+                ${escapeHtml(t.video_id || '')}
+              </span>
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                <h5 style="color:#fff;margin:0;font-size:0.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(t.title)}">
+                  ${escapeHtml(t.title)}
+                </h5>
+                <span class="badge badge-subtle" style="font-size:0.7rem;flex-shrink:0;">${escapeHtml(t.genre || '음악')}</span>
+              </div>
+              <div style="font-size:0.75rem;color:var(--text-secondary);display:flex;align-items:center;gap:6px;">
+                <i class="fa-solid fa-robot" style="color:var(--primary-color);"></i>
+                <span>추천 근거: <strong>${escapeHtml(reasoning)}</strong> (${confPercent}% 일치)</span>
+              </div>
+            </div>
+            <div style="width:240px;flex-shrink:0;">
+              <label style="display:block;font-size:0.72rem;color:var(--text-muted);margin-bottom:3px;">배정할 플레이리스트</label>
+              <select class="form-control form-control-sm unassigned-track-select" style="font-size:0.8rem;background:#111;color:#fff;border-color:rgba(99,102,241,0.4);">
+                ${optionsHtml}
+              </select>
+            </div>
+          </div>
+        `;
+      });
+
+      html += '</div>';
+      unassignedPlaylistList.innerHTML = html;
+      if (btnBatchAssignPlaylists) btnBatchAssignPlaylists.disabled = false;
+    } catch (err) {
+      unassignedPlaylistList.innerHTML = `
+        <div style="text-align:center;padding:30px;color:#f43f5e;">
+          <i class="fa-solid fa-triangle-exclamation fa-2x"></i>
+          <div style="margin-top:10px;">미배정 트랙 로드 실패: ${escapeHtml(err.message)}</div>
+          <button type="button" class="btn btn-sm btn-outline" style="margin-top:12px;" onclick="loadUnassignedPlaylistTracks()">다시 시도</button>
+        </div>
+      `;
+      if (btnBatchAssignPlaylists) btnBatchAssignPlaylists.disabled = true;
+    }
+  }
+
+  if (btnOpenPlaylistManagerModal && playlistManagerModal) {
+    btnOpenPlaylistManagerModal.addEventListener('click', () => {
+      playlistManagerModal.style.display = 'flex';
+      loadUnassignedPlaylistTracks();
+    });
+  }
+
+  if (btnClosePlaylistManagerModal && playlistManagerModal) {
+    btnClosePlaylistManagerModal.addEventListener('click', () => {
+      playlistManagerModal.style.display = 'none';
+    });
+  }
+
+  if (btnCancelPlaylistManagerModal && playlistManagerModal) {
+    btnCancelPlaylistManagerModal.addEventListener('click', () => {
+      playlistManagerModal.style.display = 'none';
+    });
+  }
+
+  // 일괄 배정 실행
+  if (btnBatchAssignPlaylists) {
+    btnBatchAssignPlaylists.addEventListener('click', async () => {
+      const cards = unassignedPlaylistList.querySelectorAll('.unassigned-track-card');
+      const assignments = [];
+
+      cards.forEach((card) => {
+        const trackId = card.dataset.trackId;
+        const videoId = card.dataset.videoId;
+        const select = card.querySelector('.unassigned-track-select');
+        const playlistId = select ? select.value : '';
+
+        if (playlistId) {
+          assignments.push({
+            track_id: trackId,
+            video_id: videoId,
+            playlist_id: playlistId
+          });
+        }
+      });
+
+      if (assignments.length === 0) {
+        showAlert('배정할 플레이리스트가 선택된 트랙이 없습니다.', 'error');
+        return;
+      }
+
+      btnBatchAssignPlaylists.disabled = true;
+      btnBatchAssignPlaylists.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 플레이리스트 일괄 배정 중...';
+
+      try {
+        const res = await fetch('/api/luna/batch-assign-playlists', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ assignments: assignments })
+        });
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || '일괄 배정 요청 실패');
+        }
+
+        const data = await res.json();
+        showAlert(`🎉 총 ${data.success_count}곡이 유튜브 플레이리스트에 성공적으로 배정되었습니다!`, 'success');
+
+        // 히스토리 및 플레이리스트 데이터 새로고침
+        await loadYoutubePlaylists();
+        await loadLunaHistory();
+
+        // 모달 닫기
+        if (playlistManagerModal) playlistManagerModal.style.display = 'none';
+      } catch (err) {
+        showAlert('플레이리스트 일괄 배정 오류: ' + err.message, 'error');
+      } finally {
+        btnBatchAssignPlaylists.disabled = false;
+        btnBatchAssignPlaylists.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> AI 추천대로 전체 일괄 배정하기';
+      }
+    });
+  }
+
   // 초기 데이터 로드
   loadHistory();
   loadTrends();
@@ -3444,6 +3965,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadThreadsStatus();
   loadCapcutStatus();
   loadLunaBgmOptions();
+  loadYoutubePlaylists();
 });
 
 

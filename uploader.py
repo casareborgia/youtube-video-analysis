@@ -2,6 +2,7 @@
 # 준비: Google Cloud Console에서 프로젝트 생성 → YouTube Data API v3 사용 설정 → OAuth 클라이언트(데스크톱 앱) 생성
 #       → 내려받은 JSON을 data/youtube/client_secret.json 으로 저장
 import os
+import re
 import json
 import time
 import importlib.util
@@ -370,10 +371,11 @@ def update_channel_branding(description=None, keywords=None, default_language=No
 
 def upload_video(video_path, title, description, tags=None, privacy="private", publish_at=None,
                  thumbnail_path=None, category_id="27", made_for_kids=False, progress=None,
-                 channel_id=None, pinned_comment=None):
+                 channel_id=None, pinned_comment=None, playlist_id=None):
     """
     재개 가능(resumable) 업로드. publish_at(ISO 8601, 예: 2026-09-01T09:00:00+09:00)을 주면 예약 공개(privacy=private 필수).
-    반환: {"video_id", "url", "thumbnail_set", "warnings"}
+    playlist_id를 주면 업로드 완료 후 해당 재생목록에 자동 추가.
+    반환: {"video_id", "url", "thumbnail_set", "warnings", "playlist_added"}
     """
     creds = _creds(channel_id)
     if not creds:
@@ -436,6 +438,20 @@ def upload_video(video_path, title, description, tags=None, privacy="private", p
     if pinned_comment and str(pinned_comment).strip():
         if progress:
             progress("upload", "댓글 등록 중...", 96)
+        
+        # 댓글 문장 절단 자동 복원 & 종결부호 안전 보정
+        final_comment = str(pinned_comment).strip()
+        if re.search(r'루나가\s*답?$', final_comment):
+            final_comment = re.sub(r'루나가\s*답?$', '루나가 답글을 전합니다 🌙', final_comment)
+        elif re.search(r'남겨주시면\s*$', final_comment):
+            final_comment = re.sub(r'남겨주시면\s*$', '남겨주시면 답글을 남겨드립니다 💬', final_comment)
+        elif re.search(r'타임스탬프로\s*$', final_comment):
+            final_comment = re.sub(r'타임스탬프로\s*$', '타임스탬프로 남겨주시면 루나가 답글을 남겨드립니다 🌙', final_comment)
+
+        valid_endings = ('.', '!', '?', '~', '🌙', '✨', '❤️', '💬', '👇', '🎵', ')', '요', '다', '죠', '네', '음')
+        if not final_comment.endswith(valid_endings):
+            final_comment += ' 🌙'
+
         try:
             youtube.commentThreads().insert(
                 part="snippet",
@@ -443,19 +459,146 @@ def upload_video(video_path, title, description, tags=None, privacy="private", p
                     "snippet": {
                         "videoId": video_id,
                         "topLevelComment": {
-                            "snippet": {"textOriginal": str(pinned_comment)[:9000]}
+                            "snippet": {"textOriginal": final_comment[:9000]}
                         },
                     }
                 },
             ).execute()
             comment_posted = True
-            # YouTube Data API v3에는 댓글 고정(pin) 기능이 없다. 등록만 하고 안내를 남긴다.
             warnings.append("댓글은 등록했지만 '고정'은 YouTube Data API가 지원하지 않습니다. 유튜브 스튜디오에서 직접 고정해주세요.")
         except Exception as e:
             warnings.append(f"댓글 등록 실패: {str(e)[:160]}")
 
+    playlist_added = False
+    if playlist_id and str(playlist_id).strip():
+        if progress:
+            progress("upload", "재생목록에 영상 추가 중...", 98)
+        try:
+            add_video_to_playlist(playlist_id.strip(), video_id, channel_id)
+            playlist_added = True
+        except Exception as e:
+            warnings.append(f"재생목록 추가 실패: {str(e)[:160]}")
+
     if privacy != "private" and not publish_at:
         warnings.append("OAuth 앱이 구글 검증을 받기 전에는 업로드된 영상이 비공개로 잠길 수 있습니다. 유튜브 스튜디오에서 공개 상태를 확인하세요.")
     return {"video_id": video_id, "url": f"https://youtu.be/{video_id}", "thumbnail_set": thumb_ok,
-            "comment_posted": comment_posted, "warnings": warnings,
+            "comment_posted": comment_posted, "playlist_added": playlist_added, "warnings": warnings,
             "privacy": status["privacyStatus"], "publish_at": publish_at}
+
+
+# ---------------------------------------------------------------
+# 재생목록(Playlist) 관리 API
+# ---------------------------------------------------------------
+def list_playlists(channel_id=None):
+    """현재 채널의 재생목록 목록 조회"""
+    creds = _creds(channel_id)
+    if not creds:
+        return []
+    youtube = _service(creds)
+    try:
+        res = youtube.playlists().list(
+            part="snippet,contentDetails,status",
+            mine=True,
+            maxResults=50
+        ).execute()
+        items = res.get("items", [])
+        out = []
+        for p in items:
+            snippet = p.get("snippet", {})
+            cd = p.get("contentDetails", {})
+            thumbs = snippet.get("thumbnails", {})
+            thumb = thumbs.get("medium", {}).get("url") or thumbs.get("default", {}).get("url") or ""
+            out.append({
+                "id": p.get("id"),
+                "title": snippet.get("title", ""),
+                "description": snippet.get("description", ""),
+                "item_count": cd.get("itemCount", 0),
+                "thumbnail": thumb,
+                "privacy": p.get("status", {}).get("privacyStatus", "public")
+            })
+        return out
+    except Exception as e:
+        print(f"[Uploader] 플레이리스트 목록 조회 실패: {e}")
+        return []
+
+
+def create_playlist(title, description="", privacy="public", channel_id=None):
+    """새 재생목록 생성"""
+    creds = _creds(channel_id)
+    if not creds:
+        raise RuntimeError("유튜브 계정이 연결되어 있지 않습니다.")
+    youtube = _service(creds)
+    privacy = privacy if privacy in PRIVACY else "public"
+    body = {
+        "snippet": {
+            "title": title[:150],
+            "description": (description or "")[:5000]
+        },
+        "status": {
+            "privacyStatus": privacy
+        }
+    }
+    res = youtube.playlists().insert(part="snippet,status", body=body).execute()
+    return {
+        "id": res.get("id"),
+        "title": res.get("snippet", {}).get("title"),
+        "privacy": res.get("status", {}).get("privacyStatus")
+    }
+
+
+def get_playlist_items(playlist_id, channel_id=None):
+    """재생목록 내 비디오 ID 목록 조회"""
+    creds = _creds(channel_id)
+    if not creds:
+        return []
+    youtube = _service(creds)
+    try:
+        video_ids = []
+        next_page_token = None
+        while True:
+            res = youtube.playlistItems().list(
+                part="snippet",
+                playlistId=playlist_id,
+                maxResults=50,
+                pageToken=next_page_token
+            ).execute()
+            for it in res.get("items", []):
+                vid = it.get("snippet", {}).get("resourceId", {}).get("videoId")
+                if vid:
+                    video_ids.append(vid)
+            next_page_token = res.get("nextPageToken")
+            if not next_page_token:
+                break
+        return video_ids
+    except Exception as e:
+        print(f"[Uploader] 플레이리스트 아이템 조회 실패: {e}")
+        return []
+
+
+def add_video_to_playlist(playlist_id, video_id, channel_id=None):
+    """재생목록에 동영상 추가 (중복 방지 체크 포함)"""
+    creds = _creds(channel_id)
+    if not creds:
+        raise RuntimeError("유튜브 계정이 연결되어 있지 않습니다.")
+    youtube = _service(creds)
+
+    existing = get_playlist_items(playlist_id, channel_id)
+    if video_id in existing:
+        return {"status": "already_exists", "playlist_id": playlist_id, "video_id": video_id}
+
+    body = {
+        "snippet": {
+            "playlistId": playlist_id,
+            "resourceId": {
+                "kind": "youtube#video",
+                "videoId": video_id
+            }
+        }
+    }
+    res = youtube.playlistItems().insert(part="snippet", body=body).execute()
+    return {
+        "status": "success",
+        "item_id": res.get("id"),
+        "playlist_id": playlist_id,
+        "video_id": video_id
+    }

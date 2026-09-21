@@ -479,9 +479,47 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
     return track_data
 
 
-# ── 5. 루나 표준 SEO 메타데이터 빌더 ─────────────────────────────────────
-
 # ── 5. 레오 ✕ 루나 알고리즘 SEO & 인게이지먼트 메타데이터 패키징 ─────────────
+
+def sanitize_pinned_comment(comment_text: str, default_cta: str = "가장 좋았던 멜로디 순간(타임스탬프)을 남겨주시면 루나가 답글을 남겨드립니다 🌙") -> str:
+    """
+    유튜브 자동 고정 댓글이 중간에 잘리거나 불완전하게 끝나는 현상을 방지하고,
+    항상 완전한 문장 구조와 종결 부호를 갖추도록 정제/복원합니다.
+    """
+    if not comment_text or not str(comment_text).strip():
+        return f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? 지친 마음에 따뜻한 온기가 깃들기를 바랍니다. {default_cta}"
+
+    text = str(comment_text).strip()
+
+    # 1. '루나가 답' 또는 '루나가 ' 처럼 특정 잘림 패턴이 있는 경우 복원
+    if re.search(r'루나가\s*답?$', text):
+        text = re.sub(r'루나가\s*답?$', '루나가 답글을 전합니다 🌙', text)
+    elif re.search(r'남겨주시면\s*$', text):
+        text = re.sub(r'남겨주시면\s*$', '남겨주시면 루나가 답글을 남겨드립니다 🌙', text)
+    elif re.search(r'타임스탬프로\s*$', text):
+        text = re.sub(r'타임스탬프로\s*$', '타임스탬프로 남겨주시면 루나가 답글을 남겨드립니다 🌙', text)
+
+    # 2. 문장 종결 부호 검사: 마침표, 느낌표, 물음표, 물결, 이모지, 괄호, 한글 종결어미 등
+    valid_endings = ('.', '!', '?', '~', '🌙', '✨', '❤️', '💬', '👇', '🎵', ')', '요', '다', '죠', '네', '음')
+    if not text.endswith(valid_endings):
+        # 마지막 불완전한 단어/마디가 있다면 잘라내고 온전한 문장들만 남김
+        sentences = re.split(r'([.!?~🌙\n])', text)
+        clean_parts = []
+        for i in range(0, len(sentences) - 1, 2):
+            clean_parts.append(sentences[i] + sentences[i+1])
+
+        recovered = "".join(clean_parts).strip()
+        if len(recovered) >= 20:
+            text = recovered + f" {default_cta}"
+        else:
+            text = text + f"... {default_cta}"
+
+    # 3. 만약 루나 답글 CTA가 아예 없다면 후미에 보충
+    if "루나" not in text and "답글" not in text:
+        text = text + f" ({default_cta})"
+
+    return text.strip()
+
 
 def build_luna_metadata(track_data):
     """
@@ -512,7 +550,7 @@ def build_luna_metadata(track_data):
    - 예: 에이전트 루나 (Agent Luna) - {title} | 지친 하루 끝 깊은 수면을 위한 {genre}
 2. 레오의 고정 댓글(pinned_comment):
    - 시청자가 영상을 끝까지 듣고 댓글을 달고 싶게 만드는 따뜻하고 도발적인 질문 (2~3문장).
-   - "가장 마음에 와닿은 멜로디 순간(타임스탬프)을 남겨주시면 루나가 답글을 전합니다 🌙" 포함.
+   - 반드시 완전한 문장으로 종결하고, "가장 마음에 와닿은 멜로디 순간(타임스탬프)을 남겨주시면 루나가 답글을 전합니다 🌙"로 문장을 끝맺을 것.
 3. 감성 설명란(youtube_description):
    - 1) 감성 서사 스토리
    - 2) 프로듀싱 정보 (작곡: 에이전트 루나, 마케팅: 에이전트 레오, 엔진: Lyria 3 Pro)
@@ -534,7 +572,7 @@ def build_luna_metadata(track_data):
 
     meta_llm = None
     try:
-        parsed, _ = llm_client.call_llm_json(messages, max_tokens=1500, temperature=0.7)
+        parsed, _ = llm_client.call_llm_json(messages, max_tokens=2048, temperature=0.7)
         if isinstance(parsed, dict) and parsed.get("youtube_title"):
             meta_llm = parsed
     except Exception as e:
@@ -564,6 +602,9 @@ def build_luna_metadata(track_data):
 {duration_str} Outro
 
 #에이전트루나 #AgentLuna #에이전트레오 #AI음악 #수면음악 #공부할때듣는음악 #Lyria3 #힐링음악"""
+
+    # 고정 댓글 문장 완결성 및 안전 정제
+    pinned_comment = sanitize_pinned_comment(pinned_comment)
 
     fixed_tags = ["에이전트 루나", "Agent Luna", "에이전트 레오", "AI음악", "수면음악", "공부할때듣는음악", "Lyria 3", "BGM", "힐링음악"]
     custom_tags = track_data.get("tags") or []
@@ -633,10 +674,108 @@ def list_tracks():
 
 # ── 7. 유튜브 루나 채널 원클릭 업로드 & 레오의 고정댓글 자동 등록 ──────────
 
-def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None):
+def recommend_playlist_for_track(track, playlists):
+    """
+    곡의 장르, 무드, 스토리 및 사운드 스펙을 분석하여
+    현재 채널의 플레이리스트 목록 중 가장 어울리는 플레이리스트를 AI(Gemini)로 매칭/추천합니다.
+    """
+    if not playlists:
+        genre_name = track.get("genre", "Lo-Fi").upper()
+        mood_name = track.get("mood", "Chill").capitalize()
+        return {
+            "recommended_playlist_id": None,
+            "recommended_playlist_title": None,
+            "confidence": 0.0,
+            "reason": "현재 채널에 등록된 플레이리스트가 없습니다. 새 플레이리스트를 생성해주세요.",
+            "suggested_new_playlist": f"[{genre_name}] {mood_name} Sessions"
+        }
+
+    genre = track.get("genre", "")
+    mood = track.get("mood", "")
+    title = track.get("title", "")
+    story = track.get("story", "")
+
+    # 1. 룰 기반 우선 매칭 키워드 (빠른 추천 및 LLM 실패 대비)
+    genre_keywords = {
+        "lofi": ["chill", "lo-fi", "lofi", "relax", "lullab"],
+        "ambient": ["ambient", "zen", "flow", "focus", "ethereal", "space"],
+        "synthwave": ["synth", "night", "cyber", "drive", "retro", "neon", "velocity"],
+        "sleep": ["sleep", "dream", "night", "lullab", "calm"],
+        "jazz": ["jazz", "bar", "coffee", "vintage", "smooth"],
+        "piano": ["piano", "acoustic", "soft", "classic", "zen"]
+    }
+
+    rule_match_id = None
+    target_kw = genre_keywords.get(genre.lower(), ["chill"])
+    for pl in playlists:
+        p_title = pl.get("title", "").lower()
+        if any(kw in p_title for kw in target_kw):
+            rule_match_id = pl["id"]
+            break
+    if not rule_match_id and playlists:
+        rule_match_id = playlists[0]["id"]
+
+    # 2. Gemini 3.6 Flash를 활용한 정밀 매칭
+    prompt = f"""
+당신은 유튜브 음악 채널 전문 큐레이터이자 A&R 매니저입니다.
+새로 제작된 곡의 정보와 채널의 플레이리스트 목록을 비교하여 가장 완벽하게 어울리는 플레이리스트 1개를 추천해주세요.
+
+[곡 정보]
+- 제목: {title}
+- 장르: {genre}
+- 감성 무드: {mood}
+- 테마 & 스토리: {story}
+
+[채널의 재생목록(Playlists) 목록]
+{json.dumps([{"id": p["id"], "title": p["title"], "description": p.get("description", "")} for p in playlists], ensure_ascii=False, indent=2)}
+
+반드시 아래 JSON 형식으로만 응답하세요:
+{{
+  "recommended_playlist_id": "가장 적합한 플레이리스트 ID",
+  "recommended_playlist_title": "해당 플레이리스트 제목",
+  "confidence": 0.95,
+  "reason": "해당 플레이리스트를 추천한 이유 (1~2문장)"
+}}
+"""
+    try:
+        messages = [
+            {"role": "system", "content": "너는 유튜브 음악 채널 플레이리스트 큐레이터 AI다. 요청된 JSON 형식만 출력하라."},
+            {"role": "user", "content": prompt}
+        ]
+        raw = llm_client.call_llm(messages=messages, temperature=0.2, json_mode=True)
+        clean = raw.strip()
+        if "```json" in clean:
+            clean = clean.split("```json")[1].split("```")[0].strip()
+        elif "```" in clean:
+            clean = clean.split("```")[1].split("```")[0].strip()
+        res_json = json.loads(clean)
+        rec_id = res_json.get("recommended_playlist_id")
+        matched_pl = next((p for p in playlists if p["id"] == rec_id), None)
+        if matched_pl:
+            return {
+                "recommended_playlist_id": matched_pl["id"],
+                "recommended_playlist_title": matched_pl["title"],
+                "confidence": res_json.get("confidence", 0.9),
+                "reason": res_json.get("reason", "곡의 무드와 가장 어울리는 플레이리스트입니다.")
+            }
+    except Exception as e:
+        print(f"[LunaEngine] AI 플레이리스트 추천 Fallback: {e}")
+
+    # Fallback 반환
+    matched_pl = next((p for p in playlists if p["id"] == rule_match_id), playlists[0])
+    return {
+        "recommended_playlist_id": matched_pl["id"],
+        "recommended_playlist_title": matched_pl["title"],
+        "confidence": 0.85,
+        "reason": f"곡의 장르({genre}) 및 감성 무드({mood})와 가장 부합하는 플레이리스트입니다."
+    }
+
+
+def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, publish_at=None, playlist_id=None, pinned_comment=None):
     """
     렌더링된 루나 음악 영상을 유튜브 채널로 업로드하고,
-    레오의 인게이지먼트 최적화 고정 댓글(Pinned Comment)을 자동으로 게시합니다.
+    레오의 인게이지먼트 최적화 고정 댓글(Pinned Comment)을 자동으로 게시하며,
+    지정된 재생목록(Playlist)에 자동으로 추가합니다.
     """
     def step(pct, msg):
         if progress_cb:
@@ -653,8 +792,23 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None):
     if not os.path.exists(video_path):
         raise FileNotFoundError("렌더링된 비디오 파일이 없습니다. 먼저 비디오를 렌더링해주세요.")
 
-    meta = build_luna_metadata(track)
+    # 1. 메타데이터 확보: 기존 저장된 메타데이터가 있으면 우선 활용하여 불필요한 재생성 및 문장 유실 방지
+    existing_meta = track.get("metadata") or {}
+    if not existing_meta.get("youtube_title"):
+        meta = build_luna_metadata(track)
+    else:
+        meta = dict(existing_meta)
+
+    # 2. 고정 댓글 우선순위: 사용자 직접 수정 입력값 > 기존 메타데이터 > 트랙 필드
+    if pinned_comment and str(pinned_comment).strip():
+        meta["pinned_comment"] = str(pinned_comment).strip()
+    elif not meta.get("pinned_comment"):
+        meta["pinned_comment"] = track.get("pinned_comment") or f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? 0:00 {track.get('title')}의 선율에 지친 마음을 편히 쉬어가세요 🌙 (가장 좋았던 순간을 타임스탬프로 남겨주세요)"
+
+    # 3. 최종 업로드 전 문장 완결성 자동 정제 (문장 절단 100% 원천 차단)
+    meta["pinned_comment"] = sanitize_pinned_comment(meta["pinned_comment"])
     track["metadata"] = meta
+    track["pinned_comment"] = meta["pinned_comment"]
 
     step(20, f"유튜브 채널 업로드 준비 중: '{meta['youtube_title']}'...")
     
@@ -665,8 +819,10 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None):
         tags=meta["youtube_tags"],
         category_id=10,  # 음악 카테고리
         privacy=privacy_status,
+        publish_at=publish_at,
         thumbnail_path=cover_path if os.path.exists(cover_path) else None,
         pinned_comment=meta.get("pinned_comment"),
+        playlist_id=playlist_id,
         progress=lambda stage, msg, pct: step(20 + int(pct * 0.7), msg)
     )
 
@@ -674,13 +830,22 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None):
     track["uploaded_url"] = result.get("url")
     track["uploaded_at"] = time.time()
     track["comment_posted"] = result.get("comment_posted", False)
+    track["publish_at"] = result.get("publish_at")
+    track["playlist_id"] = playlist_id
+    track["playlist_added"] = result.get("playlist_added", False)
     save_track(track)
 
-    step(100, f"루나 유튜브 채널 업로드 및 레오 고정댓글 완료! ({result.get('url')})")
+    pl_msg = f" & 재생목록 추가 완료" if result.get("playlist_added") else ""
+    step(100, f"루나 유튜브 채널 업로드 및 레오 고정댓글{pl_msg}! ({result.get('url')})")
     return {
         "status": "success",
         "video_id": result.get("video_id"),
         "url": result.get("url"),
         "title": meta["youtube_title"],
-        "pinned_comment": meta.get("pinned_comment")
+        "pinned_comment": meta.get("pinned_comment"),
+        "publish_at": result.get("publish_at"),
+        "playlist_id": playlist_id,
+        "playlist_added": result.get("playlist_added", False),
+        "warnings": result.get("warnings", [])
     }
+

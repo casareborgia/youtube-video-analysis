@@ -1089,11 +1089,12 @@ class YoutubeUploadRequest(BaseModel):
     thumbnail_file: Optional[str] = None
     pinned_comment: Optional[str] = None
     publish_at: Optional[str] = None
+    playlist_id: Optional[str] = None
     channel_id: Optional[str] = None
 
 @app.post("/api/youtube/upload")
 async def upload_youtube_video(req: YoutubeUploadRequest):
-    """YouTube Data API v3 원클릭 영상, 썸네일, 고정댓글 업로드"""
+    """YouTube Data API v3 원클릭 영상, 썸네일, 고정댓글, 재생목록 업로드"""
     st = uploader.status(req.channel_id)
     if not st.get("authorized"):
         raise HTTPException(status_code=401, detail="YouTube OAuth 계정 인증이 필요합니다.")
@@ -1109,7 +1110,8 @@ async def upload_youtube_video(req: YoutubeUploadRequest):
             publish_at=req.publish_at,
             thumbnail_path=req.thumbnail_file,
             pinned_comment=req.pinned_comment,
-            channel_id=req.channel_id
+            channel_id=req.channel_id,
+            playlist_id=req.playlist_id
         )
         return {"status": "success", "channel": st.get("channel"), "result": res}
     except Exception as e:
@@ -1133,6 +1135,21 @@ class LunaRenderVideoRequest(BaseModel):
 class LunaUploadRequest(BaseModel):
     track_id: str
     privacy_status: Optional[str] = "public"
+    publish_at: Optional[str] = None
+    playlist_id: Optional[str] = None
+    pinned_comment: Optional[str] = None
+
+class CreatePlaylistRequest(BaseModel):
+    title: str
+    description: Optional[str] = ""
+    privacy_status: Optional[str] = "public"
+
+class AddPlaylistItemRequest(BaseModel):
+    playlist_id: str
+    video_id: str
+
+class BatchAssignPlaylistsRequest(BaseModel):
+    assignments: List[dict]  # [{"video_id": "...", "playlist_id": "...", "track_id": "..."}]
 
 @app.get("/api/luna/presets")
 async def get_luna_presets():
@@ -1203,9 +1220,15 @@ async def render_luna_music_video(req: LunaRenderVideoRequest):
 
 @app.post("/api/luna/upload")
 async def upload_luna_music_video(req: LunaUploadRequest):
-    """루나 유튜브 채널로 감성 음악 영상 원클릭 업로드"""
+    """루나 유튜브 채널로 감성 음악 영상 원클릭/예약 업로드 & 재생목록 자동 배정"""
     try:
-        res = luna_engine.upload_luna_to_youtube(req.track_id, privacy_status=req.privacy_status or "public")
+        res = luna_engine.upload_luna_to_youtube(
+            req.track_id,
+            privacy_status=req.privacy_status or "public",
+            publish_at=req.publish_at,
+            playlist_id=req.playlist_id,
+            pinned_comment=req.pinned_comment
+        )
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"루나 유튜브 업로드 실패: {e}")
@@ -1214,6 +1237,122 @@ async def upload_luna_music_video(req: LunaUploadRequest):
 async def get_luna_history():
     """생성된 루나 음악 및 비디오 히스토리 목록"""
     return luna_engine.list_tracks()
+
+@app.get("/api/youtube/playlists")
+async def get_youtube_playlists(channel_id: Optional[str] = None):
+    """현재 채널의 유튜브 재생목록(Playlist) 목록 조회"""
+    try:
+        return uploader.list_playlists(channel_id=channel_id)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"재생목록 조회 실패: {e}")
+
+@app.post("/api/youtube/playlists")
+async def create_youtube_playlist(req: CreatePlaylistRequest):
+    """새 유튜브 재생목록 생성"""
+    try:
+        res = uploader.create_playlist(title=req.title, description=req.description, privacy=req.privacy_status)
+        return {"status": "success", "playlist": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"재생목록 생성 실패: {e}")
+
+@app.post("/api/youtube/playlists/add-item")
+async def add_item_to_playlist(req: AddPlaylistItemRequest):
+    """특정 동영상을 재생목록에 추가"""
+    try:
+        res = uploader.add_video_to_playlist(playlist_id=req.playlist_id, video_id=req.video_id)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"재생목록 영상 추가 실패: {e}")
+
+@app.get("/api/luna/playlist-recommendation")
+async def get_playlist_recommendation(track_id: str):
+    """특정 트랙에 대한 AI(Gemini) 기반 최적 플레이리스트 추천"""
+    track = luna_engine.load_track(track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="트랙을 찾을 수 없습니다.")
+    playlists = uploader.list_playlists()
+    rec = luna_engine.recommend_playlist_for_track(track, playlists)
+    return {
+        "track_id": track_id,
+        "track_title": track.get("title"),
+        "genre": track.get("genre"),
+        "mood": track.get("mood"),
+        "recommendation": rec,
+        "playlists": playlists
+    }
+
+@app.get("/api/luna/unassigned-playlist-tracks")
+async def get_unassigned_playlist_tracks():
+    """
+    유튜브에 업로드되어 있으나 어떤 재생목록에도 포함되지 않은 트랙 목록 조회 및
+    각 트랙에 대한 AI 추천 재생목록 자동 분석 반환
+    """
+    try:
+        playlists = uploader.list_playlists()
+        # 모든 플레이리스트에 담긴 비디오 ID 수집
+        all_playlist_vids = set()
+        for pl in playlists:
+            vids = uploader.get_playlist_items(pl["id"])
+            all_playlist_vids.update(vids)
+
+        tracks = luna_engine.list_tracks()
+        unassigned = []
+        for t in tracks:
+            vid = t.get("uploaded_video_id")
+            if vid and vid not in all_playlist_vids:
+                # AI 추천 플레이리스트 계산
+                rec = luna_engine.recommend_playlist_for_track(t, playlists)
+                unassigned.append({
+                    "track_id": t.get("track_id"),
+                    "title": t.get("title"),
+                    "genre": t.get("genre"),
+                    "mood": t.get("mood"),
+                    "cover_url": t.get("cover_url"),
+                    "video_id": vid,
+                    "youtube_url": t.get("uploaded_url") or f"https://youtu.be/{vid}",
+                    "ai_recommendation": rec
+                })
+
+        return {
+            "unassigned_count": len(unassigned),
+            "unassigned_tracks": unassigned,
+            "playlists": playlists
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"미배정 트랙 조회 실패: {e}")
+
+@app.post("/api/luna/batch-assign-playlists")
+async def batch_assign_playlists(req: BatchAssignPlaylistsRequest):
+    """미배정 곡들을 지정된 재생목록에 일괄 추가"""
+    results = []
+    errors = []
+    for item in req.assignments:
+        vid = item.get("video_id")
+        pid = item.get("playlist_id")
+        tid = item.get("track_id")
+        if not vid or not pid:
+            continue
+        try:
+            r = uploader.add_video_to_playlist(playlist_id=pid, video_id=vid)
+            results.append({"video_id": vid, "playlist_id": pid, "status": r.get("status")})
+            # 트랙 메타데이터에도 playlist_id 저장
+            if tid:
+                t = luna_engine.load_track(tid)
+                if t:
+                    t["playlist_id"] = pid
+                    t["playlist_added"] = True
+                    luna_engine.save_track(t)
+        except Exception as err:
+            errors.append({"video_id": vid, "playlist_id": pid, "error": str(err)})
+
+    return {
+        "status": "completed",
+        "total": len(req.assignments),
+        "success_count": len(results),
+        "failed_count": len(errors),
+        "results": results,
+        "errors": errors
+    }
 
 
 # ==========================================
