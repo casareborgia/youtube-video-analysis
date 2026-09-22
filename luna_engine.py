@@ -27,7 +27,11 @@ GENRE_PRESETS = [
     {"id": "synthwave", "name": "Synthwave / Cyberpunk", "desc": "80년대 레트로 아날로그 신디사이저와 드라이브 비트"},
     {"id": "sleep", "name": "Deep Sleep / Meditation", "desc": "432Hz 델타파 기반의 극도의 이완과 힐링 사운드스케이프"},
     {"id": "jazz", "name": "Late Night Jazz Cafe", "desc": "감미로운 피아노 트리오와 잔잔한 콘트라베이스"},
-    {"id": "piano", "name": "Emotional Piano Solo", "desc": "한 편의 영화 같은 서정적이고 감동적인 피아노 멜로디"}
+    {"id": "piano", "name": "Emotional Piano Solo", "desc": "한 편의 영화 같은 서정적이고 감동적인 피아노 멜로디"},
+    {"id": "citypop", "name": "Nostalgic City Pop", "desc": "80s 레트로 신스 브라스와 경쾌한 슬랩 베이스, 도심 드라이브 감성"},
+    {"id": "acoustic", "name": "Warm Acoustic / Folk", "desc": "따스한 핑거스타일 어쿠스틱 기타와 서정적 첼로 선율, 힐링 포크"},
+    {"id": "rnb-chill", "name": "Slow R&B Chillout", "desc": "몽환적인 808 서브 베이스와 세련된 어번 네오소울 건반 그루브"},
+    {"id": "dark-ambient", "name": "Dark Atmospheric Ambient", "desc": "심해와 우주의 신비로운 초저역 펄스, 극도의 딥워크 집중용"}
 ]
 
 GENRE_SPECS = {
@@ -41,7 +45,7 @@ GENRE_SPECS = {
     "ambient": {
         "name": "Cinematic Ambient",
         "bpm_range": "50-65 BPM or beatless",
-        "instruments": "lush evolving synthesizer pads, 432Hz harmonic soundscape, deep sub drone, shimmering ethereal reverb textures, subtle distant thunder and rain field recordings",
+        "instruments": "lush evolving synthesizer pads, 432Hz harmonic soundscape, deep sub drone, shimmering ethereal reverb textures, subtle calm atmospheric breeze",
         "sound_texture": "vast cosmic space, deep meditative stillness, healing ethereal overtones, no harsh beats, purely transcendent",
         "visual_style": "cinematic vast cosmic nebula, calm starry mountain lake under glowing aurora borealis, solitary silhouette gazing at infinity, ethereal and breathtaking, 8k, no text"
     },
@@ -72,6 +76,34 @@ GENRE_SPECS = {
         "instruments": "solo concert grand piano with felt damping intimacy, expressive acoustic hammer and pedal resonance, subtle cinematic string quartet swell in background",
         "sound_texture": "deeply emotional cinematic storytelling, expressive dynamic touch from pianissimo to forte, poignant and heart-touching melody",
         "visual_style": "minimalist grand piano standing beside floor-to-ceiling glass window, soft golden hour sunlight breaking through mist, fallen autumn leaves, poetic elegance, cinematic depth of field, 8k, no text"
+    },
+    "citypop": {
+        "name": "Nostalgic City Pop",
+        "bpm_range": "100-118 BPM",
+        "instruments": "vintage DX7 electric piano, punchy slap bassline, warm 80s brass synth stabs, crisp disco-funk drum groove, shimmering chorus guitar",
+        "sound_texture": "80s Tokyo evening drive, sparkling metropolitan nightscape, nostalgic upbeat breeze, stylish retro vinyl warmth",
+        "visual_style": "retro 80s anime aesthetic city night drive, neon reflections on car window, Tokyo skyline twilight, palm tree silhouettes against pastel sunset sky, ultra-detailed, 8k, no text"
+    },
+    "acoustic": {
+        "name": "Warm Acoustic / Folk",
+        "bpm_range": "68-85 BPM",
+        "instruments": "warm fingerstyle steel-string acoustic guitar, gentle wooden cello resonance, soft shaker and tambourine, subtle ambient birdsong and wind chimes",
+        "sound_texture": "sunlit wooden cabin, organic earthiness, soothing emotional comfort, intimate acoustic storytelling",
+        "visual_style": "sun-drenched rustic wooden porch surrounded by autumn forest, warm golden afternoon light, steaming cup of herbal tea on wooden table, cinematic nature landscape, 8k, no text"
+    },
+    "rnb-chill": {
+        "name": "Slow R&B Chillout",
+        "bpm_range": "65-80 BPM",
+        "instruments": "mellow neo-soul electric keyboard, deep warm 808 sub bass, laid-back trap-soul rimshot and hi-hats, distant filtered vocal ambient chops",
+        "sound_texture": "late night rooftop breeze, sensual velvety warmth, slow seductive groove, deep emotional resonance",
+        "visual_style": "modern urban penthouse balcony overlooking glowing city lights at purple dusk, warm fairy lights, relaxed chill atmosphere, cinematic bokeh, 8k, no text"
+    },
+    "dark-ambient": {
+        "name": "Dark Atmospheric Ambient",
+        "bpm_range": "40-60 BPM or beatless",
+        "instruments": "deep resonant sub-bass drone, atmospheric modular synthesis textures, binaural field recordings of deep ocean caves, ethereal reverb trails",
+        "sound_texture": "mysterious abyss, zero distraction, ultimate hyper-focus cocoon, profound cinematic depth",
+        "visual_style": "mysterious deep ocean trench bioluminescence, glowing ancient underwater ruins, silent cosmic abyss, dark teal and obsidian palette, cinematic minimalism, 8k, no text"
     }
 }
 
@@ -81,7 +113,11 @@ MOOD_PRESETS = [
     {"id": "focus", "name": "깊은 몰입 (Deep Focus)"},
     {"id": "dreamy", "name": "몽환적인 우주 (Cosmic Dream)"},
     {"id": "warm", "name": "따뜻한 위로 (Warm Solace)"},
-    {"id": "nostalgia", "name": "아련한 그리움 (Nostalgia)"}
+    {"id": "nostalgia", "name": "아련한 그리움 (Nostalgia)"},
+    {"id": "bittersweet", "name": "달콤씁쓸한 기억 (Bittersweet)"},
+    {"id": "breezy", "name": "선선한 바람 (Breezy Afternoon)"},
+    {"id": "reflective", "name": "조용한 사색 (Reflective Silence)"},
+    {"id": "cozy", "name": "포근한 안식 (Cozy Haven)"}
 ]
 
 
