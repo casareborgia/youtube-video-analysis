@@ -388,8 +388,19 @@ def upload_video(video_path, title, description, tags=None, privacy="private", p
     privacy = privacy if privacy in PRIVACY else "private"
     status = {"privacyStatus": privacy, "selfDeclaredMadeForKids": bool(made_for_kids)}
     if publish_at:
-        status["privacyStatus"] = "private"
-        status["publishAt"] = publish_at
+        try:
+            from datetime import datetime, timezone
+            dt_str = str(publish_at).strip().replace("Z", "+00:00")
+            dt = datetime.fromisoformat(dt_str)
+            utc_dt = dt.astimezone(timezone.utc)
+            now_utc = datetime.now(timezone.utc)
+            if utc_dt <= now_utc:
+                raise ValueError("예약 공개 시간은 현재 시각보다 미래여야 합니다.")
+            formatted_publish_at = utc_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            status["privacyStatus"] = "private"
+            status["publishAt"] = formatted_publish_at
+        except Exception as e:
+            raise ValueError(f"올바르지 않은 예약 공개 일시입니다 ({publish_at}): {e}")
     body = {
         "snippet": {
             "title": (title or "제목 없음")[:100],

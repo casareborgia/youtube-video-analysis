@@ -938,16 +938,22 @@
               </div>
 
               <!-- 📅 4단계 예약 공개 일시 설정 박스 -->
-              <div id="ytUploadScheduleBox" style="display: none; background: rgba(0,0,0,0.3); border: 1px dashed rgba(244, 63, 94, 0.4); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
-                <label for="ytUploadScheduleTime" style="font-size: 0.78rem; color: #f43f5e; font-weight: 600; margin-bottom: 4px; display: block;">
-                  <i class="fa-solid fa-clock"></i> 자동 공개 일시 (KST)
-                </label>
-                <input type="datetime-local" id="ytUploadScheduleTime" class="form-control" style="font-size: 0.82rem; padding: 6px 10px;">
-                <div style="display: flex; gap: 6px; margin-top: 6px;">
-                  <button type="button" class="btn btn-xs btn-outline btn-yt-schedule-preset" data-preset="plus2h">+2시간</button>
-                  <button type="button" class="btn btn-xs btn-outline btn-yt-schedule-preset" data-preset="today8pm">오늘 20시</button>
-                  <button type="button" class="btn btn-xs btn-outline btn-yt-schedule-preset" data-preset="tomorrow9am">내일 09시</button>
-                  <button type="button" class="btn btn-xs btn-outline btn-yt-schedule-preset" data-preset="tomorrow8pm">내일 20시</button>
+              <div id="ytUploadScheduleBox" style="display: none; background: rgba(244, 63, 94, 0.06); border: 1px dashed rgba(244, 63, 94, 0.4); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <label for="ytUploadScheduleTime" style="font-size: 0.8rem; color: #f43f5e; font-weight: 700; margin: 0;">
+                    <i class="fa-solid fa-calendar-check"></i> 예약 공개 일시 설정 (한국 표준시 KST)
+                  </label>
+                  <span style="font-size: 0.72rem; color: var(--text-muted);">지정 시각까지 비공개로 대기</span>
+                </div>
+                <input type="datetime-local" id="ytUploadScheduleTime" class="form-control" style="font-size: 0.85rem; padding: 8px 10px; background: rgba(0,0,0,0.4); border-color: rgba(244, 63, 94, 0.5);">
+                <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
+                  <button type="button" class="btn btn-xs btn-outline btn-yt-schedule-preset" data-preset="plus2h">+2시간 후</button>
+                  <button type="button" class="btn btn-xs btn-outline btn-yt-schedule-preset" data-preset="today8pm">오늘 저녁 8시</button>
+                  <button type="button" class="btn btn-xs btn-outline btn-yt-schedule-preset" data-preset="tomorrow9am">내일 아침 9시</button>
+                  <button type="button" class="btn btn-xs btn-outline btn-yt-schedule-preset" data-preset="tomorrow8pm">내일 저녁 8시</button>
+                </div>
+                <div id="ytUploadSchedulePreview" style="margin-top: 8px; font-size: 0.76rem; color: #fca5a5; font-weight: 500;">
+                  ⏰ 날짜와 시간을 선택하거나 위 골든타임 버튼을 클릭하세요.
                 </div>
               </div>
 
@@ -1316,19 +1322,22 @@
                 </div>
 
                 <!-- 📅 예약 공개 시 나타나는 날짜/시간 설정 박스 -->
-                <div id="lunaScheduleBox" style="display: none; background: rgba(0,0,0,0.3); border: 1px dashed rgba(244, 63, 94, 0.4); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
+                <div id="lunaScheduleBox" style="display: none; background: rgba(244, 63, 94, 0.06); border: 1px dashed rgba(244, 63, 94, 0.4); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px;">
                   <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                    <label for="lunaScheduleTime" style="font-size: 0.78rem; color: #f43f5e; font-weight: 600; margin: 0;">
-                      <i class="fa-solid fa-clock"></i> 자동 공개 일시 (한국 표준시 KST)
+                    <label for="lunaScheduleTime" style="font-size: 0.8rem; color: #f43f5e; font-weight: 700; margin: 0;">
+                      <i class="fa-solid fa-calendar-check"></i> 예약 공개 일시 설정 (한국 표준시 KST)
                     </label>
                     <span style="font-size: 0.72rem; color: var(--text-muted);">지정 시각까지 비공개로 대기</span>
                   </div>
-                  <input type="datetime-local" id="lunaScheduleTime" class="form-control" style="font-size: 0.82rem; padding: 6px 10px;">
-                  <div style="display: flex; gap: 6px; margin-top: 6px;">
-                    <button type="button" class="btn btn-xs btn-outline btn-schedule-preset" data-preset="plus2h">+2시간 후</button>
-                    <button type="button" class="btn btn-xs btn-outline btn-schedule-preset" data-preset="today8pm">오늘 저녁 8시</button>
-                    <button type="button" class="btn btn-xs btn-outline btn-schedule-preset" data-preset="tomorrow9am">내일 아침 9시</button>
-                    <button type="button" class="btn btn-xs btn-outline btn-schedule-preset" data-preset="tomorrow8pm">내일 저녁 8시</button>
+                  <input type="datetime-local" id="lunaScheduleTime" class="form-control" style="font-size: 0.85rem; padding: 8px 10px; background: rgba(0,0,0,0.4); border-color: rgba(244, 63, 94, 0.5);">
+                  <div style="display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap;">
+                    <button type="button" class="btn btn-xs btn-outline btn-luna-schedule-preset" data-preset="plus2h">+2시간 후</button>
+                    <button type="button" class="btn btn-xs btn-outline btn-luna-schedule-preset" data-preset="today8pm">오늘 저녁 8시</button>
+                    <button type="button" class="btn btn-xs btn-outline btn-luna-schedule-preset" data-preset="tomorrow9am">내일 아침 9시</button>
+                    <button type="button" class="btn btn-xs btn-outline btn-luna-schedule-preset" data-preset="tomorrow8pm">내일 저녁 8시</button>
+                  </div>
+                  <div id="lunaSchedulePreview" style="margin-top: 8px; font-size: 0.76rem; color: #fca5a5; font-weight: 500;">
+                    ⏰ 날짜와 시간을 선택하거나 위 골든타임 버튼을 클릭하세요.
                   </div>
                 </div>
 
@@ -1618,6 +1627,6 @@
     </footer>
   </div>
 
-  <script src="/static/app.js?v=20260922-pinned-comment-fix"></script>
+  <script src="/static/app.js?v=20260922-lyria-alerts"></script>
 </body>
 </html>

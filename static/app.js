@@ -2154,6 +2154,63 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 1500);
   }
 
+  // ---------------------------------------------------------------
+  // 📅 예약 공개 날짜/시간 공통 유틸 함수
+  // ---------------------------------------------------------------
+  function formatKoreanScheduleTime(val) {
+    if (!val) return '';
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '';
+    const days = ['일', '월', '화', '수', '목', '금', '토'];
+    const yyyy = d.getFullYear();
+    const mm = d.getMonth() + 1;
+    const dd = d.getDate();
+    const day = days[d.getDay()];
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `📅 ${yyyy}년 ${mm}월 ${dd}일(${day}) ${hh}:${min} (한국 표준시 KST)에 자동 공개 예정`;
+  }
+
+  function toIsoPublishAt(val) {
+    if (!val) return null;
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return null;
+    const now = new Date();
+    // 현재 시각보다 최소 1분 이상 미래인지 체크
+    if (d.getTime() <= now.getTime() + 60000) {
+      throw new Error('예약 공개 일시는 현재 시각보다 최소 몇 분 이후여야 합니다.');
+    }
+    return d.toISOString();
+  }
+
+  function calculatePresetDate(presetType) {
+    const now = new Date();
+    let target = new Date(now.getTime());
+
+    if (presetType === 'plus2h') {
+      target.setHours(target.getHours() + 2);
+    } else if (presetType === 'today8pm' || presetType === 'today20') {
+      target.setHours(20, 0, 0, 0);
+      if (target <= now) {
+        target.setDate(target.getDate() + 1); // 이미 20시 지난 경우 내일 20시
+      }
+    } else if (presetType === 'tomorrow9am' || presetType === 'tomorrow09') {
+      target.setDate(target.getDate() + 1);
+      target.setHours(9, 0, 0, 0);
+    } else if (presetType === 'tomorrow8pm' || presetType === 'tomorrow20') {
+      target.setDate(target.getDate() + 1);
+      target.setHours(20, 0, 0, 0);
+    }
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const yyyy = target.getFullYear();
+    const mm = pad(target.getMonth() + 1);
+    const dd = pad(target.getDate());
+    const hh = pad(target.getHours());
+    const min = pad(target.getMinutes());
+    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
+  }
+
   if (youtubeUploadForm) {
     youtubeUploadForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -2173,7 +2230,12 @@ document.addEventListener('DOMContentLoaded', () => {
           showAlert('예약 공개할 일시를 선택해주세요.', 'error');
           return;
         }
-        publishAt = toIsoPublishAt(schedTime);
+        try {
+          publishAt = toIsoPublishAt(schedTime);
+        } catch (err) {
+          showAlert(err.message, 'error');
+          return;
+        }
         if (!publishAt) {
           showAlert('올바른 예약 공개 일시를 입력해주세요.', 'error');
           return;
@@ -2624,9 +2686,18 @@ document.addEventListener('DOMContentLoaded', () => {
         currentLunaTrack = track;
         renderLunaTrackView(track);
         loadLunaHistory();
-        showAlert(`'${track.title}' 완곡 음원과 앨범아트, 레오 메타데이터가 완성되었습니다!`, 'success');
+        if (track.is_ai_generated) {
+          showAlert(`🎵 '${track.title}' Lyria 3 Pro 고품질 AI 완곡 작곡 및 앨범아트가 완성되었습니다! (${track.ai_model || 'Lyria 3.5'})`, 'success');
+        } else {
+          showAlert(`⚠️ '${track.title}' 백업 음원으로 준비되었습니다. (${track.fallback_reason || '네트워크 지연'})`, 'warning');
+        }
       } catch (err) {
-        showAlert('루나 음원 생성 실패: ' + err.message, 'error');
+        const msg = err.message || '';
+        if (msg.includes('429') || msg.includes('지출 한도') || msg.includes('spending cap') || msg.includes('RESOURCE_EXHAUSTED')) {
+          showAlert(`🚨 Google AI 지출 한도 초과: AI Studio(https://ai.studio/spend)에서 월간 한도를 상향해주세요.`, 'error');
+        } else {
+          showAlert('루나 음원 생성 실패: ' + msg, 'error');
+        }
         if (lunaStatusBadge) {
           lunaStatusBadge.className = 'badge badge-danger';
           lunaStatusBadge.textContent = '생성 오류';
@@ -2645,7 +2716,10 @@ document.addEventListener('DOMContentLoaded', () => {
     if (lunaActiveView) lunaActiveView.style.display = 'block';
 
     if (lunaCoverImg) lunaCoverImg.src = track.cover_url || '';
-    if (lunaGenreBadge) lunaGenreBadge.textContent = `${track.genre} • ${track.mood}`;
+    if (lunaGenreBadge) {
+      const aiTag = track.is_ai_generated ? ` • 🤖 ${track.ai_model || 'Lyria 3'}` : ``;
+      lunaGenreBadge.textContent = `${track.genre} • ${track.mood}${aiTag}`;
+    }
     if (lunaTrackTitle) lunaTrackTitle.textContent = track.title || 'Untitled Track';
     if (lunaTrackStory) lunaTrackStory.textContent = track.story || '';
     if (lunaAudioPlayer) {
@@ -2781,7 +2855,12 @@ document.addEventListener('DOMContentLoaded', () => {
           showAlert('예약 공개할 일시를 선택해주세요.', 'error');
           return;
         }
-        publishAt = toIsoPublishAt(schedTime);
+        try {
+          publishAt = toIsoPublishAt(schedTime);
+        } catch (err) {
+          showAlert(err.message, 'error');
+          return;
+        }
         if (!publishAt) {
           showAlert('올바른 예약 공개 일시를 입력해주세요.', 'error');
           return;
@@ -3532,79 +3611,90 @@ document.addEventListener('DOMContentLoaded', () => {
   // ==============================================================
   let cachedPlaylists = [];
 
-  // 날짜/시간 프리셋 계산기 -> YYYY-MM-DDTHH:mm 포맷 (datetime-local 용)
-  function calculatePresetDate(presetType) {
-    const now = new Date();
-    let target = new Date(now.getTime());
+  // 1. 4단계(Producer) 예약 공개 이벤트 바인딩
+  const ytUploadScheduleBox = document.getElementById('ytUploadScheduleBox');
+  const ytUploadScheduleTime = document.getElementById('ytUploadScheduleTime');
+  const ytUploadSchedulePreview = document.getElementById('ytUploadSchedulePreview');
 
-    if (presetType === 'plus2h') {
-      target.setHours(target.getHours() + 2);
-    } else if (presetType === 'today20') {
-      target.setHours(20, 0, 0, 0);
-      if (target <= now) {
-        target.setDate(target.getDate() + 1); // 이미 20시 지난 경우 내일 20시
-      }
-    } else if (presetType === 'tomorrow09') {
-      target.setDate(target.getDate() + 1);
-      target.setHours(9, 0, 0, 0);
-    } else if (presetType === 'tomorrow20') {
-      target.setDate(target.getDate() + 1);
-      target.setHours(20, 0, 0, 0);
+  function updateYtSchedulePreview() {
+    if (!ytUploadSchedulePreview || !ytUploadScheduleTime) return;
+    const v = ytUploadScheduleTime.value;
+    if (v) {
+      ytUploadSchedulePreview.innerHTML = `<span style="color:#4ade80;">✔</span> ${formatKoreanScheduleTime(v)}`;
+    } else {
+      ytUploadSchedulePreview.textContent = '⏰ 날짜와 시간을 선택하거나 위 골든타임 버튼을 클릭하세요.';
     }
-
-    const pad = (n) => String(n).padStart(2, '0');
-    const yyyy = target.getFullYear();
-    const mm = pad(target.getMonth() + 1);
-    const dd = pad(target.getDate());
-    const hh = pad(target.getHours());
-    const min = pad(target.getMinutes());
-    return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
   }
 
-  // 1. 4단계(Producer) 예약 공개 이벤트 바인딩
-  const ytScheduledBox = document.getElementById('ytScheduledBox');
-  const ytPublishAtInput = document.getElementById('ytPublishAtInput');
-
-  if (ytUploadPrivacy && ytScheduledBox) {
+  if (ytUploadPrivacy && ytUploadScheduleBox) {
     ytUploadPrivacy.addEventListener('change', () => {
       if (ytUploadPrivacy.value === 'scheduled') {
-        ytScheduledBox.style.display = 'block';
-        if (ytPublishAtInput && !ytPublishAtInput.value) {
-          ytPublishAtInput.value = calculatePresetDate('plus2h');
+        ytUploadScheduleBox.style.display = 'block';
+        if (ytUploadScheduleTime && !ytUploadScheduleTime.value) {
+          ytUploadScheduleTime.value = calculatePresetDate('plus2h');
         }
+        updateYtSchedulePreview();
       } else {
-        ytScheduledBox.style.display = 'none';
+        ytUploadScheduleBox.style.display = 'none';
       }
     });
 
-    ytScheduledBox.querySelectorAll('.btn-sched-preset').forEach((btn) => {
+    if (ytUploadScheduleTime) {
+      ytUploadScheduleTime.addEventListener('input', updateYtSchedulePreview);
+      ytUploadScheduleTime.addEventListener('change', updateYtSchedulePreview);
+    }
+
+    ytUploadScheduleBox.querySelectorAll('.btn-yt-schedule-preset').forEach((btn) => {
       btn.addEventListener('click', () => {
         const p = btn.dataset.preset;
-        if (ytPublishAtInput) ytPublishAtInput.value = calculatePresetDate(p);
+        if (ytUploadScheduleTime) {
+          ytUploadScheduleTime.value = calculatePresetDate(p);
+          updateYtSchedulePreview();
+        }
       });
     });
   }
 
   // 2. 6단계(Luna) 예약 공개 이벤트 바인딩
-  const lunaScheduledBox = document.getElementById('lunaScheduledBox');
-  const lunaPublishAtInput = document.getElementById('lunaPublishAtInput');
+  const lunaScheduleBox = document.getElementById('lunaScheduleBox');
+  const lunaScheduleTime = document.getElementById('lunaScheduleTime');
+  const lunaSchedulePreview = document.getElementById('lunaSchedulePreview');
 
-  if (lunaPrivacySelect && lunaScheduledBox) {
+  function updateLunaSchedulePreview() {
+    if (!lunaSchedulePreview || !lunaScheduleTime) return;
+    const v = lunaScheduleTime.value;
+    if (v) {
+      lunaSchedulePreview.innerHTML = `<span style="color:#4ade80;">✔</span> ${formatKoreanScheduleTime(v)}`;
+    } else {
+      lunaSchedulePreview.textContent = '⏰ 날짜와 시간을 선택하거나 위 골든타임 버튼을 클릭하세요.';
+    }
+  }
+
+  if (lunaPrivacySelect && lunaScheduleBox) {
     lunaPrivacySelect.addEventListener('change', () => {
       if (lunaPrivacySelect.value === 'scheduled') {
-        lunaScheduledBox.style.display = 'block';
-        if (lunaPublishAtInput && !lunaPublishAtInput.value) {
-          lunaPublishAtInput.value = calculatePresetDate('plus2h');
+        lunaScheduleBox.style.display = 'block';
+        if (lunaScheduleTime && !lunaScheduleTime.value) {
+          lunaScheduleTime.value = calculatePresetDate('plus2h');
         }
+        updateLunaSchedulePreview();
       } else {
-        lunaScheduledBox.style.display = 'none';
+        lunaScheduleBox.style.display = 'none';
       }
     });
 
-    lunaScheduledBox.querySelectorAll('.btn-sched-preset').forEach((btn) => {
+    if (lunaScheduleTime) {
+      lunaScheduleTime.addEventListener('input', updateLunaSchedulePreview);
+      lunaScheduleTime.addEventListener('change', updateLunaSchedulePreview);
+    }
+
+    lunaScheduleBox.querySelectorAll('.btn-luna-schedule-preset').forEach((btn) => {
       btn.addEventListener('click', () => {
         const p = btn.dataset.preset;
-        if (lunaPublishAtInput) lunaPublishAtInput.value = calculatePresetDate(p);
+        if (lunaScheduleTime) {
+          lunaScheduleTime.value = calculatePresetDate(p);
+          updateLunaSchedulePreview();
+        }
       });
     });
   }

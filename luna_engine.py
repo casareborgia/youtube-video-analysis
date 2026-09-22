@@ -267,19 +267,27 @@ def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None):
 
     # 1. Google GenAI Lyria 호출 시도 (Interactions API)
     lyria_success = False
+    used_model = None
+    last_err = ""
+
     if key:
         step(35, "Google GenAI Lyria 엔진에 작곡 요청 전송 중...")
-        last_err = ""
         for model_name in LYRIA_MODELS:
             try:
                 step(40, f"Lyria 작곡 요청 중 ({model_name})...")
                 _lyria_generate(key, model_name, safe_lyria_prompt, duration_seconds, audio_path)
                 lyria_success = True
+                used_model = model_name
                 step(80, f"Lyria 고음질 오디오 수신 완료! ({model_name})")
                 break
             except Exception as e:
-                last_err = f"{model_name}: {str(e)[:160]}"
+                last_err = f"{model_name}: {str(e)[:180]}"
                 print(f"[LunaEngine] Lyria 실패 -> {last_err}")
+                # 지출 한도 초과(429) 또는 할당량 소진 시 즉각 사용자 안내 예외 발생
+                err_lower = str(e).lower()
+                if "429" in str(e) or "spending cap" in err_lower or "resource_exhausted" in err_lower:
+                    raise RuntimeError("Google AI Studio 월간 지출 한도 초과(429) 또는 크레딧 소진으로 AI 작곡이 차단되었습니다. AI Studio(https://ai.studio/spend)에서 한도를 늘려주세요.") from e
+
         if not lyria_success:
             print(f"[LunaEngine] 모든 Lyria 모델 실패({last_err}) -> 고음질 오토 신스 백업 엔진 가동")
 
@@ -296,6 +304,10 @@ def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None):
     track_data["audio_file"] = audio_path
     track_data["audio_url"] = f"/data/luna_music/{track_id}/audio.mp3"
     track_data["duration_seconds"] = int(actual_duration)
+    track_data["is_ai_generated"] = bool(lyria_success)
+    track_data["ai_model"] = used_model or "Local Synth"
+    if not lyria_success:
+        track_data["fallback_reason"] = last_err
 
     step(100, f"에이전트 루나 완곡 음원 준비 완료! ({int(actual_duration)}초)")
     return track_data
