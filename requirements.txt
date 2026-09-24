@@ -21,11 +21,17 @@ starlette==1.6.0
 typing-inspection==0.4.4
 typing_extensions==4.16.0
 uvicorn==0.52.4
-uvloop==0.22.1
+uvloop==0.22.1; sys_platform != 'win32'
 watchfiles==1.2.0
 websockets>=13.0,<17.0  # google-genai 가 websockets<17.0 을 요구 (uvicorn 은 >=13 이면 충족)
 yt-dlp==2026.8.19
 edge-tts>=7.0.0
+
+# HTTP & API 유틸리티
+requests>=2.31.0
+httpx>=0.27.0
+aiohttp>=3.9.0
+tabulate>=0.9.0
 
 # YouTube Data API v3 OAuth (uploader.py — 채널 연결/업로드/브랜딩)
 google-api-python-client>=2.200.0

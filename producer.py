@@ -67,7 +67,7 @@ def audio_duration(path):
         except Exception:
             pass
     return None
-if os.path.exists(ENV_FILE):
+if dotenv and os.path.exists(ENV_FILE):
     dotenv.load_dotenv(ENV_FILE, override=True)
 
 FPS = 30

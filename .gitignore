@@ -48,6 +48,7 @@ Thumbs.db
 .env
 .env.local
 .env.*
+!.env.example
 *.log
 
 # Node / Web dependencies
@@ -99,6 +100,7 @@ data/luna_music/*
 # Credentials & Secrets
 .env
 *.env
+!.env.example
 client_secret.json
 token.pickle
 token.json

@@ -113,9 +113,10 @@
 
 ### 6. AI 음악 스튜디오 (Luna)
 
-- Gemini Lyria로 장르·무드 기반 **완곡 생성**, 실패 시 `ffmpeg` 신디사이저로 폴백
-- 앨범 아트 생성 및 음악 영상 렌더링
-- 유튜브 업로드용 제목·설명·태그 자동 작성
+- **Gemini Lyria 3 Pro 완곡 생성** — 장르·무드 기반 완곡 작곡 (실패 시 `ffmpeg` 다중 하모닉스 신디사이저로 안전 폴백)
+- **감성 가사(Lyrics) & 보컬 모드 지원** — 시티팝, R&B, 어쿠스틱 포크 등 장르별 보컬 친화도에 따른 자동 가사 기획 및 보컬 멜로디 스타일 주입 (수면/명상은 순수 연주곡 유지)
+- **나노바나나(Imagen) 16:9 감성 앨범 아트** 생성 및 시네마틱 켄번즈 줌인 영상 렌더링
+- **레오 ✕ 루나 알고리즘 패키징** — 유튜브 CTR 극대화 제목, `[Lyrics / 가사]` 전문이 포함된 감성 SEO 설명란, 시청자 반응 유도용 고정 댓글 자동 등록
 
 ---
 
@@ -168,10 +169,14 @@ graph TD
 | Meta Threads 토큰 | 선택 | 스레드 자동 발행 |
 
 ```bash
+# macOS
 brew install ffmpeg
+
+# Ubuntu / Debian
+sudo apt update && sudo apt install -y ffmpeg
 ```
 
-> **자막 번인에는 `drawtext` 필터가 필요합니다.** libfreetype 없이 빌드된 ffmpeg 는 이 필터가 없어 자막과 플레이스홀더 렌더가 실패합니다. 앱이 PATH 의 ffmpeg 를 검사해 `drawtext` 가 없으면 `requirements.txt` 에 포함된 **imageio-ffmpeg 번들 바이너리로 자동 대체**하므로 별도 조치 없이 동작합니다. 시스템 ffmpeg 를 고치려면 `brew reinstall ffmpeg` 를 실행하세요.
+> **자막 번인에는 `drawtext` 필터가 필요합니다.** libfreetype 없이 빌드된 ffmpeg 는 이 필터가 없어 자막과 플레이스홀더 렌더가 실패합니다. 앱이 PATH 의 ffmpeg 를 검사해 `drawtext` 가 없으면 `requirements.txt` 에 포함된 **imageio-ffmpeg 번들 바이너리로 자동 대체**하므로 별도 조치 없이 동작합니다.
 
 로컬 LLM은 둘 중 하나만 있으면 됩니다.
 
@@ -184,20 +189,29 @@ LM Studio를 쓰는 경우 앱에서 모델을 로드하고 **Local Server를 �
 ### 설치 및 실행
 
 ```bash
+# 1. 저장소 클론
 git clone https://github.com/casareborgia/youtube-video-analysis.git
 cd youtube-video-analysis
 
+# 2. 환경변수 템플릿 복사 (선택: 웹 UI 설정 모달에서도 입력 가능)
+cp .env.example .env
+
+# 3. 가상환경 생성 및 의존성 전체 설치
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate       # Windows(CMD): .venv\Scripts\activate
+pip install --upgrade pip
 pip install -r requirements.txt
 
+# 4. 올인원 실행 스크립트 가동 (또는 uvicorn 직접 실행)
 chmod +x run.sh
 ./run.sh
+# 또는 직접 실행:
+# python -m uvicorn app:app --host 127.0.0.1 --port 8765 --reload
 ```
 
 브라우저에서 **http://localhost:8765** 가 자동으로 열립니다.
 
-> `run.sh`는 `.venv`가 없으면 만들어 주지만 최소 패키지만 설치합니다. 처음에는 위처럼 `pip install -r requirements.txt`를 직접 실행하세요.
+> `run.sh`를 실행하면 가상환경(.venv) 존재 여부 및 `.env` 파일 유무를 자동 감지하여 누락된 의존성을 안전하게 자동 초기화합니다.
 
 ---
 
