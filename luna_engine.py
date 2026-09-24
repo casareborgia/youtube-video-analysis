@@ -40,70 +40,90 @@ GENRE_SPECS = {
         "bpm_range": "70-85 BPM",
         "instruments": "warm Fender Rhodes chords, dusty vinyl crackle, gentle acoustic bass, relaxed 75 bpm swing drums, mellow night jazz guitar licks",
         "sound_texture": "warm analog tape saturation, cozy nostalgic bedroom ambience, relaxed chillhop swing",
-        "visual_style": "aesthetic Lo-Fi anime room at rainy night, cozy warm desk lamp, steaming cup of coffee next to glowing vintage radio, blurry city lights, Studio Ghibli inspired, ultra-detailed 8k, no text"
+        "visual_style": "aesthetic Lo-Fi anime room at rainy night, cozy warm desk lamp, steaming cup of coffee next to glowing vintage radio, blurry city lights, Studio Ghibli inspired, ultra-detailed 8k, no text",
+        "vocal_affinity": "optional",
+        "vocal_style_hint": "soft whispered chillhop vocals, melodic mumbles, or dreamy vocal chops"
     },
     "ambient": {
         "name": "Cinematic Ambient",
         "bpm_range": "50-65 BPM or beatless",
         "instruments": "lush evolving synthesizer pads, 432Hz harmonic soundscape, deep sub drone, shimmering ethereal reverb textures, subtle calm atmospheric breeze",
         "sound_texture": "vast cosmic space, deep meditative stillness, healing ethereal overtones, no harsh beats, purely transcendent",
-        "visual_style": "cinematic vast cosmic nebula, calm starry mountain lake under glowing aurora borealis, solitary silhouette gazing at infinity, ethereal and breathtaking, 8k, no text"
+        "visual_style": "cinematic vast cosmic nebula, calm starry mountain lake under glowing aurora borealis, solitary silhouette gazing at infinity, ethereal and breathtaking, 8k, no text",
+        "vocal_affinity": "none",
+        "vocal_style_hint": "purely instrumental or wordless ethereal pad textures, zero spoken lyrics"
     },
     "synthwave": {
         "name": "Synthwave / Cyberpunk",
         "bpm_range": "110-128 BPM",
         "instruments": "vintage analog synthesizers (Juno-106, Moog bassline), driving 16th-note arpeggios, gated reverb 80s LinnDrum snare, punchy cybernetic kick, retro neon synth lead",
         "sound_texture": "80s retro-futuristic night drive, high dynamic energy, pulsing highway groove, analog warmth with modern punch",
-        "visual_style": "cyberpunk neon-lit highway at midnight, sleek retro sports car speeding towards glowing wireframe grid horizon, vibrant magenta and cyan lighting, aesthetic 80s synthwave wallpaper, 8k, no text"
+        "visual_style": "cyberpunk neon-lit highway at midnight, sleek retro sports car speeding towards glowing wireframe grid horizon, vibrant magenta and cyan lighting, aesthetic 80s synthwave wallpaper, 8k, no text",
+        "vocal_affinity": "optional",
+        "vocal_style_hint": "80s retro synth-pop vocals, driving and nostalgic, emotive retro chorus"
     },
     "sleep": {
         "name": "Deep Sleep / Meditation",
         "bpm_range": "45-55 BPM or beatless",
         "instruments": "432Hz and 528Hz healing delta-theta brainwave tones, ultra-soft Tibetan singing bowl whispers, warm oceanic ambient pad swell, gentle bedtime rain soundscape, peaceful harp touches",
         "sound_texture": "deep restorative relaxation, zero percussive attack, profound tranquility, anxiety-melting acoustic cocoon",
-        "visual_style": "deep indigo twilight sky, silver crescent moon illuminating calm tranquil ocean ripples, floating soft clouds, dreamlike peaceful oasis, 8k, no text"
+        "visual_style": "deep indigo twilight sky, silver crescent moon illuminating calm tranquil ocean ripples, floating soft clouds, dreamlike peaceful oasis, 8k, no text",
+        "vocal_affinity": "none",
+        "vocal_style_hint": "purely instrumental, zero vocal distractions for deep sleep and meditation"
     },
     "jazz": {
         "name": "Late Night Jazz Cafe",
         "bpm_range": "65-80 BPM",
         "instruments": "warm grand piano chords with lyrical improvisation, walking acoustic double bass, brushed jazz snare drum and ride cymbal, muted brass accents",
         "sound_texture": "smoky midnight jazz club, authentic live acoustic ensemble feel, sophisticated soulfulness, intimate cafe warmth",
-        "visual_style": "dimly lit vintage late-night jazz cafe, amber warm lighting, wooden grand piano with warm brass reflections, rain-slicked cobblestone street outside the window, cinematic mood, 8k, no text"
+        "visual_style": "dimly lit vintage late-night jazz cafe, amber warm lighting, wooden grand piano with warm brass reflections, rain-slicked cobblestone street outside the window, cinematic mood, 8k, no text",
+        "vocal_affinity": "optional",
+        "vocal_style_hint": "intimate smoky late-night jazz cafe vocals, warm velvety tone"
     },
     "piano": {
         "name": "Emotional Piano Solo",
         "bpm_range": "55-75 BPM",
         "instruments": "solo concert grand piano with felt damping intimacy, expressive acoustic hammer and pedal resonance, subtle cinematic string quartet swell in background",
         "sound_texture": "deeply emotional cinematic storytelling, expressive dynamic touch from pianissimo to forte, poignant and heart-touching melody",
-        "visual_style": "minimalist grand piano standing beside floor-to-ceiling glass window, soft golden hour sunlight breaking through mist, fallen autumn leaves, poetic elegance, cinematic depth of field, 8k, no text"
+        "visual_style": "minimalist grand piano standing beside floor-to-ceiling glass window, soft golden hour sunlight breaking through mist, fallen autumn leaves, poetic elegance, cinematic depth of field, 8k, no text",
+        "vocal_affinity": "none",
+        "vocal_style_hint": "purely instrumental solo piano, no vocals"
     },
     "citypop": {
         "name": "Nostalgic City Pop",
         "bpm_range": "100-118 BPM",
         "instruments": "vintage DX7 electric piano, punchy slap bassline, warm 80s brass synth stabs, crisp disco-funk drum groove, shimmering chorus guitar",
         "sound_texture": "80s Tokyo evening drive, sparkling metropolitan nightscape, nostalgic upbeat breeze, stylish retro vinyl warmth",
-        "visual_style": "retro 80s anime aesthetic city night drive, neon reflections on car window, Tokyo skyline twilight, palm tree silhouettes against pastel sunset sky, ultra-detailed, 8k, no text"
+        "visual_style": "retro 80s anime aesthetic city night drive, neon reflections on car window, Tokyo skyline twilight, palm tree silhouettes against pastel sunset sky, ultra-detailed, 8k, no text",
+        "vocal_affinity": "high",
+        "vocal_style_hint": "authentic 80s Tokyo city pop female vocals, clear, upbeat, nostalgic and sparkling melodic hook"
     },
     "acoustic": {
         "name": "Warm Acoustic / Folk",
         "bpm_range": "68-85 BPM",
         "instruments": "warm fingerstyle steel-string acoustic guitar, gentle wooden cello resonance, soft shaker and tambourine, subtle ambient birdsong and wind chimes",
         "sound_texture": "sunlit wooden cabin, organic earthiness, soothing emotional comfort, intimate acoustic storytelling",
-        "visual_style": "sun-drenched rustic wooden porch surrounded by autumn forest, warm golden afternoon light, steaming cup of herbal tea on wooden table, cinematic nature landscape, 8k, no text"
+        "visual_style": "sun-drenched rustic wooden porch surrounded by autumn forest, warm golden afternoon light, steaming cup of herbal tea on wooden table, cinematic nature landscape, 8k, no text",
+        "vocal_affinity": "high",
+        "vocal_style_hint": "warm emotional indie folk singer-songwriter vocals, heartfelt acoustic storytelling"
     },
     "rnb-chill": {
         "name": "Slow R&B Chillout",
         "bpm_range": "65-80 BPM",
         "instruments": "mellow neo-soul electric keyboard, deep warm 808 sub bass, laid-back trap-soul rimshot and hi-hats, distant filtered vocal ambient chops",
         "sound_texture": "late night rooftop breeze, sensual velvety warmth, slow seductive groove, deep emotional resonance",
-        "visual_style": "modern urban penthouse balcony overlooking glowing city lights at purple dusk, warm fairy lights, relaxed chill atmosphere, cinematic bokeh, 8k, no text"
+        "visual_style": "modern urban penthouse balcony overlooking glowing city lights at purple dusk, warm fairy lights, relaxed chill atmosphere, cinematic bokeh, 8k, no text",
+        "vocal_affinity": "high",
+        "vocal_style_hint": "silky smooth neo-soul R&B vocals, emotive falsetto, laid-back modern urban groove"
     },
     "dark-ambient": {
         "name": "Dark Atmospheric Ambient",
         "bpm_range": "40-60 BPM or beatless",
         "instruments": "deep resonant sub-bass drone, atmospheric modular synthesis textures, binaural field recordings of deep ocean caves, ethereal reverb trails",
         "sound_texture": "mysterious abyss, zero distraction, ultimate hyper-focus cocoon, profound cinematic depth",
-        "visual_style": "mysterious deep ocean trench bioluminescence, glowing ancient underwater ruins, silent cosmic abyss, dark teal and obsidian palette, cinematic minimalism, 8k, no text"
+        "visual_style": "mysterious deep ocean trench bioluminescence, glowing ancient underwater ruins, silent cosmic abyss, dark teal and obsidian palette, cinematic minimalism, 8k, no text",
+        "vocal_affinity": "none",
+        "vocal_style_hint": "purely instrumental deep focus drone, zero vocals"
     }
 }
 
@@ -123,15 +143,30 @@ MOOD_PRESETS = [
 
 # ── 1. 음악 콘셉트 및 프롬프트 동적 AI 기획 ─────────────────────────────
 
-def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief=None):
+def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief=None, vocal_mode="auto"):
     """
     LLM(Gemini 3.6 Flash)을 활용하여 장르별 독립 스펙과 레오의 트렌드 브리프를 결합,
-    하드코딩 닻내림 없는 독창적인 곡 제목, 감성 서사, Lyria 3 작곡 프롬프트, 앨범아트 프롬프트를 생성합니다.
+    하드코딩 닻내림 없는 독창적인 곡 제목, 감성 서사, 가사(Lyrics, 필요시), Lyria 3 작곡 프롬프트, 앨범아트 프롬프트를 생성합니다.
     """
     genre_key = genre if genre in GENRE_SPECS else "lofi"
     genre_spec = GENRE_SPECS[genre_key]
     genre_info = next((g for g in GENRE_PRESETS if g["id"] == genre_key), GENRE_PRESETS[0])
     mood_info = next((m for m in MOOD_PRESETS if m["id"] == mood), MOOD_PRESETS[0])
+
+    # 보컬 & 가사 생성 여부 지능적 판단
+    v_mode = (vocal_mode or "auto").strip().lower()
+    topic_str = f"{custom_topic} {(leo_brief.get('topic', '') if isinstance(leo_brief, dict) else '')}".lower()
+    explicit_vocal_keyword = any(k in topic_str for k in ["보컬", "가사", "vocal", "lyrics", "노래", "singing", "목소리"])
+
+    if v_mode in ("lyrics", "vocal", "yes", "true"):
+        should_have_lyrics = True
+    elif v_mode in ("instrumental", "inst", "no", "false"):
+        should_have_lyrics = False
+    else:  # auto
+        if explicit_vocal_keyword:
+            should_have_lyrics = True
+        else:
+            should_have_lyrics = (genre_spec.get("vocal_affinity") == "high")
 
     # 레오의 트렌드 브리프 정보 결합
     trend_context = ""
@@ -143,6 +178,53 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
 - 추천 후킹 앵글: {leo_brief.get('angle', '')}
 - 핵심 트렌드 키워드: {', '.join(leo_brief.get('keywords', []))}
 """
+
+    vocal_style_hint = genre_spec.get("vocal_style_hint", "")
+    if should_have_lyrics:
+        vocal_prompt_section = f"""[보컬 및 가사 요구사항 (중요: 이 곡은 감성 보컬과 가사가 필요한 곡입니다)]
+1. 보컬 스타일(vocal_style):
+   - {genre_spec['name']}의 정서에 완벽히 부합하는 매력적인 보컬 스타일 서술 (예: "{vocal_style_hint}").
+2. 가사 작성(lyrics):
+   - 곡의 서사(story)와 감성 무드({mood_info['name']})에 깊이 공감할 수 있는 웰메이드 감성 노랫말.
+   - [Verse 1], [Chorus], [Verse 2], [Chorus], [Outro] 구조로 작성할 것.
+   - 주로 한국어로 작성하되, 장르 분위기(시티팝/R&B 등)에 맞게 감각적인 영문 프레이즈나 훅을 자연스럽게 믹스해도 좋습니다.
+3. Lyria 3 작곡 프롬프트(lyria_prompt):
+   - 반드시 '영문(English)'으로 작성.
+   - BPM({genre_spec['bpm_range']})과 필수 악기({genre_spec['instruments']})를 포함할 것.
+   - 'No vocals', 'instrumental only' 같은 무보컬 지시어를 '절대' 포함하지 말 것!
+   - 보컬 멜로디 및 스타일을 명확히 묘사할 것 (예: "{vocal_style_hint}, expressive melodic singing, lyrical vocal hooks, studio vocal mastering quality, rich analog warmth")."""
+
+        json_schema_example = f"""{{
+  "title": "영문 제목 (한글 부제)",
+  "genre": "{genre_spec['name']}",
+  "mood": "{mood_info['name']}",
+  "story": "한국어 감성 서사 2~3문장",
+  "has_lyrics": true,
+  "vocal_style": "{vocal_style_hint} 스타일의 구체적 설명",
+  "lyrics": "[Verse 1]\\n가사 1절...\\n\\n[Chorus]\\n후렴구...\\n\\n[Verse 2]\\n가사 2절...\\n\\n[Chorus]\\n후렴구...\\n\\n[Outro]\\n아웃트로...",
+  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (BPM, 악기 편성, 보컬 스타일 및 멜로디 묘사 포함)",
+  "visual_prompt": "영문 앨범 커버 프롬프트 (16:9)",
+  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"]
+}}"""
+    else:
+        vocal_prompt_section = f"""[연주곡 요구사항 (순수 인스트루멘털 BGM)]
+1. 순수 연주곡(Instrumental):
+   - 보컬이 전혀 없는 깊은 집중/수면/휴식용 배경음악입니다.
+   - Lyria 3 작곡 프롬프트(lyria_prompt)에 반드시 'No vocals, purely instrumental, master quality, rich analog warmth'를 포함할 것.
+2. 가사(lyrics) 및 보컬 스타일(vocal_style)은 생성하지 마세요 (null)."""
+
+        json_schema_example = f"""{{
+  "title": "영문 제목 (한글 부제)",
+  "genre": "{genre_spec['name']}",
+  "mood": "{mood_info['name']}",
+  "story": "한국어 감성 서사 2~3문장",
+  "has_lyrics": false,
+  "vocal_style": null,
+  "lyrics": null,
+  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (BPM 및 장르 고유 악기 편성 포함, 'No vocals, purely instrumental' 포함)",
+  "visual_prompt": "영문 앨범 커버 프롬프트 (16:9)",
+  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"]
+}}"""
 
     prompt = f"""당신은 글로벌 AI 음악 아티스트 '에이전트 루나(Agent Luna)'의 수석 총괄 프로듀서이자 작곡가입니다.
 새로운 싱글 음원을 위해 주어진 장르 고유의 음악적 정체성을 철저히 지키면서, 독창적이고 감각적인 음악 콘셉트와 작곡/비주얼 프롬프트를 완성하세요.
@@ -156,30 +238,19 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
 - 추가 테마/요청: {custom_topic or "리스너의 깊은 몰입과 감정적 해소를 이끄는 완성도 높은 사운드"}
 {trend_context}
 
+{vocal_prompt_section}
+
 [기획 원칙 (중요: 상투적인 클리셰와 특정 장르 편향 절대 금지)]
 1. 곡 제목(title): 장르와 무드의 정서를 압축한 감각적인 '영문 제목 (한글 부제)' 형식.
    - 흔해 빠진 단어(Starlight, Midnight, Cafe 등)의 기계적 반복을 지양하고, 곡의 서사에 맞는 독창적인 단어를 선택할 것.
 2. 감성 서사(story): 시청자가 음악을 들으며 깊이 공감할 수 있는 2~3문장의 아련하고 서정적인 한국어 스토리.
-3. Lyria 3 작곡 프롬프트(lyria_prompt):
-   - 반드시 '영문(English)'으로 작성.
-   - 위에 명시된 {genre_spec['name']}의 [권장 BPM]과 [필수 악기 편성]을 반드시 포함할 것.
-   - 타 장르의 악기나 분위기(예: 신스웨이브에 어쿠스틱 기타를 넣거나, 앰비언트에 드럼비트를 넣는 행위)를 절대 섞지 말 것.
-   - 'No vocals, purely instrumental, master quality, rich analog warmth' 필수 포함.
-4. 앨범 커버 프롬프트(visual_prompt):
+3. 앨범 커버 프롬프트(visual_prompt):
    - 나노바나나/Imagen 생성용 영문 프롬프트 (16:9 와이드).
    - {genre_spec['name']}의 [비주얼 기본 톤]에 맞춘 시네마틱 씬 서술, 8k, no text, no watermark.
-5. 연관 태그(tags): 장르, 무드, 리스닝 상황을 아우르는 8개 태그 배열.
+4. 연관 태그(tags): 장르, 무드, 리스닝 상황을 아우르는 8개 태그 배열.
 
 [반환 형식 — 반드시 순수 JSON만 출력하세요]
-{{
-  "title": "영문 제목 (한글 부제)",
-  "genre": "{genre_spec['name']}",
-  "mood": "{mood_info['name']}",
-  "story": "한국어 감성 서사 2~3문장",
-  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (BPM 및 장르 고유 악기 편성 포함)",
-  "visual_prompt": "영문 앨범 커버 프롬프트 (16:9)",
-  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"]
-}}"""
+{json_schema_example}"""
 
     messages = [
         {"role": "system", "content": "You are the chief producer of AI music artist Agent Luna. Output pure JSON only."},
@@ -191,6 +262,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
         parsed, raw = llm_client.call_llm_json(messages, max_tokens=2048, temperature=0.75)
         if isinstance(parsed, dict) and parsed.get("title") and parsed.get("lyria_prompt"):
             concept = parsed
+            concept["has_lyrics"] = bool(parsed.get("has_lyrics") or parsed.get("lyrics"))
     except Exception as e:
         print(f"[LunaEngine] LLM concept generation error: {e}")
 
@@ -202,17 +274,51 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
             "synthwave": ("Neon Horizon (네온의 지평선)", "보랏빛 안개가 자욱한 자정의 고속도로, 끝없는 네온 불빛을 가르며 미래로 질주하는 드라이브의 전율."),
             "sleep": ("Cradle of Stars (별들의 요람)", "오늘 하루 무거웠던 모든 생각과 불안을 밤하늘에 띄워 보내고, 부드러운 달빛 속에서 깊은 단잠으로 빠져듭니다."),
             "jazz": ("Blue Hour Reverie (푸른 시간의 몽상)", "오래된 재즈 바 구석, 얼음 녹는 소리와 함께 스며드는 감미로운 피아노 선율이 귓가를 다정하게 스칩니다."),
-            "piano": ("Whispering Raindrops (빗방울의 속삭임)", "창가를 두드리는 빗방울 하나하나가 건반 위에 내려앉아, 가슴속 깊이 묻어둔 아련한 기억들을 깨웁니다.")
+            "piano": ("Whispering Raindrops (빗방울의 속삭임)", "창가를 두드리는 빗방울 하나하나가 건반 위에 내려앉아, 가슴속 깊이 묻어둔 아련한 기억들을 깨웁니다."),
+            "citypop": ("Midnight Expressway (심야의 고속도로)", "차창을 내리고 밤공기를 들이마시면 도시의 불빛들이 별처럼 쏟아져 내립니다. 어디론가 떠나고 싶은 밤의 설렘."),
+            "acoustic": ("Forest Whispers (숲의 속삭임)", "나뭇잎 사이로 스며드는 따스한 오후 햇살처럼, 지친 마음에 조용히 스며드는 포근한 통기타 선율."),
+            "rnb-chill": ("Purple Moonlight (보랏빛 달빛)", "어둠이 내려앉은 도심의 루프탑, 감미로운 선율 속에 오늘 하루의 무게를 가만히 내려놓습니다.")
         }
         f_title, f_story = fallback_titles.get(genre_key, fallback_titles["lofi"])
+
+        # Fallback 보컬/가사 정의
+        fallback_lyrics_map = {
+            "citypop": (
+                "80s Tokyo 레트로 시티팝 감성의 맑고 청량한 여성 보컬",
+                "[Verse 1]\n흘러가는 차창 밖 노란 가로등 불빛\n도심의 소음을 뒤로한 채\n달려가는 심야버스 창가에 기대어\n스쳐가는 바람의 멜로디\n\n[Chorus]\n빛나는 네온사인 우리만의 밤\n달빛 속으로 너를 찾아 달려가\n시간이 멈춘 이 거리에 울려 퍼지는\n영원히 끝나지 않을 시티 팝\n\n[Verse 2]\n새벽 안개 너머로 푸른 바다가 보이고\n어느새 차가워진 손끝을 녹이며\n혼자만의 자유로운 숨을 쉬어\n\n[Chorus]\n빛나는 네온사인 우리만의 밤\n달빛 속으로 너를 찾아 달려가\n시간이 멈춘 이 거리에 울려 퍼지는\n영원히 끝나지 않을 시티 팝\n\n[Outro]\n새벽이 밝아올 때까지\nNeon lights in my heart, forever..."
+            ),
+            "acoustic": (
+                "따스하고 서정적인 어쿠스틱 인디 포크 싱어송라이터 보컬",
+                "[Verse 1]\n나뭇잎 사이로 내리는 오후의 햇살\n작은 찻잔에 담긴 따뜻한 온기\n조용히 귀 기울이면 들려오는\n오래된 통기타 소리\n\n[Chorus]\n바람이 전하는 작은 위로를 안고\n지친 마음에 쉬어갈 숲을 건너\n오늘도 괜찮다고 다정하게 속삭이는\n너의 목소리처럼 포근해\n\n[Outro]\n가만히 눈을 감고\n마음의 소릴 따라..."
+            ),
+            "rnb-chill": (
+                "감미로운 팔세토와 그루브가 돋보이는 어번 네오소울 R&B 보컬",
+                "[Verse 1]\n자정이 지난 루프탑 차가운 바람\n보랏빛 도시의 불빛들이 흩날려\n천천히 흐르는 808 베이스 위에\n내 마음을 띄워보내\n\n[Chorus]\nSlow down baby, in this twilight groove\n밤하늘에 번지는 짙은 감정들\n아무 말 없이 그저 느끼면 돼\nThis late night chillout rhythm\n\n[Outro]\nDrifting away in the purple sky..."
+            )
+        }
+
+        fb_vocal_style = None
+        fb_lyrics = None
+        if should_have_lyrics:
+            fb_vocal_style, fb_lyrics = fallback_lyrics_map.get(
+                genre_key,
+                (f"{genre_spec['name']} 스타일의 감미로운 보컬", "[Verse 1]\n조용히 흐르는 밤의 선율\n\n[Chorus]\n마음에 닿는 따뜻한 노래\n\n[Outro]\n영원히 기억될 순간...")
+            )
+            lyria_p = f"Masterpiece {genre_spec['name']} with {genre_spec['instruments']}, {genre_spec['bpm_range']}, {vocal_style_hint}, expressive melodic singing, lyrical vocal hooks, studio mastering quality"
+        else:
+            lyria_p = f"Masterpiece {genre_spec['name']} with {genre_spec['instruments']}, {genre_spec['bpm_range']}, {genre_spec['sound_texture']}, purely instrumental, no vocals, studio mastering quality"
+
         concept = {
             "title": f_title,
             "genre": genre_spec["name"],
             "mood": mood_info["name"],
             "story": f_story,
-            "lyria_prompt": f"Masterpiece {genre_spec['name']} with {genre_spec['instruments']}, {genre_spec['bpm_range']}, {genre_spec['sound_texture']}, purely instrumental, no vocals, studio mastering quality",
+            "has_lyrics": should_have_lyrics,
+            "vocal_style": fb_vocal_style,
+            "lyrics": fb_lyrics,
+            "lyria_prompt": lyria_p,
             "visual_prompt": genre_spec["visual_style"],
-            "tags": ["에이전트루나", "AgentLuna", "AI음악", genre_key, mood_info["name"].split(" ")[0], "BGM", "힐링음악", "몰입음악"]
+            "tags": ["에이전트루나", "AgentLuna", "AI음악", genre_key, mood_info["name"].split(" ")[0], "BGM", "힐링음악"] + (["가사", "노래", "CityPopVocal"] if should_have_lyrics else ["순수연주곡", "몰입음악"])
         }
 
     return concept
@@ -637,7 +743,7 @@ def sanitize_pinned_comment(comment_text: str, default_cta: str = "가장 좋았
 def build_luna_metadata(track_data):
     """
     에이전트 레오의 유튜브 알고리즘 최적화 공식을 결합하여,
-    클릭률(CTR) 극대화 제목, 감성 SEO 설명란, 시청자 반응 유도용 고정 댓글(Pinned Comment)을 생성합니다.
+    클릭률(CTR) 극대화 제목, 감성 SEO 설명란(가사 포함), 시청자 반응 유도용 고정 댓글(Pinned Comment)을 생성합니다.
     """
     title = track_data.get("title") or "Velvet Midnight"
     genre = track_data.get("genre") or "Lo-Fi / Chillhop"
@@ -645,6 +751,30 @@ def build_luna_metadata(track_data):
     story = track_data.get("story") or "지친 하루의 끝, 마음을 편안하게 안아주는 루나의 멜로디."
     duration_sec = int(track_data.get("duration_seconds") or 180)
     duration_str = time.strftime('%M:%S', time.gmtime(duration_sec))
+
+    lyrics = track_data.get("lyrics")
+    vocal_style = track_data.get("vocal_style")
+    has_lyrics = bool(lyrics or track_data.get("has_lyrics"))
+
+    lyrics_context = ""
+    if has_lyrics and lyrics:
+        lyrics_context = f"""
+[보컬 & 가사 정보]
+- 보컬 스타일: {vocal_style or '감성 보컬'}
+- 노랫말(Lyrics):
+{lyrics}
+"""
+
+    pinned_cta = (
+        "가장 마음에 와닿은 가사 구절이나 멜로디 순간(타임스탬프)을 남겨주시면 루나가 답글을 전합니다 🌙"
+        if has_lyrics else
+        "가장 마음에 와닿은 멜로디 순간(타임스탬프)을 남겨주시면 루나가 답글을 전합니다 🌙"
+    )
+
+    lyrics_guideline = (
+        "- 3) [중요: 가사 전문 포함] '[Lyrics / 가사]' 소제목 아래에 가사 전문을 줄바꿈을 살려 그대로 배치할 것\n"
+        if (has_lyrics and lyrics) else ""
+    )
 
     # Gemini를 활용하여 레오의 감성 + 알고리즘 최적화 카피 동적 생성
     prompt = f"""당신은 유튜브 알고리즘 마케팅 전문가 '에이전트 레오(Agent Leo)'입니다.
@@ -656,6 +786,7 @@ def build_luna_metadata(track_data):
 - 감성 무드: {mood}
 - 곡 서사 스토리: {story}
 - 곡 길이: {duration_str}
+{lyrics_context}
 
 [작성 요구사항]
 1. 유튜브 제목(youtube_title):
@@ -663,13 +794,13 @@ def build_luna_metadata(track_data):
    - 예: 에이전트 루나 (Agent Luna) - {title} | 지친 하루 끝 깊은 수면을 위한 {genre}
 2. 레오의 고정 댓글(pinned_comment):
    - 시청자가 영상을 끝까지 듣고 댓글을 달고 싶게 만드는 따뜻하고 도발적인 질문 (2~3문장).
-   - 반드시 완전한 문장으로 종결하고, "가장 마음에 와닿은 멜로디 순간(타임스탬프)을 남겨주시면 루나가 답글을 전합니다 🌙"로 문장을 끝맺을 것.
+   - 반드시 완전한 문장으로 종결하고, "{pinned_cta}"로 문장을 끝맺을 것.
 3. 감성 설명란(youtube_description):
    - 1) 감성 서사 스토리
-   - 2) 프로듀싱 정보 (작곡: 에이전트 루나, 마케팅: 에이전트 레오, 엔진: Lyria 3 Pro)
-   - 3) 채널 구독 안내 문구
-   - 4) [Timeline] (0:00 {title} ~ {duration_str} Outro)
-   - 5) 해시태그 8개
+   - 2) 프로듀싱 정보 (작곡: 에이전트 루나, {f'보컬: 에이전트 루나 ({vocal_style or "감성 보컬"}), ' if has_lyrics else ''}마케팅: 에이전트 레오, 엔진: Lyria 3 Pro)
+{lyrics_guideline}   - 4) 채널 구독 안내 문구
+   - 5) [Timeline] (0:00 {title} ~ {duration_str} Outro)
+   - 6) 해시태그 8개
 
 [반환 형식 — 순수 JSON만 출력]
 {{
@@ -693,18 +824,30 @@ def build_luna_metadata(track_data):
 
     if meta_llm:
         yt_title = meta_llm.get("youtube_title")[:100]
-        pinned_comment = meta_llm.get("pinned_comment") or f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? 0:00 {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 (가장 좋았던 순간을 타임스탬프로 남겨주세요)"
+        pinned_comment = meta_llm.get("pinned_comment") or f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? 0:00 {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 ({pinned_cta})"
         yt_desc = meta_llm.get("youtube_description") or ""
+
+        # LLM 응답 설명란에 가사가 누락되었을 경우 안전 보충
+        if has_lyrics and lyrics and "[Lyrics" not in yt_desc and "[가사" not in yt_desc:
+            insert_marker = "[Timeline]"
+            if insert_marker in yt_desc:
+                yt_desc = yt_desc.replace(insert_marker, f"[Lyrics / 가사]\n{lyrics}\n\n{insert_marker}")
+            else:
+                yt_desc = f"{yt_desc}\n\n[Lyrics / 가사]\n{lyrics}"
     else:
         # 안전 Fallback
         yt_title = f"에이전트 루나 (Agent Luna) - {title} | {mood} {genre}"[:100]
-        pinned_comment = f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 (가장 좋았던 멜로디 순간을 타임스탬프로 남겨주시면 루나가 답글을 남겨드립니다)"
+        pinned_comment = f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 ({pinned_cta})"
+
+        lyrics_block = f"\n\n[Lyrics / 가사]\n{lyrics}\n" if (has_lyrics and lyrics) else ""
+        vocal_credit = f"\n보컬: 에이전트 루나 ({vocal_style or 'AI 감성 보컬'})" if has_lyrics else ""
+
         yt_desc = f"""{story}
 
-작곡 & 프로듀싱: 에이전트 루나 (Agent Luna)
+작곡 & 프로듀싱: 에이전트 루나 (Agent Luna){vocal_credit}
 마케팅 & 채널 디렉팅: 에이전트 레오 (Agent Leo)
 사운드 엔진: Google DeepMind Lyria 3 Pro
-장르: {genre} | 분위기: {mood}
+장르: {genre} | 분위기: {mood}{lyrics_block}
 
 ✨ 에이전트 루나의 음악은 매일 당신의 깊은 몰입과 평온한 수면을 함께합니다.
 구독과 좋아요로 루나의 다음 음악 여정에 함께해주세요 🌙
@@ -714,14 +857,19 @@ def build_luna_metadata(track_data):
 0:00 {title}
 {duration_str} Outro
 
-#에이전트루나 #AgentLuna #에이전트레오 #AI음악 #수면음악 #공부할때듣는음악 #Lyria3 #힐링음악"""
+#에이전트루나 #AgentLuna #에이전트레오 #AI음악 #Lyria3 #힐링음악"""
 
     # 고정 댓글 문장 완결성 및 안전 정제
-    pinned_comment = sanitize_pinned_comment(pinned_comment)
+    pinned_comment = sanitize_pinned_comment(pinned_comment, default_cta=pinned_cta)
 
-    fixed_tags = ["에이전트 루나", "Agent Luna", "에이전트 레오", "AI음악", "수면음악", "공부할때듣는음악", "Lyria 3", "BGM", "힐링음악"]
+    base_tags = ["에이전트 루나", "Agent Luna", "에이전트 레오", "AI음악", "Lyria 3", "BGM", "힐링음악"]
+    if has_lyrics:
+        base_tags += ["가사", "Lyrics", "노래", "보컬"]
+    else:
+        base_tags += ["수면음악", "공부할때듣는음악", "순수연주곡"]
+
     custom_tags = track_data.get("tags") or []
-    merged_tags = list(dict.fromkeys(fixed_tags + custom_tags))[:15]
+    merged_tags = list(dict.fromkeys(base_tags + custom_tags))[:15]
 
     return {
         "youtube_title": yt_title,
@@ -764,12 +912,16 @@ def list_tracks():
             with open(p, encoding="utf-8") as f:
                 d = json.load(f)
             meta = d.get("metadata") or {}
+            has_lyrics = bool(d.get("has_lyrics") or d.get("lyrics"))
             tracks.append({
                 "track_id": d.get("track_id"),
                 "title": d.get("title"),
                 "genre": d.get("genre"),
                 "mood": d.get("mood"),
                 "story": d.get("story"),
+                "has_lyrics": has_lyrics,
+                "vocal_style": d.get("vocal_style"),
+                "lyrics": d.get("lyrics"),
                 "audio_url": d.get("audio_url"),
                 "cover_url": d.get("cover_url"),
                 "video_url": d.get("video_url"),

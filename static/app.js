@@ -2481,6 +2481,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const lunaTopicInput = document.getElementById('lunaTopicInput');
   const lunaDurationSelect = document.getElementById('lunaDurationSelect');
   const lunaVideoQualitySelect = document.getElementById('lunaVideoQualitySelect');
+  const lunaVocalSelect = document.getElementById('lunaVocalSelect');
   const btnRunLunaGen = document.getElementById('btnRunLunaGen');
 
   const lunaEmptyState = document.getElementById('lunaEmptyState');
@@ -2489,9 +2490,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const lunaCoverImg = document.getElementById('lunaCoverImg');
   const lunaGenreBadge = document.getElementById('lunaGenreBadge');
+  const lunaHasLyricsBadge = document.getElementById('lunaHasLyricsBadge');
   const lunaTrackTitle = document.getElementById('lunaTrackTitle');
   const lunaTrackStory = document.getElementById('lunaTrackStory');
   const lunaAudioPlayer = document.getElementById('lunaAudioPlayer');
+
+  // 가사 & 보컬 뷰어 요소
+  const lunaLyricsBox = document.getElementById('lunaLyricsBox');
+  const lunaLyricsToggle = document.getElementById('lunaLyricsToggle');
+  const lunaLyricsContent = document.getElementById('lunaLyricsContent');
+  const lunaVocalStyleBadge = document.getElementById('lunaVocalStyleBadge');
+  const btnCopyLunaLyrics = document.getElementById('btnCopyLunaLyrics');
+  const lunaLyricsChevron = document.getElementById('lunaLyricsChevron');
 
   const btnRenderLunaVideo = document.getElementById('btnRenderLunaVideo');
   const lunaVideoPlayerBox = document.getElementById('lunaVideoPlayerBox');
@@ -2655,6 +2665,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const mood = lunaMoodSelect ? lunaMoodSelect.value : 'dawn';
       const customTopic = lunaTopicInput ? lunaTopicInput.value.trim() : '';
       const duration = lunaDurationSelect ? parseInt(lunaDurationSelect.value, 10) : 180;
+      const vocalMode = lunaVocalSelect ? lunaVocalSelect.value : 'auto';
 
       btnRunLunaGen.disabled = true;
       btnRunLunaGen.querySelector('.btn-text').style.display = 'none';
@@ -2673,7 +2684,8 @@ document.addEventListener('DOMContentLoaded', () => {
             mood: mood,
             custom_topic: customTopic,
             duration_seconds: duration,
-            leo_brief: currentLeoBrief
+            leo_brief: currentLeoBrief,
+            vocal_mode: vocalMode
           })
         });
 
@@ -2687,7 +2699,8 @@ document.addEventListener('DOMContentLoaded', () => {
         renderLunaTrackView(track);
         loadLunaHistory();
         if (track.is_ai_generated) {
-          showAlert(`🎵 '${track.title}' Lyria 3 Pro 고품질 AI 완곡 작곡 및 앨범아트가 완성되었습니다! (${track.ai_model || 'Lyria 3.5'})`, 'success');
+          const lyricsNotice = (track.has_lyrics || track.lyrics) ? ' (🎤 감성 가사 포함)' : '';
+          showAlert(`🎵 '${track.title}' Lyria 3 Pro 고품질 AI 완곡 작곡 및 앨범아트가 완성되었습니다! (${track.ai_model || 'Lyria 3.5'})${lyricsNotice}`, 'success');
         } else {
           showAlert(`⚠️ '${track.title}' 백업 음원으로 준비되었습니다. (${track.fallback_reason || '네트워크 지연'})`, 'warning');
         }
@@ -2720,11 +2733,37 @@ document.addEventListener('DOMContentLoaded', () => {
       const aiTag = track.is_ai_generated ? ` • 🤖 ${track.ai_model || 'Lyria 3'}` : ``;
       lunaGenreBadge.textContent = `${track.genre} • ${track.mood}${aiTag}`;
     }
+
+    const hasLyrics = Boolean(track.has_lyrics || track.lyrics);
+    if (lunaHasLyricsBadge) {
+      lunaHasLyricsBadge.style.display = hasLyrics ? 'inline-block' : 'none';
+    }
+
     if (lunaTrackTitle) lunaTrackTitle.textContent = track.title || 'Untitled Track';
     if (lunaTrackStory) lunaTrackStory.textContent = track.story || '';
     if (lunaAudioPlayer) {
       lunaAudioPlayer.src = track.audio_url || '';
       lunaAudioPlayer.load();
+    }
+
+    // 감성 가사(Lyrics) 뷰어 렌더링
+    if (lunaLyricsBox) {
+      if (hasLyrics && track.lyrics) {
+        lunaLyricsBox.style.display = 'block';
+        if (lunaLyricsContent) {
+          lunaLyricsContent.textContent = track.lyrics;
+          lunaLyricsContent.style.display = 'none'; // 기본 접힘 상태
+        }
+        if (lunaVocalStyleBadge) {
+          lunaVocalStyleBadge.textContent = track.vocal_style ? `🎤 ${track.vocal_style}` : '🎤 감성 보컬';
+          lunaVocalStyleBadge.style.display = 'inline-block';
+        }
+        if (lunaLyricsChevron) {
+          lunaLyricsChevron.style.transform = 'rotate(0deg)';
+        }
+      } else {
+        lunaLyricsBox.style.display = 'none';
+      }
     }
 
     const meta = track.metadata || {};
@@ -2939,6 +2978,7 @@ document.addEventListener('DOMContentLoaded', () => {
       lunaHistoryList.innerHTML = tracks.map(t => {
         const isRendered = !!t.video_url;
         const isUploaded = !!t.uploaded_video_id;
+        const hasLyrics = Boolean(t.has_lyrics || t.lyrics);
         return `
           <div class="luna-track-card" data-id="${escapeHtml(t.track_id)}" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; padding:8px 10px; cursor:pointer; transition:background 0.2s;">
             <div style="display:flex; align-items:center; gap:10px; min-width:0;">
@@ -2949,6 +2989,7 @@ document.addEventListener('DOMContentLoaded', () => {
               </div>
             </div>
             <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
+              ${hasLyrics ? '<span class="badge" style="font-size:10px; background:rgba(168,85,247,0.18); color:#d8b4fe; border:1px solid rgba(168,85,247,0.3);"><i class="fa-solid fa-microphone-lines"></i> 가사</span>' : ''}
               ${isUploaded ? '<span class="badge badge-success" style="font-size:10px;"><i class="fa-brands fa-youtube"></i> 업로드됨</span>' : ''}
               ${isRendered ? '<span class="badge badge-accent" style="font-size:10px;"><i class="fa-solid fa-film"></i> 영상완료</span>' : '<span class="badge badge-subtle" style="font-size:10px;">음원만</span>'}
               <button class="btn btn-xs btn-outline btn-load-luna-track" data-id="${escapeHtml(t.track_id)}"><i class="fa-solid fa-play"></i></button>
@@ -2988,6 +3029,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (btnRefreshLunaHistory) {
     btnRefreshLunaHistory.addEventListener('click', loadLunaHistory);
+  }
+
+  // 가사(Lyrics) 펼치기/접기 및 복사 이벤트 리스너 바인딩
+  if (lunaLyricsToggle) {
+    lunaLyricsToggle.addEventListener('click', (e) => {
+      if (e.target.closest('#btnCopyLunaLyrics')) return; // 복사 버튼 클릭 시 접힘 방지
+      if (!lunaLyricsContent) return;
+      const isHidden = lunaLyricsContent.style.display === 'none';
+      lunaLyricsContent.style.display = isHidden ? 'block' : 'none';
+      if (lunaLyricsChevron) {
+        lunaLyricsChevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+      }
+    });
+  }
+
+  if (btnCopyLunaLyrics) {
+    btnCopyLunaLyrics.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const lyricsText = (currentLunaTrack && currentLunaTrack.lyrics) || (lunaLyricsContent ? lunaLyricsContent.textContent : '');
+      if (!lyricsText || !lyricsText.trim()) {
+        showAlert('복사할 가사가 없습니다.', 'warning');
+        return;
+      }
+      navigator.clipboard.writeText(lyricsText.trim()).then(() => {
+        showAlert('🎵 감성 가사가 클립보드에 복사되었습니다!', 'success');
+      }).catch(() => {
+        showAlert('가사 복사에 실패했습니다.', 'error');
+      });
+    });
   }
 
   // ==============================================================

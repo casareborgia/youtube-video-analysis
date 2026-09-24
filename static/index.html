@@ -1222,6 +1222,17 @@
               </div>
 
               <div class="control-row">
+                <div class="control-group">
+                  <label for="lunaVocalSelect"><i class="fa-solid fa-microphone-lines"></i> 보컬 & 가사 모드 (Vocal & Lyrics)</label>
+                  <select id="lunaVocalSelect" class="form-select">
+                    <option value="auto" selected>✨ 자동 추천 (시티팝/R&B/포크는 가사&보컬, 수면/앰비언트는 Inst)</option>
+                    <option value="lyrics">🎤 보컬 & 감성 가사 생성 (노랫말과 서사 포함)</option>
+                    <option value="instrumental">🎹 순수 연주곡 (No Vocals, Inst BGM)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="control-row">
                 <div class="control-group half">
                   <label for="lunaDurationSelect"><i class="fa-solid fa-clock"></i> 음원 길이</label>
                   <select id="lunaDurationSelect" class="form-select">
@@ -1284,7 +1295,10 @@
                 <img id="lunaCoverImg" src="" alt="Album Cover" style="width: 140px; height: 140px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border-color); flex-shrink: 0;">
                 <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: space-between;">
                   <div>
-                    <span id="lunaGenreBadge" class="badge badge-accent" style="font-size: 11px;">Lo-Fi</span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <span id="lunaGenreBadge" class="badge badge-accent" style="font-size: 11px;">Lo-Fi</span>
+                      <span id="lunaHasLyricsBadge" class="badge badge-subtle" style="font-size: 10px; display: none; background: rgba(168, 85, 247, 0.2); color: #d8b4fe; border: 1px solid rgba(168, 85, 247, 0.4);">🎤 가사 포함</span>
+                    </div>
                     <h3 id="lunaTrackTitle" style="margin: 6px 0 4px 0; font-size: 1.15rem; color: #c084fc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"></h3>
                     <p id="lunaTrackStory" style="margin: 0; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;"></p>
                   </div>
@@ -1293,6 +1307,22 @@
                     <audio id="lunaAudioPlayer" controls style="width: 100%; height: 36px;"></audio>
                   </div>
                 </div>
+              </div>
+
+              <!-- 1-1. 감성 가사(Lyrics) 뷰어 (가사가 있는 경우만 표시) -->
+              <div id="lunaLyricsBox" style="display: none; background: rgba(168, 85, 247, 0.05); border: 1px solid rgba(168, 85, 247, 0.25); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" id="lunaLyricsToggle">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-feather-pointed" style="color: #c084fc;"></i>
+                    <strong style="font-size: 0.85rem; color: #e9d5ff;">🎵 감성 가사 (Lyrics)</strong>
+                    <span id="lunaVocalStyleBadge" class="badge badge-subtle" style="font-size: 10px; background: rgba(168, 85, 247, 0.18); color: #d8b4fe; border: 1px solid rgba(168,85,247,0.3);"></span>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <button type="button" id="btnCopyLunaLyrics" class="btn btn-xs btn-outline" style="border-color: rgba(168, 85, 247, 0.4);"><i class="fa-solid fa-copy"></i> 가사 복사</button>
+                    <i id="lunaLyricsChevron" class="fa-solid fa-chevron-down" style="font-size: 12px; color: var(--text-muted); transition: transform 0.2s;"></i>
+                  </div>
+                </div>
+                <div id="lunaLyricsContent" style="display: none; margin-top: 12px; font-size: 0.82rem; line-height: 1.6; color: var(--text-secondary); white-space: pre-wrap; max-height: 220px; overflow-y: auto; background: rgba(0,0,0,0.25); padding: 12px 14px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05); font-family: inherit;"></div>
               </div>
 
               <!-- 2. 영상 렌더링 액션 바 -->

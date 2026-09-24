@@ -1127,6 +1127,7 @@ class LunaTrackGenerateRequest(BaseModel):
     custom_topic: Optional[str] = ""
     duration_seconds: Optional[int] = 180
     leo_brief: Optional[dict] = None
+    vocal_mode: Optional[str] = "auto"
 
 class LunaRenderVideoRequest(BaseModel):
     track_id: str
@@ -1176,14 +1177,15 @@ async def generate_luna_track(req: LunaTrackGenerateRequest):
     """
     [루나 3단계 & 레오 4단계]
     레오의 트렌드 브리프와 장르 독립 스펙을 결합하여
-    음원 콘셉트 기획, Lyria 3 Pro 완곡 음원, Imagen 앨범아트, 레오의 고정댓글 메타데이터까지 자동 생성
+    음원 콘셉트 기획, 가사 생성(필요시), Lyria 3 Pro 완곡 음원, Imagen 앨범아트, 레오의 고정댓글 메타데이터까지 자동 생성
     """
     try:
         concept = luna_engine.generate_music_concept(
             genre=req.genre,
             mood=req.mood,
             custom_topic=req.custom_topic or "",
-            leo_brief=req.leo_brief
+            leo_brief=req.leo_brief,
+            vocal_mode=req.vocal_mode or "auto"
         )
         track_id = f"luna_{int(time.time())}"
         concept["track_id"] = track_id
