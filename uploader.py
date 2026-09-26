@@ -452,16 +452,19 @@ def upload_video(video_path, title, description, tags=None, privacy="private", p
         
         # 댓글 문장 절단 자동 복원 & 종결부호 안전 보정
         final_comment = str(pinned_comment).strip()
-        if re.search(r'루나가\s*답?$', final_comment):
-            final_comment = re.sub(r'루나가\s*답?$', '루나가 답글을 전합니다 🌙', final_comment)
-        elif re.search(r'남겨주시면\s*$', final_comment):
-            final_comment = re.sub(r'남겨주시면\s*$', '남겨주시면 답글을 남겨드립니다 💬', final_comment)
-        elif re.search(r'타임스탬프로\s*$', final_comment):
-            final_comment = re.sub(r'타임스탬프로\s*$', '타임스탬프로 남겨주시면 루나가 답글을 남겨드립니다 🌙', final_comment)
-
-        valid_endings = ('.', '!', '?', '~', '🌙', '✨', '❤️', '💬', '👇', '🎵', ')', '요', '다', '죠', '네', '음')
-        if not final_comment.endswith(valid_endings):
-            final_comment += ' 🌙'
+        try:
+            import luna_engine
+            final_comment = luna_engine.sanitize_pinned_comment(final_comment)
+        except Exception:
+            if re.search(r'루나가\s*답?$', final_comment):
+                final_comment = re.sub(r'루나가\s*답?$', '루나가 답글을 전합니다 🌙', final_comment)
+            elif re.search(r'남겨주시면\s*$', final_comment):
+                final_comment = re.sub(r'남겨주시면\s*$', '남겨주시면 답글을 남겨드립니다 💬', final_comment)
+            elif re.search(r'타임스탬프로\s*$', final_comment):
+                final_comment = re.sub(r'타임스탬프로\s*$', '타임스탬프로 남겨주시면 루나가 답글을 전합니다 🌙', final_comment)
+            valid_endings = ('.', '!', '?', '~', '🌙', '✨', '❤️', '💬', '👇', '🎵', ')', '요', '다', '죠', '네', '음')
+            if not final_comment.endswith(valid_endings):
+                final_comment += ' 🌙'
 
         try:
             youtube.commentThreads().insert(
@@ -476,7 +479,7 @@ def upload_video(video_path, title, description, tags=None, privacy="private", p
                 },
             ).execute()
             comment_posted = True
-            warnings.append("댓글은 등록했지만 '고정'은 YouTube Data API가 지원하지 않습니다. 유튜브 스튜디오에서 직접 고정해주세요.")
+            warnings.append("댓글이 등록되었습니다. '상단 고정'은 유튜브 정책상 유튜브 스튜디오에서 [고정] 버튼을 1회 클릭해주세요.")
         except Exception as e:
             warnings.append(f"댓글 등록 실패: {str(e)[:160]}")
 
@@ -492,8 +495,10 @@ def upload_video(video_path, title, description, tags=None, privacy="private", p
 
     if privacy != "private" and not publish_at:
         warnings.append("OAuth 앱이 구글 검증을 받기 전에는 업로드된 영상이 비공개로 잠길 수 있습니다. 유튜브 스튜디오에서 공개 상태를 확인하세요.")
+    studio_comment_url = f"https://studio.youtube.com/video/{video_id}/comments" if video_id else ""
     return {"video_id": video_id, "url": f"https://youtu.be/{video_id}", "thumbnail_set": thumb_ok,
-            "comment_posted": comment_posted, "playlist_added": playlist_added, "warnings": warnings,
+            "comment_posted": comment_posted, "studio_comment_url": studio_comment_url,
+            "playlist_added": playlist_added, "warnings": warnings,
             "privacy": status["privacyStatus"], "publish_at": publish_at}
 
 

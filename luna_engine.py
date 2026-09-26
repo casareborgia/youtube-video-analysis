@@ -170,27 +170,31 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
 
     # 레오의 트렌드 브리프 정보 결합
     trend_context = ""
+    trend_brief_applied = False
     if leo_brief and isinstance(leo_brief, dict):
+        trend_brief_applied = True
         trend_context = f"""
-[에이전트 레오(Leo)의 유튜브 실시간 음악 트렌드 분석 브리프]
+[★ 에이전트 레오(Leo)의 유튜브 실시간 음악 트렌드 분석 브리프 (곡 사운드에 필수 반영)]
 - 트렌드 핵심 테마: {leo_brief.get('topic', '')}
-- 시청자 심리 및 니즈: {leo_brief.get('audience_triggers', '')}
-- 추천 후킹 앵글: {leo_brief.get('angle', '')}
+- 시청자 심리 및 반응 트리거: {leo_brief.get('audience_triggers', '')}
+- 추천 후킹 음악적 앵글: {leo_brief.get('angle', '')}
 - 핵심 트렌드 키워드: {', '.join(leo_brief.get('keywords', []))}
+※ 위 트렌드 브리프의 정서와 키워드가 곡의 편곡, 리드 악기, 템포 선택, 가사/보컬 스타일에 직접적으로 뚜렷하게 반영되어야 합니다.
 """
 
     vocal_style_hint = genre_spec.get("vocal_style_hint", "")
     if should_have_lyrics:
         vocal_prompt_section = f"""[보컬 및 가사 요구사항 (중요: 이 곡은 감성 보컬과 가사가 필요한 곡입니다)]
 1. 보컬 스타일(vocal_style):
-   - {genre_spec['name']}의 정서에 완벽히 부합하는 매력적인 보컬 스타일 서술 (예: "{vocal_style_hint}").
+   - {genre_spec['name']}의 정서와 트렌드 브리프에 완벽히 부합하는 매력적인 보컬 스타일 서술 (예: "{vocal_style_hint}").
 2. 가사 작성(lyrics):
-   - 곡의 서사(story)와 감성 무드({mood_info['name']})에 깊이 공감할 수 있는 웰메이드 감성 노랫말.
+   - 곡의 서사(story), 감성 무드({mood_info['name']}), 그리고 트렌드 테마에 깊이 공감할 수 있는 웰메이드 감성 노랫말.
    - [Verse 1], [Chorus], [Verse 2], [Chorus], [Outro] 구조로 작성할 것.
-   - 주로 한국어로 작성하되, 장르 분위기(시티팝/R&B 등)에 맞게 감각적인 영문 프레이즈나 훅을 자연스럽게 믹스해도 좋습니다.
+   - 주로 한국어로 작성하되, 장르 분위기에 맞게 감각적인 영문 프레이즈나 훅을 자연스럽게 믹스해도 좋습니다.
 3. Lyria 3 작곡 프롬프트(lyria_prompt):
    - 반드시 '영문(English)'으로 작성.
-   - BPM({genre_spec['bpm_range']})과 필수 악기({genre_spec['instruments']})를 포함할 것.
+   - 고정된 템플릿 복사를 절대 금지하며, {genre_spec['bpm_range']} 범위 내에서 곡의 무드에 맞는 구체적 BPM(예: 74 BPM, 108 BPM 등)을 지정할 것.
+   - 트렌드 브리프의 핵심 정서와 어울리는 독창적인 리드 악기 및 사운드 질감을 생생하게 묘사할 것.
    - 'No vocals', 'instrumental only' 같은 무보컬 지시어를 '절대' 포함하지 말 것!
    - 보컬 멜로디 및 스타일을 명확히 묘사할 것 (예: "{vocal_style_hint}, expressive melodic singing, lyrical vocal hooks, studio vocal mastering quality, rich analog warmth")."""
 
@@ -198,40 +202,40 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
   "title": "영문 제목 (한글 부제)",
   "genre": "{genre_spec['name']}",
   "mood": "{mood_info['name']}",
-  "story": "한국어 감성 서사 2~3문장",
+  "story": "한국어 감성 서사 2~3문장 (트렌드 테마와 정서 반영)",
   "has_lyrics": true,
   "vocal_style": "{vocal_style_hint} 스타일의 구체적 설명",
   "lyrics": "[Verse 1]\\n가사 1절...\\n\\n[Chorus]\\n후렴구...\\n\\n[Verse 2]\\n가사 2절...\\n\\n[Chorus]\\n후렴구...\\n\\n[Outro]\\n아웃트로...",
-  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (BPM, 악기 편성, 보컬 스타일 및 멜로디 묘사 포함)",
-  "visual_prompt": "영문 앨범 커버 프롬프트 (16:9)",
+  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (구체적 BPM, 트렌드 맞춤 독창적 리드 악기 및 편곡 편성, 보컬 스타일 및 멜로디 묘사 포함)",
+  "visual_prompt": "영문 앨범 커버 프롬프트 (16:9 와이드, 시네마틱 감성)",
   "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"]
 }}"""
     else:
         vocal_prompt_section = f"""[연주곡 요구사항 (순수 인스트루멘털 BGM)]
 1. 순수 연주곡(Instrumental):
    - 보컬이 전혀 없는 깊은 집중/수면/휴식용 배경음악입니다.
-   - Lyria 3 작곡 프롬프트(lyria_prompt)에 반드시 'No vocals, purely instrumental, master quality, rich analog warmth'를 포함할 것.
+   - Lyria 3 작곡 프롬프트(lyria_prompt)에 반드시 'No vocals, purely instrumental, studio sound quality, rich analog warmth'를 포함할 것.
 2. 가사(lyrics) 및 보컬 스타일(vocal_style)은 생성하지 마세요 (null)."""
 
         json_schema_example = f"""{{
   "title": "영문 제목 (한글 부제)",
   "genre": "{genre_spec['name']}",
   "mood": "{mood_info['name']}",
-  "story": "한국어 감성 서사 2~3문장",
+  "story": "한국어 감성 서사 2~3문장 (트렌드 테마와 정서 반영)",
   "has_lyrics": false,
   "vocal_style": null,
   "lyrics": null,
-  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (BPM 및 장르 고유 악기 편성 포함, 'No vocals, purely instrumental' 포함)",
-  "visual_prompt": "영문 앨범 커버 프롬프트 (16:9)",
+  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (구체적 BPM, 트렌드 맞춤 독창적 리드 악기 및 사운드스케이프 편성 포함, 'No vocals, purely instrumental' 포함)",
+  "visual_prompt": "영문 앨범 커버 프롬프트 (16:9 와이드, 시네마틱 감성)",
   "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"]
 }}"""
 
     prompt = f"""당신은 글로벌 AI 음악 아티스트 '에이전트 루나(Agent Luna)'의 수석 총괄 프로듀서이자 작곡가입니다.
-새로운 싱글 음원을 위해 주어진 장르 고유의 음악적 정체성을 철저히 지키면서, 독창적이고 감각적인 음악 콘셉트와 작곡/비주얼 프롬프트를 완성하세요.
+새로운 싱글 음원을 위해 주어진 장르 고유의 음악적 정체성을 지키면서, 이전 곡들과 뚜렷하게 구별되는 독창적인 사운드와 작곡 프롬프트를 완성하세요.
 
-[필수 음악 사양 — 장르: {genre_spec['name']}]
-- 권장 BPM: {genre_spec['bpm_range']}
-- 필수 악기 편성: {genre_spec['instruments']}
+[사운드 디자인 기본 참고 (영감 풀 — 그대로 복사하지 말고 창의적으로 재조합할 것)]
+- 권장 BPM 범위: {genre_spec['bpm_range']}
+- 장르 기본 악기 풀: {genre_spec['instruments']}
 - 사운드 질감 & 무드: {genre_spec['sound_texture']}
 - 비주얼 기본 톤: {genre_spec['visual_style']}
 - 감성 무드: {mood_info['name']}
@@ -240,14 +244,15 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
 
 {vocal_prompt_section}
 
-[기획 원칙 (중요: 상투적인 클리셰와 특정 장르 편향 절대 금지)]
-1. 곡 제목(title): 장르와 무드의 정서를 압축한 감각적인 '영문 제목 (한글 부제)' 형식.
-   - 흔해 빠진 단어(Starlight, Midnight, Cafe 등)의 기계적 반복을 지양하고, 곡의 서사에 맞는 독창적인 단어를 선택할 것.
-2. 감성 서사(story): 시청자가 음악을 들으며 깊이 공감할 수 있는 2~3문장의 아련하고 서정적인 한국어 스토리.
-3. 앨범 커버 프롬프트(visual_prompt):
-   - 나노바나나/Imagen 생성용 영문 프롬프트 (16:9 와이드).
-   - {genre_spec['name']}의 [비주얼 기본 톤]에 맞춘 시네마틱 씬 서술, 8k, no text, no watermark.
-4. 연관 태그(tags): 장르, 무드, 리스닝 상황을 아우르는 8개 태그 배열.
+[★ 음악적 독창성 및 템플릿 복제 방지 절대 원칙 (필독)]
+1. 장르 기본 악기 목록을 그대로 복사-붙여넣기하지 마십시오! 매 곡마다 동일한 악기 나열은 금지됩니다.
+2. 곡마다 확실한 '시그니처 사운드(Signature Lead Sound)'를 하나 이상 지정하세요:
+   - 예: 따뜻한 펠트 피아노, 어쿠스틱 첼로 솔로, 아날로그 신스 벨, 나일론 클래식 기타, 빈티지 로즈(Rhodes) 건반, 아날로그 테이프 워블, 비/바람 앰비언스 등
+3. 에이전트 레오의 트렌드 브리프(테마, 시청자 반응, 추천 앵글)의 정서를 악기 선택과 리듬 편곡(그루브)에 직접 녹여내어 독창적인 곡으로 완성하세요.
+4. 곡 제목(title): 장르와 무드의 정서를 압축한 감각적인 '영문 제목 (한글 부제)' 형식.
+   - 흔해 빠진 클리셰 단어(Starlight, Midnight, Cafe 등)의 기계적 반복을 금지하고 독창적인 단어를 선택할 것.
+5. 앨범 커버 프롬프트(visual_prompt): 나노바나나/Imagen 생성용 영문 프롬프트 (16:9 와이드, 8k, no text, no watermark).
+6. 연관 태그(tags): 장르, 무드, 리스닝 상황을 아우르는 8개 태그 배열.
 
 [반환 형식 — 반드시 순수 JSON만 출력하세요]
 {json_schema_example}"""
@@ -320,6 +325,15 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
             "visual_prompt": genre_spec["visual_style"],
             "tags": ["에이전트루나", "AgentLuna", "AI음악", genre_key, mood_info["name"].split(" ")[0], "BGM", "힐링음악"] + (["가사", "노래", "CityPopVocal"] if should_have_lyrics else ["순수연주곡", "몰입음악"])
         }
+
+    if concept:
+        concept["trend_brief_applied"] = trend_brief_applied
+        if trend_brief_applied and isinstance(leo_brief, dict):
+            concept["trend_brief"] = {
+                "topic": leo_brief.get("topic", ""),
+                "angle": leo_brief.get("angle", ""),
+                "audience_triggers": leo_brief.get("audience_triggers", "")
+            }
 
     return concept
 
@@ -700,9 +714,9 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
 
 # ── 5. 레오 ✕ 루나 알고리즘 SEO & 인게이지먼트 메타데이터 패키징 ─────────────
 
-def sanitize_pinned_comment(comment_text: str, default_cta: str = "가장 좋았던 멜로디 순간(타임스탬프)을 남겨주시면 루나가 답글을 남겨드립니다 🌙") -> str:
+def sanitize_pinned_comment(comment_text: str, default_cta: str = "가장 좋았던 멜로디 순간(타임스탬프)을 남겨주시면 루나가 답글을 전합니다 🌙") -> str:
     """
-    유튜브 자동 고정 댓글이 중간에 잘리거나 불완전하게 끝나는 현상을 방지하고,
+    유튜브 자동 고정 댓글이 중간에 잘리거나 불완전하게 끝나는 현상을 100% 방지하고,
     항상 완전한 문장 구조와 종결 부호를 갖추도록 정제/복원합니다.
     """
     if not comment_text or not str(comment_text).strip():
@@ -710,13 +724,19 @@ def sanitize_pinned_comment(comment_text: str, default_cta: str = "가장 좋았
 
     text = str(comment_text).strip()
 
-    # 1. '루나가 답' 또는 '루나가 ' 처럼 특정 잘림 패턴이 있는 경우 복원
-    if re.search(r'루나가\s*답?$', text):
-        text = re.sub(r'루나가\s*답?$', '루나가 답글을 전합니다 🌙', text)
-    elif re.search(r'남겨주시면\s*$', text):
-        text = re.sub(r'남겨주시면\s*$', '남겨주시면 루나가 답글을 남겨드립니다 🌙', text)
-    elif re.search(r'타임스탬프로\s*$', text):
-        text = re.sub(r'타임스탬프로\s*$', '타임스탬프로 남겨주시면 루나가 답글을 남겨드립니다 🌙', text)
+    # 1. 특정 잘림/미완성 어미 패턴 검출 및 온전한 문장으로 복원
+    truncate_fixes = [
+        (r'루나가\s*(?:답(?:글(?:을?)?)?)?$', '루나가 답글을 전합니다 🌙'),
+        (r'남겨주시면\s*$', '남겨주시면 루나가 답글을 전합니다 🌙'),
+        (r'타임스탬프(?:로|를)?\s*$', '타임스탬프로 남겨주시면 루나가 답글을 전합니다 🌙'),
+        (r'이야기를\s*(?:이곳에\s*)?(?:가만히\s*)?적어두고\s*$', '이야기를 이곳에 가만히 적어두고 가세요. ' + default_cta),
+        (r'가장\s*마음에\s*와닿은\s*$', default_cta),
+        (r'들려주세요\s*$', '들려주세요. ' + default_cta),
+    ]
+    for pattern, replacement in truncate_fixes:
+        if re.search(pattern, text):
+            text = re.sub(pattern, replacement, text)
+            break
 
     # 2. 문장 종결 부호 검사: 마침표, 느낌표, 물음표, 물결, 이모지, 괄호, 한글 종결어미 등
     valid_endings = ('.', '!', '?', '~', '🌙', '✨', '❤️', '💬', '👇', '🎵', ')', '요', '다', '죠', '네', '음')
@@ -729,13 +749,20 @@ def sanitize_pinned_comment(comment_text: str, default_cta: str = "가장 좋았
 
         recovered = "".join(clean_parts).strip()
         if len(recovered) >= 20:
-            text = recovered + f" {default_cta}"
+            text = recovered
+            if not text.endswith(valid_endings):
+                text += "."
+            text = text + f" {default_cta}"
         else:
-            text = text + f"... {default_cta}"
+            text = text + f" 🌙 {default_cta}"
 
     # 3. 만약 루나 답글 CTA가 아예 없다면 후미에 보충
     if "루나" not in text and "답글" not in text:
         text = text + f" ({default_cta})"
+
+    # 4. 최종 종결 이모지/부호 보장
+    if not text.endswith(('🌙', '✨', '❤️', '💬', '👇', '🎵', ')', '.')):
+        text += " 🌙"
 
     return text.strip()
 
@@ -929,7 +956,11 @@ def list_tracks():
                 "created_at": d.get("created_at") or os.path.getmtime(p),
                 "uploaded_video_id": d.get("uploaded_video_id"),
                 "uploaded_url": d.get("uploaded_url"),
-                "pinned_comment": meta.get("pinned_comment") or d.get("pinned_comment")
+                "pinned_comment": meta.get("pinned_comment") or d.get("pinned_comment"),
+                "comment_posted": d.get("comment_posted", False),
+                "studio_comment_url": f"https://studio.youtube.com/video/{d.get('uploaded_video_id')}/comments" if d.get("uploaded_video_id") else "",
+                "trend_brief_applied": d.get("trend_brief_applied", False),
+                "trend_brief": d.get("trend_brief")
             })
         except Exception:
             continue
@@ -1102,12 +1133,23 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, 
 
     pl_msg = f" & 재생목록 추가 완료" if result.get("playlist_added") else ""
     step(100, f"루나 유튜브 채널 업로드 및 레오 고정댓글{pl_msg}! ({result.get('url')})")
+    
+    vid = result.get("video_id")
+    studio_comment_url = f"https://studio.youtube.com/video/{vid}/comments" if vid else ""
+    comment_notice = (
+        "댓글이 등록되었습니다. 유튜브 정책상 '상단 고정'은 유튜브 스튜디오에서 [고정] 버튼을 1회 클릭해주세요."
+        if result.get("comment_posted") else ""
+    )
+
     return {
         "status": "success",
-        "video_id": result.get("video_id"),
+        "video_id": vid,
         "url": result.get("url"),
         "title": meta["youtube_title"],
         "pinned_comment": meta.get("pinned_comment"),
+        "comment_posted": result.get("comment_posted", False),
+        "studio_comment_url": studio_comment_url,
+        "comment_notice": comment_notice,
         "publish_at": result.get("publish_at"),
         "playlist_id": playlist_id,
         "playlist_added": result.get("playlist_added", False),

@@ -1177,6 +1177,17 @@
               <h3>[2단계] 에이전트 루나 AI 완곡 작곡 스튜디오</h3>
             </div>
 
+            <div id="lunaActiveBriefNotice" style="display: none; background: rgba(56, 189, 248, 0.12); border: 1.5px solid #38bdf8; border-radius: 6px; padding: 10px 14px; font-size: 0.84rem; color: #e0f2fe; margin-bottom: 14px; line-height: 1.5;">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                  <i class="fa-solid fa-wand-magic-sparkles" style="color: #38bdf8; margin-right: 6px;"></i>
+                  <strong>적용 중인 레오의 트렌드 브리프:</strong> <span id="lunaActiveBriefTitle" style="color: #38bdf8; font-weight: 700;"></span>
+                  <div id="lunaActiveBriefAngle" style="font-size: 0.76rem; color: var(--text-secondary); margin-top: 2px;"></div>
+                </div>
+                <button type="button" id="btnCancelActiveBrief" class="btn btn-xs btn-outline" style="border-color: rgba(56,189,248,0.4); color: #7dd3fc; margin-left: 8px;">해제</button>
+              </div>
+            </div>
+
             <div style="background: rgba(192, 132, 252, 0.08); border-left: 3px solid #c084fc; border-radius: 6px; padding: 10px 14px; font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5;">
               <i class="fa-solid fa-sparkles" style="color: #c084fc; margin-right: 4px;"></i>
               <strong>루나 작업대:</strong> 상단의 레오 트렌드 브리프를 선택하면 장르, 무드, 스토리 및 사운드 스펙이 자동 주입됩니다.
@@ -1665,6 +1676,6 @@
     </footer>
   </div>
 
-  <script src="/static/app.js?v=20260922-leo-diversity"></script>
+  <script src="/static/app.js?v=20260927-pinned-diversity-fix"></script>
 </body>
 </html>

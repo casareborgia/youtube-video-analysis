@@ -2590,6 +2590,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lunaMoodSelect && selectedBrief.mood) lunaMoodSelect.value = selectedBrief.mood;
             if (lunaTopicInput) lunaTopicInput.value = selectedBrief.topic || selectedBrief.title_concept;
 
+            const noticeBox = document.getElementById('lunaActiveBriefNotice');
+            const titleEl = document.getElementById('lunaActiveBriefTitle');
+            const angleEl = document.getElementById('lunaActiveBriefAngle');
+            if (noticeBox && titleEl && angleEl) {
+              noticeBox.style.display = 'block';
+              titleEl.textContent = `${selectedBrief.title_concept || selectedBrief.topic || '트렌드 추천곡'}`;
+              angleEl.textContent = `🎯 30초 후킹 앵글: ${selectedBrief.angle || '트렌드 사운드 반영'} | 타깃: ${selectedBrief.target_audience || '감성 리스너'}`;
+            }
+
             leoBriefList.querySelectorAll('.leo-brief-card').forEach(el => {
               el.style.borderColor = 'rgba(56, 189, 248, 0.3)';
               el.style.background = 'rgba(255,255,255,0.02)';
@@ -2601,6 +2610,28 @@ document.addEventListener('DOMContentLoaded', () => {
               cardEl.style.boxShadow = '0 0 15px rgba(192, 132, 252, 0.2)';
             }
           };
+
+          // 첫 번째 추천 브리프를 기본적으로 루나 작업대에 자동 세팅
+          if (briefs.length > 0) {
+            const firstCard = leoBriefList.querySelector('.leo-brief-card');
+            applyBriefToForm(briefs[0], firstCard);
+          }
+
+          // 트렌드 브리프 해제 버튼 이벤트
+          const btnCancelActiveBrief = document.getElementById('btnCancelActiveBrief');
+          if (btnCancelActiveBrief) {
+            btnCancelActiveBrief.onclick = () => {
+              currentLeoBrief = null;
+              const noticeBox = document.getElementById('lunaActiveBriefNotice');
+              if (noticeBox) noticeBox.style.display = 'none';
+              leoBriefList.querySelectorAll('.leo-brief-card').forEach(el => {
+                el.style.borderColor = 'rgba(56, 189, 248, 0.3)';
+                el.style.background = 'rgba(255,255,255,0.02)';
+                el.style.boxShadow = 'none';
+              });
+              showAlert('트렌드 브리프 연동이 해제되었습니다. 기본 장르 모드로 작곡합니다.', 'info');
+            };
+          }
 
           // 각 버튼 이벤트 바인딩
           leoBriefList.querySelectorAll('.btn-select-brief').forEach(btn => {
@@ -2731,7 +2762,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (lunaCoverImg) lunaCoverImg.src = track.cover_url || '';
     if (lunaGenreBadge) {
       const aiTag = track.is_ai_generated ? ` • 🤖 ${track.ai_model || 'Lyria 3'}` : ``;
-      lunaGenreBadge.textContent = `${track.genre} • ${track.mood}${aiTag}`;
+      const trendTag = track.trend_brief_applied ? ` • 🔥 트렌드 반영` : ``;
+      lunaGenreBadge.textContent = `${track.genre} • ${track.mood}${aiTag}${trendTag}`;
     }
 
     const hasLyrics = Boolean(track.has_lyrics || track.lyrics);
@@ -2806,6 +2838,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const plBadge = track.playlist_id
           ? `<span class="badge" style="background:rgba(56,189,248,0.15); color:#38bdf8; border:1px solid rgba(56,189,248,0.3); font-size:11px; margin-left:6px;"><i class="fa-solid fa-list-ul"></i> 재생목록 배정됨</span>`
           : '';
+        const studioCommentUrl = track.studio_comment_url || `https://studio.youtube.com/video/${track.uploaded_video_id}/comments`;
+        const commentBadge = `
+          <div style="margin-top: 8px; font-size: 0.78rem; color: #cbd5e1; background: rgba(168, 85, 247, 0.12); border: 1px solid rgba(168, 85, 247, 0.3); border-radius: 6px; padding: 8px 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+            <span><i class="fa-solid fa-thumbtack" style="color: #c084fc;"></i> <strong>고정 댓글:</strong> 등록 완료 (유튜브 정책상 상단 고정은 스튜디오에서 [고정] 1회 클릭 필요)</span>
+            <a href="${studioCommentUrl}" target="_blank" class="btn btn-xs btn-outline" style="border-color: #c084fc; color: #e9d5ff; text-decoration: none; padding: 3px 8px; font-weight: 600;">
+              <i class="fa-solid fa-arrow-up-right-from-square"></i> 스튜디오에서 댓글 고정하기 📌
+            </a>
+          </div>
+        `;
         lunaUploadResultBadge.innerHTML = `
           <div style="display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:6px;">
             <a href="https://youtu.be/${track.uploaded_video_id}" target="_blank" class="badge badge-success" style="font-size:12px; padding:6px 12px; text-decoration:none;">
@@ -2814,6 +2855,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ${schedBadge}
             ${plBadge}
           </div>
+          ${commentBadge}
         `;
       } else {
         lunaUploadResultBadge.style.display = 'none';
@@ -2942,12 +2984,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await res.json();
         const schedMsg = publishAt ? ` (예약 공개 일시: ${new Date(publishAt).toLocaleString('ko-KR')})` : '';
         const plMsg = data.playlist_added ? ' & 재생목록 추가 완료' : '';
-        showAlert(`루나 유튜브 채널에 성공적으로 업로드되었습니다!${schedMsg}${plMsg}`, 'success');
+        const commentMsg = data.comment_posted 
+          ? '\n💬 레오의 고정 댓글이 등록되었습니다! (유튜브 정책상 상단 고정은 스튜디오에서 [고정] 1회 클릭 필요)' 
+          : '';
+        showAlert(`루나 유튜브 채널에 성공적으로 업로드되었습니다!${schedMsg}${plMsg}${commentMsg}`, 'success');
         if (currentLunaTrack) {
           currentLunaTrack.uploaded_video_id = data.video_id;
+          currentLunaTrack.uploaded_url = data.url;
           currentLunaTrack.publish_at = data.publish_at;
           currentLunaTrack.playlist_id = data.playlist_id;
           currentLunaTrack.playlist_added = data.playlist_added;
+          currentLunaTrack.comment_posted = data.comment_posted;
+          currentLunaTrack.studio_comment_url = data.studio_comment_url;
         }
         renderLunaTrackView(currentLunaTrack);
         loadLunaHistory();
