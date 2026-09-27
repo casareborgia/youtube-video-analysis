@@ -451,21 +451,28 @@ def _sanitize_lyria_prompt(prompt: str) -> str:
 
 
 def _ensure_audio_duration(audio_path: str, target_seconds: int = 180) -> float:
-    """생성된 음원이 목표 길이보다 현저히 짧을 경우(예: 30초 클립 모델 등),
-    자연스러운 심리스 크로스페이드 루프로 목표 길이(기본 180초 완곡)로 자동 연장합니다."""
+    """생성된 음원이 30초 내외의 극단적인 단편 클립 모델일 경우에만
+    자연스러운 심리스 루프로 목표 길이(기본 180초 완곡)로 자동 연장합니다.
+
+    주의: 60초(1분) 이상의 음원은 기승전결(Verse-Chorus-Outro)이 완성된 정규 완곡입니다.
+    곡 종료 후 도입부가 뜬금없이 재재생되는 어색함을 방지하기 위해 루프를 적용하지 않고
+    실제 음원의 자연스러운 아웃트로를 온전히 보존합니다.
+    """
     if not os.path.exists(audio_path) or os.path.getsize(audio_path) < 1000:
         return 0.0
-    
+
     actual_dur = producer.audio_duration(audio_path)
     target_seconds = int(target_seconds or 180)
-    
-    # 실제 길이가 목표치보다 15초 이상 짧은 경우 (예: 30초 클립이 온 경우)
-    if actual_dur and actual_dur < (target_seconds - 15):
-        print(f"[LunaEngine] 수신된 음원 길이({actual_dur:.1f}초)가 목표치({target_seconds}초)보다 짧아 3분 완곡 심리스 루프로 자동 확장합니다.")
+
+    # 극단적으로 짧은 단편 클립(예: 30초 클립 프리뷰 모델)인 경우에만 3분 완곡 루프 확장 적용
+    # 60초 이상의 정상 완곡은 아웃트로 후 도입부 재재생 방지를 위해 원곡 길이 그대로 유지
+    CLIP_LOOP_THRESHOLD = 60.0
+    if actual_dur and actual_dur < CLIP_LOOP_THRESHOLD:
+        print(f"[LunaEngine] 수신된 음원 길이({actual_dur:.1f}초)가 단편 클립 기준({CLIP_LOOP_THRESHOLD}초) 미만이므로 3분 완곡 심리스 루프로 확장합니다.")
         temp_out = audio_path + ".extended.mp3"
         loops = max(int(target_seconds / actual_dur) + 2, 4)
         fade_out_st = max(target_seconds - 3, 1)
-        
+
         cmd = [
             "ffmpeg", "-y",
             "-stream_loop", str(loops),
@@ -479,10 +486,12 @@ def _ensure_audio_duration(audio_path: str, target_seconds: int = 180) -> float:
         if res.returncode == 0 and os.path.exists(temp_out) and os.path.getsize(temp_out) > 1000:
             shutil.move(temp_out, audio_path)
             actual_dur = producer.audio_duration(audio_path)
-            print(f"[LunaEngine] 3분 완곡 확장 완료! 최종 길이: {actual_dur:.1f}초")
+            print(f"[LunaEngine] 단편 클립 3분 완곡 확장 완료! 최종 길이: {actual_dur:.1f}초")
         elif os.path.exists(temp_out):
             os.remove(temp_out)
-            
+    else:
+        print(f"[LunaEngine] 완곡 음원 길이 검증 완료: {actual_dur:.1f}초 (자연스러운 아웃트로 보존, 루프 미적용)")
+
     return actual_dur or float(target_seconds)
 
 
@@ -541,8 +550,8 @@ def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None):
         _generate_fallback_ambient_mp3(audio_path, duration_seconds)
         step(85, "풍성한 칠 사운드스케이프 완곡 렌더링 완료!")
 
-    # 3. 목표 길이(기본 3분 완곡) 보장: 짧은 클립 음원 수신 시 3분 완곡 심리스 루프 자동 확장
-    step(90, f"완곡 재생시간({duration_seconds}초) 검증 및 음향 밸런싱 중...")
+    # 3. 음원 길이 검증: 단편 클립(60초 미만)만 3분 루프 확장하고, 정상 완곡은 아웃트로 원형 온전히 보존
+    step(90, "완곡 음원 길이 및 아웃트로 완결성 검증 중...")
     actual_duration = _ensure_audio_duration(audio_path, duration_seconds)
 
     track_data["audio_file"] = audio_path
