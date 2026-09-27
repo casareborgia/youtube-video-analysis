@@ -2768,7 +2768,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const hasLyrics = Boolean(track.has_lyrics || track.lyrics);
     if (lunaHasLyricsBadge) {
-      lunaHasLyricsBadge.style.display = hasLyrics ? 'inline-block' : 'none';
+      if (hasLyrics) {
+        let langLabel = '';
+        if (track.vocal_language === 'en') langLabel = ' (EN)';
+        else if (track.vocal_language === 'ja') langLabel = ' (JA)';
+        else if (track.vocal_language === 'ko') langLabel = ' (KR)';
+        lunaHasLyricsBadge.textContent = `📝 가사 포함${langLabel}`;
+        lunaHasLyricsBadge.style.display = 'inline-block';
+      } else {
+        lunaHasLyricsBadge.style.display = 'none';
+      }
     }
 
     if (lunaTrackTitle) lunaTrackTitle.textContent = track.title || 'Untitled Track';
@@ -2787,7 +2796,8 @@ document.addEventListener('DOMContentLoaded', () => {
           lunaLyricsContent.style.display = 'none'; // 기본 접힘 상태
         }
         if (lunaVocalStyleBadge) {
-          lunaVocalStyleBadge.textContent = track.vocal_style ? `🎤 ${track.vocal_style}` : '🎤 감성 보컬';
+          const langPrefix = track.vocal_language === 'en' ? '[EN] ' : (track.vocal_language === 'ja' ? '[JA] ' : '');
+          lunaVocalStyleBadge.textContent = track.vocal_style ? `🎤 ${langPrefix}${track.vocal_style}` : (track.vocal_language === 'en' ? '🎤 English Vocal' : '🎤 감성 보컬');
           lunaVocalStyleBadge.style.display = 'inline-block';
         }
         if (lunaLyricsChevron) {

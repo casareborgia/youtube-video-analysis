@@ -93,10 +93,10 @@ GENRE_SPECS = {
         "name": "Nostalgic City Pop",
         "bpm_range": "100-118 BPM",
         "instruments": "vintage DX7 electric piano, punchy slap bassline, warm 80s brass synth stabs, crisp disco-funk drum groove, shimmering chorus guitar",
-        "sound_texture": "80s Tokyo evening drive, sparkling metropolitan nightscape, nostalgic upbeat breeze, stylish retro vinyl warmth",
-        "visual_style": "retro 80s anime aesthetic city night drive, neon reflections on car window, Tokyo skyline twilight, palm tree silhouettes against pastel sunset sky, ultra-detailed, 8k, no text",
+        "sound_texture": "retro metropolitan evening drive, sparkling city nightscape, nostalgic upbeat breeze, stylish analog warmth",
+        "visual_style": "retro anime aesthetic city night drive, neon reflections on car window, retro metropolitan skyline twilight, palm tree silhouettes against pastel sunset sky, ultra-detailed, 8k, no text",
         "vocal_affinity": "high",
-        "vocal_style_hint": "authentic 80s Tokyo city pop female vocals, clear, upbeat, nostalgic and sparkling melodic hook"
+        "vocal_style_hint": "clear, upbeat, nostalgic and sparkling melodic hook with effortless emotional depth"
     },
     "acoustic": {
         "name": "Warm Acoustic / Folk",
@@ -114,7 +114,7 @@ GENRE_SPECS = {
         "sound_texture": "late night rooftop breeze, sensual velvety warmth, slow seductive groove, deep emotional resonance",
         "visual_style": "modern urban penthouse balcony overlooking glowing city lights at purple dusk, warm fairy lights, relaxed chill atmosphere, cinematic bokeh, 8k, no text",
         "vocal_affinity": "high",
-        "vocal_style_hint": "silky smooth neo-soul R&B vocals, emotive falsetto, laid-back modern urban groove"
+        "vocal_style_hint": "silky smooth contemporary R&B chillout vocals, emotive falsetto, laid-back modern urban groove"
     },
     "dark-ambient": {
         "name": "Dark Atmospheric Ambient",
@@ -141,6 +141,41 @@ MOOD_PRESETS = [
 ]
 
 
+def detect_vocal_language(text: str = "") -> str:
+    """
+    주제어나 트렌드 브리프 텍스트를 분석하여 최적의 보컬 언어 코드('ko', 'en', 'ja')를 지능적으로 판별합니다.
+    기본값은 한국어('ko')이며, 원클릭 시 사용자가 영문이나 일어로 입력했거나 관련 키워드가 있을 경우에만 전환됩니다.
+    """
+    if not text:
+        return "ko"
+    
+    t = str(text).lower().strip()
+    
+    # 1. 명시적 언어 키워드 우선 확인
+    if any(k in t for k in ["영어", "english", "영문", "eng"]):
+        return "en"
+    if any(k in t for k in ["일본어", "japanese", "일어", "j-pop", "jpop"]):
+        return "ja"
+    if any(k in t for k in ["한국어", "korean", "한글", "국문", "k-pop", "kpop"]):
+        return "ko"
+
+    # 2. 문자 스크립트 기반 감지 (유니코드)
+    has_korean = bool(re.search(r"[\uac00-\ud7a3]", text))
+    has_japanese = bool(re.search(r"[\u3040-\u309f\u30a0-\u30ff]", text))
+    
+    if has_korean:
+        return "ko"
+    if has_japanese:
+        return "ja"
+        
+    # 한글/일어가 전혀 없고 알파벳이 주를 이루는 경우 (영문 입력)
+    ascii_letters = len(re.findall(r"[a-zA-Z]", text))
+    if ascii_letters >= 4:
+        return "en"
+
+    return "ko"
+
+
 # ── 1. 음악 콘셉트 및 프롬프트 동적 AI 기획 ─────────────────────────────
 
 def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief=None, vocal_mode="auto"):
@@ -153,20 +188,43 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
     genre_info = next((g for g in GENRE_PRESETS if g["id"] == genre_key), GENRE_PRESETS[0])
     mood_info = next((m for m in MOOD_PRESETS if m["id"] == mood), MOOD_PRESETS[0])
 
-    # 보컬 & 가사 생성 여부 지능적 판단
+    # 1. 보컬 모드 및 가사 생성 여부 지능적·자율적 판단 (장르 종속 앵커링 해제)
     v_mode = (vocal_mode or "auto").strip().lower()
     topic_str = f"{custom_topic} {(leo_brief.get('topic', '') if isinstance(leo_brief, dict) else '')}".lower()
-    explicit_vocal_keyword = any(k in topic_str for k in ["보컬", "가사", "vocal", "lyrics", "노래", "singing", "목소리"])
+    explicit_vocal_keyword = any(k in topic_str for k in ["보컬", "가사", "vocal", "lyrics", "노래", "singing", "목소리", "노랫말"])
+    explicit_inst_keyword = any(k in topic_str for k in ["연주곡", "inst", "instrumental", "노래없이", "보컬없이", "bgm", "배경음악"])
+    is_pure_instrumental_genre = genre_key in ("sleep", "dark-ambient")
 
     if v_mode in ("lyrics", "vocal", "yes", "true"):
         should_have_lyrics = True
-    elif v_mode in ("instrumental", "inst", "no", "false"):
+    elif v_mode in ("instrumental", "inst", "no", "false") or explicit_inst_keyword:
         should_have_lyrics = False
-    else:  # auto
+    else:  # auto 모드: 로파이, 재즈, 신스웨이브 등 대중 장르 보컬 자유 개방
         if explicit_vocal_keyword:
             should_have_lyrics = True
+        elif is_pure_instrumental_genre:
+            should_have_lyrics = False
         else:
-            should_have_lyrics = (genre_spec.get("vocal_affinity") == "high")
+            should_have_lyrics = True
+
+    # 2. 지능형 보컬 언어 감지 및 동기화 (시티팝=일본어, R&B=영어 등 언어 왜곡 원천 차단)
+    target_lang = detect_vocal_language(f"{custom_topic} {(leo_brief.get('topic', '') if isinstance(leo_brief, dict) else '')}")
+
+    if target_lang == "ko":
+        target_lang_name = "한국어 (Korean)"
+        lang_instruction = """- 가사 언어: '한국어(Korean)'로 감성적이고 깊이 있는 노랫말 작성 (장르 분위기에 어울리는 감각적인 영문 훅이나 프레이즈 믹스 가능).
+- Lyria 작곡 프롬프트 보컬 지침: 반드시 'emotional Korean female vocals, singing in clear Korean pronunciation, K-citypop / K-indie / K-R&B vocal style'을 명시하여 실제 오디오가 일본어나 영어로 잘못 합성되지 않도록 할 것. (절대 Tokyo, Japanese, American neo-soul 등 외국어 유발 단어를 넣지 말 것!)"""
+        lang_lyria_hint = "emotional Korean female vocals, singing in clear Korean lyrics, natural Korean pronunciation, soulful K-indie / K-pop vocal hooks, studio vocal mastering quality, rich analog warmth"
+    elif target_lang == "en":
+        target_lang_name = "영어 (English)"
+        lang_instruction = """- 가사 언어: '영어(English)'로 전곡 가사 작성 ([Verse 1], [Chorus], [Verse 2], [Chorus], [Outro]).
+- Lyria 작곡 프롬프트 보컬 지침: 반드시 'expressive English vocals, singing in clear English pronunciation and lyrics'를 명시할 것."""
+        lang_lyria_hint = "expressive English vocals, singing in clear English lyrics, lyrical vocal hooks, studio vocal mastering quality, rich analog warmth"
+    else:  # 'ja'
+        target_lang_name = "일본어 (Japanese)"
+        lang_instruction = """- 가사 언어: '일본어(Japanese)'로 감성 노랫말 작성.
+- Lyria 작곡 프롬프트 보컬 지침: 반드시 'Japanese female vocals, singing in natural Japanese lyrics'를 명시할 것."""
+        lang_lyria_hint = "Japanese female vocals, singing in natural Japanese lyrics, authentic J-pop melodic hooks, studio vocal mastering quality, rich analog warmth"
 
     # 레오의 트렌드 브리프 정보 결합
     trend_context = ""
@@ -185,28 +243,29 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
     vocal_style_hint = genre_spec.get("vocal_style_hint", "")
     if should_have_lyrics:
         vocal_prompt_section = f"""[보컬 및 가사 요구사항 (중요: 이 곡은 감성 보컬과 가사가 필요한 곡입니다)]
-1. 보컬 스타일(vocal_style):
-   - {genre_spec['name']}의 정서와 트렌드 브리프에 완벽히 부합하는 매력적인 보컬 스타일 서술 (예: "{vocal_style_hint}").
+1. 보컬 언어 및 스타일 (목표 언어: {target_lang_name}):
+   {lang_instruction}
+   - 보컬 스타일 설명(vocal_style): {genre_spec['name']}의 감성과 {target_lang_name} 가창에 어울리는 매력적인 톤 서술.
 2. 가사 작성(lyrics):
    - 곡의 서사(story), 감성 무드({mood_info['name']}), 그리고 트렌드 테마에 깊이 공감할 수 있는 웰메이드 감성 노랫말.
    - [Verse 1], [Chorus], [Verse 2], [Chorus], [Outro] 구조로 작성할 것.
-   - 주로 한국어로 작성하되, 장르 분위기에 맞게 감각적인 영문 프레이즈나 훅을 자연스럽게 믹스해도 좋습니다.
 3. Lyria 3 작곡 프롬프트(lyria_prompt):
    - 반드시 '영문(English)'으로 작성.
    - 고정된 템플릿 복사를 절대 금지하며, {genre_spec['bpm_range']} 범위 내에서 곡의 무드에 맞는 구체적 BPM(예: 74 BPM, 108 BPM 등)을 지정할 것.
    - 트렌드 브리프의 핵심 정서와 어울리는 독창적인 리드 악기 및 사운드 질감을 생생하게 묘사할 것.
-   - 'No vocals', 'instrumental only' 같은 무보컬 지시어를 '절대' 포함하지 말 것!
-   - 보컬 멜로디 및 스타일을 명확히 묘사할 것 (예: "{vocal_style_hint}, expressive melodic singing, lyrical vocal hooks, studio vocal mastering quality, rich analog warmth")."""
+   - 보컬 지침: 반드시 '{lang_lyria_hint}'를 포함하여 텍스트 가사와 실제 음원의 보컬 언어가 100% 일치하도록 작성할 것.
+   - 'No vocals', 'instrumental only' 같은 무보컬 지시어를 '절대' 포함하지 말 것!"""
 
         json_schema_example = f"""{{
   "title": "영문 제목 (한글 부제)",
   "genre": "{genre_spec['name']}",
   "mood": "{mood_info['name']}",
-  "story": "한국어 감성 서사 2~3문장 (트렌드 테마와 정서 반영)",
+  "story": "감성 서사 2~3문장 (트렌드 테마와 정서 반영)",
+  "vocal_language": "{target_lang}",
   "has_lyrics": true,
-  "vocal_style": "{vocal_style_hint} 스타일의 구체적 설명",
+  "vocal_style": "{target_lang_name} 감성 보컬 스타일 설명",
   "lyrics": "[Verse 1]\\n가사 1절...\\n\\n[Chorus]\\n후렴구...\\n\\n[Verse 2]\\n가사 2절...\\n\\n[Chorus]\\n후렴구...\\n\\n[Outro]\\n아웃트로...",
-  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (구체적 BPM, 트렌드 맞춤 독창적 리드 악기 및 편곡 편성, 보컬 스타일 및 멜로디 묘사 포함)",
+  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (구체적 BPM, 독창적 리드 악기, '{lang_lyria_hint}' 포함)",
   "visual_prompt": "영문 앨범 커버 프롬프트 (16:9 와이드, 시네마틱 감성)",
   "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"]
 }}"""
@@ -221,7 +280,8 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
   "title": "영문 제목 (한글 부제)",
   "genre": "{genre_spec['name']}",
   "mood": "{mood_info['name']}",
-  "story": "한국어 감성 서사 2~3문장 (트렌드 테마와 정서 반영)",
+  "story": "감성 서사 2~3문장 (트렌드 테마와 정서 반영)",
+  "vocal_language": null,
   "has_lyrics": false,
   "vocal_style": null,
   "lyrics": null,
@@ -289,7 +349,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
         # Fallback 보컬/가사 정의
         fallback_lyrics_map = {
             "citypop": (
-                "80s Tokyo 레트로 시티팝 감성의 맑고 청량한 여성 보컬",
+                "레트로 시티팝 감성의 맑고 청량한 K-보컬",
                 "[Verse 1]\n흘러가는 차창 밖 노란 가로등 불빛\n도심의 소음을 뒤로한 채\n달려가는 심야버스 창가에 기대어\n스쳐가는 바람의 멜로디\n\n[Chorus]\n빛나는 네온사인 우리만의 밤\n달빛 속으로 너를 찾아 달려가\n시간이 멈춘 이 거리에 울려 퍼지는\n영원히 끝나지 않을 시티 팝\n\n[Verse 2]\n새벽 안개 너머로 푸른 바다가 보이고\n어느새 차가워진 손끝을 녹이며\n혼자만의 자유로운 숨을 쉬어\n\n[Chorus]\n빛나는 네온사인 우리만의 밤\n달빛 속으로 너를 찾아 달려가\n시간이 멈춘 이 거리에 울려 퍼지는\n영원히 끝나지 않을 시티 팝\n\n[Outro]\n새벽이 밝아올 때까지\nNeon lights in my heart, forever..."
             ),
             "acoustic": (
@@ -297,7 +357,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
                 "[Verse 1]\n나뭇잎 사이로 내리는 오후의 햇살\n작은 찻잔에 담긴 따뜻한 온기\n조용히 귀 기울이면 들려오는\n오래된 통기타 소리\n\n[Chorus]\n바람이 전하는 작은 위로를 안고\n지친 마음에 쉬어갈 숲을 건너\n오늘도 괜찮다고 다정하게 속삭이는\n너의 목소리처럼 포근해\n\n[Outro]\n가만히 눈을 감고\n마음의 소릴 따라..."
             ),
             "rnb-chill": (
-                "감미로운 팔세토와 그루브가 돋보이는 어번 네오소울 R&B 보컬",
+                "감미로운 팔세토와 그루브가 돋보이는 어번 R&B 보컬",
                 "[Verse 1]\n자정이 지난 루프탑 차가운 바람\n보랏빛 도시의 불빛들이 흩날려\n천천히 흐르는 808 베이스 위에\n내 마음을 띄워보내\n\n[Chorus]\nSlow down baby, in this twilight groove\n밤하늘에 번지는 짙은 감정들\n아무 말 없이 그저 느끼면 돼\nThis late night chillout rhythm\n\n[Outro]\nDrifting away in the purple sky..."
             )
         }
@@ -305,11 +365,18 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
         fb_vocal_style = None
         fb_lyrics = None
         if should_have_lyrics:
-            fb_vocal_style, fb_lyrics = fallback_lyrics_map.get(
-                genre_key,
-                (f"{genre_spec['name']} 스타일의 감미로운 보컬", "[Verse 1]\n조용히 흐르는 밤의 선율\n\n[Chorus]\n마음에 닿는 따뜻한 노래\n\n[Outro]\n영원히 기억될 순간...")
-            )
-            lyria_p = f"Masterpiece {genre_spec['name']} with {genre_spec['instruments']}, {genre_spec['bpm_range']}, {vocal_style_hint}, expressive melodic singing, lyrical vocal hooks, studio mastering quality"
+            if target_lang == "en":
+                fb_vocal_style = f"Expressive and soulful English vocals suited for {genre_spec['name']}"
+                fb_lyrics = "[Verse 1]\nNeon reflections on the wet street lights\nCruising alone through the quiet heights\nMemories fade in the gentle breeze\n\n[Chorus]\nLost in the rhythm of the city glow\nWatching the midnight traffic flow\nNothing to hold us back anymore\n\n[Outro]\nFading into the dawn..."
+            elif target_lang == "ja":
+                fb_vocal_style = f"透明感のあるエモーショナルな日本語ボーカル ({genre_spec['name']})"
+                fb_lyrics = "[Verse 1]\n夜の街を照らす ネオンの光\n雨上がりの風が 頬をなでてゆく\n\n[Chorus]\n終わらない夜の メロディーに抱かれて\nどこまでも走る ハイウェイ\n\n[Outro]\n朝が来るまで..."
+            else:
+                fb_vocal_style, fb_lyrics = fallback_lyrics_map.get(
+                    genre_key,
+                    (f"{genre_spec['name']} 스타일의 감미로운 한국어 보컬", "[Verse 1]\n조용히 흐르는 밤의 선율\n도심의 불빛 속에 번지는 그리움\n\n[Chorus]\n마음에 닿는 따뜻한 노래\n별빛 아래 우리만의 시간\n\n[Outro]\n영원히 기억될 순간...")
+                )
+            lyria_p = f"Masterpiece {genre_spec['name']} with {genre_spec['instruments']}, {genre_spec['bpm_range']}, {lang_lyria_hint}"
         else:
             lyria_p = f"Masterpiece {genre_spec['name']} with {genre_spec['instruments']}, {genre_spec['bpm_range']}, {genre_spec['sound_texture']}, purely instrumental, no vocals, studio mastering quality"
 
@@ -318,16 +385,37 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
             "genre": genre_spec["name"],
             "mood": mood_info["name"],
             "story": f_story,
+            "vocal_language": target_lang if should_have_lyrics else None,
             "has_lyrics": should_have_lyrics,
             "vocal_style": fb_vocal_style,
             "lyrics": fb_lyrics,
             "lyria_prompt": lyria_p,
             "visual_prompt": genre_spec["visual_style"],
-            "tags": ["에이전트루나", "AgentLuna", "AI음악", genre_key, mood_info["name"].split(" ")[0], "BGM", "힐링음악"] + (["가사", "노래", "CityPopVocal"] if should_have_lyrics else ["순수연주곡", "몰입음악"])
+            "tags": ["에이전트루나", "AgentLuna", "AI음악", genre_key, mood_info["name"].split(" ")[0], "BGM", "힐링음악"] + (["가사", "노래", f"{genre_key.replace('-', '').capitalize()}Vocal"] if should_have_lyrics else ["순수연주곡", "몰입음악"])
         }
 
     if concept:
         concept["trend_brief_applied"] = trend_brief_applied
+        concept["vocal_language"] = target_lang if should_have_lyrics else None
+
+        # [핵심 안전망] Lyria 프롬프트 오디오 앵커링 원천 정제 및 보컬 언어 강제 동기화
+        if concept.get("lyria_prompt"):
+            lp = concept["lyria_prompt"]
+            # 1. 한국어 모드일 때 일본어/도쿄 편향 키워드 원천 제거 (시티팝 도쿄 앵커링 차단)
+            if target_lang == "ko":
+                lp = re.sub(r"\b(80s\s+)?tokyo\s*(city\s*pop)?\b", "retro city pop", lp, flags=re.IGNORECASE)
+                lp = re.sub(r"\btokyo\b", "city", lp, flags=re.IGNORECASE)
+                lp = re.sub(r"\bjapanese(\s+female|\s+male)?\s+vocals?\b", "Korean female vocals", lp, flags=re.IGNORECASE)
+            
+            # 2. 보컬이 필요한 곡인 경우 목표 언어(Korean, English, Japanese) 지침 누락 시 자동 보강
+            if should_have_lyrics:
+                lp_lower = lp.lower()
+                expected_kw = "korean" if target_lang == "ko" else ("english" if target_lang == "en" else "japanese")
+                if expected_kw not in lp_lower:
+                    lp = f"{lp.rstrip('.')}, {lang_lyria_hint}"
+            
+            concept["lyria_prompt"] = lp
+
         if trend_brief_applied and isinstance(leo_brief, dict):
             concept["trend_brief"] = {
                 "topic": leo_brief.get("topic", ""),
