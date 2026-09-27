@@ -248,10 +248,11 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
    - 보컬 스타일 설명(vocal_style): {genre_spec['name']}의 감성과 {target_lang_name} 가창에 어울리는 매력적인 톤 서술.
 2. 가사 작성(lyrics):
    - 곡의 서사(story), 감성 무드({mood_info['name']}), 그리고 트렌드 테마에 깊이 공감할 수 있는 웰메이드 감성 노랫말.
-   - [Verse 1], [Chorus], [Verse 2], [Chorus], [Outro] 구조로 작성할 것.
+   - 3분 완곡(Full-length)을 위한 완성도 높은 악곡 구조: [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Chorus], [Bridge], [Final Chorus], [Outro] 구조로 작성할 것. (감정의 고조를 이끄는 [Bridge]와 자연스럽게 여운을 남기는 [Outro] 필수 포함)
 3. Lyria 3 작곡 프롬프트(lyria_prompt):
    - 반드시 '영문(English)'으로 작성.
    - 고정된 템플릿 복사를 절대 금지하며, {genre_spec['bpm_range']} 범위 내에서 곡의 무드에 맞는 구체적 BPM(예: 74 BPM, 108 BPM 등)을 지정할 것.
+   - 3분 완곡 편성 지침: 'approx 3 minutes full-length arrangement, complete narrative song structure with emotional bridge and gentle fading outro'를 포함하여 곡이 중간에 끊기거나 도입부로 루프되지 않고 자연스러운 완곡으로 완결되도록 할 것.
    - 트렌드 브리프의 핵심 정서와 어울리는 독창적인 리드 악기 및 사운드 질감을 생생하게 묘사할 것.
    - 보컬 지침: 반드시 '{lang_lyria_hint}'를 포함하여 텍스트 가사와 실제 음원의 보컬 언어가 100% 일치하도록 작성할 것.
    - 'No vocals', 'instrumental only' 같은 무보컬 지시어를 '절대' 포함하지 말 것!"""
@@ -264,8 +265,8 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
   "vocal_language": "{target_lang}",
   "has_lyrics": true,
   "vocal_style": "{target_lang_name} 감성 보컬 스타일 설명",
-  "lyrics": "[Verse 1]\\n가사 1절...\\n\\n[Chorus]\\n후렴구...\\n\\n[Verse 2]\\n가사 2절...\\n\\n[Chorus]\\n후렴구...\\n\\n[Outro]\\n아웃트로...",
-  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (구체적 BPM, 독창적 리드 악기, '{lang_lyria_hint}' 포함)",
+  "lyrics": "[Verse 1]\\n가사 1절...\\n\\n[Pre-Chorus]\\n빌드업...\\n\\n[Chorus]\\n후렴구...\\n\\n[Verse 2]\\n가사 2절...\\n\\n[Chorus]\\n후렴구...\\n\\n[Bridge]\\n브릿지 감정 고조...\\n\\n[Final Chorus]\\n마지막 후렴...\\n\\n[Outro]\\n아웃트로 여운...",
+  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (구체적 BPM, 3분 완곡 구조, 독창적 리드 악기, '{lang_lyria_hint}' 포함)",
   "visual_prompt": "영문 앨범 커버 프롬프트 (16:9 와이드, 시네마틱 감성)",
   "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"]
 }}"""
@@ -273,7 +274,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
         vocal_prompt_section = f"""[연주곡 요구사항 (순수 인스트루멘털 BGM)]
 1. 순수 연주곡(Instrumental):
    - 보컬이 전혀 없는 깊은 집중/수면/휴식용 배경음악입니다.
-   - Lyria 3 작곡 프롬프트(lyria_prompt)에 반드시 'No vocals, purely instrumental, studio sound quality, rich analog warmth'를 포함할 것.
+   - Lyria 3 작곡 프롬프트(lyria_prompt)에 반드시 'No vocals, purely instrumental, studio sound quality, rich analog warmth, approx 3 minutes full-length structure, evolving thematic progression, gentle natural outro fade-out'를 포함할 것.
 2. 가사(lyrics) 및 보컬 스타일(vocal_style)은 생성하지 마세요 (null)."""
 
         json_schema_example = f"""{{
@@ -285,7 +286,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
   "has_lyrics": false,
   "vocal_style": null,
   "lyrics": null,
-  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (구체적 BPM, 트렌드 맞춤 독창적 리드 악기 및 사운드스케이프 편성 포함, 'No vocals, purely instrumental' 포함)",
+  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (구체적 BPM, 3분 완곡 악기 편성, 'No vocals, purely instrumental, gentle outro fade-out' 포함)",
   "visual_prompt": "영문 앨범 커버 프롬프트 (16:9 와이드, 시네마틱 감성)",
   "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"]
 }}"""
@@ -413,7 +414,12 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
                 expected_kw = "korean" if target_lang == "ko" else ("english" if target_lang == "en" else "japanese")
                 if expected_kw not in lp_lower:
                     lp = f"{lp.rstrip('.')}, {lang_lyria_hint}"
-            
+
+            # 3. 3분 완곡 및 자연스러운 아웃트로(Fade-out) 종결 지침 보강
+            lp_lower = lp.lower()
+            if "outro" not in lp_lower and "fade" not in lp_lower:
+                lp = f"{lp.rstrip('.')}, full 3-minute complete arrangement, natural ending with gentle outro fade-out"
+
             concept["lyria_prompt"] = lp
 
         if trend_brief_applied and isinstance(leo_brief, dict):
