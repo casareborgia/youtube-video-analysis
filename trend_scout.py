@@ -384,11 +384,97 @@ recommended_topics 는 서로 다른 소재로 반드시 3개를 채워주세요
 
 # ── 레오의 음악 트렌드 스카우터 & 루나 기획 브리프 연동 ─────────────────
 
+# 기본 장르 가중치 (루나 채널 성향 반영: 대중적 감성 보컬/멜로디 1.0, 무보컬 특수 장르 0.4)
+GENRE_BASE_WEIGHTS = {
+    "lofi": 1.0,
+    "ambient": 1.0,
+    "synthwave": 1.0,
+    "sleep": 0.4,           # 무보컬 수면 델타파 (특수 목적)
+    "jazz": 1.0,
+    "piano": 1.0,
+    "citypop": 1.0,
+    "acoustic": 1.0,
+    "rnb-chill": 1.0,
+    "dark-ambient": 0.4     # 무보컬 다크 앰비언트 (특수 목적)
+}
+
+
+def get_production_genre_stats(limit: int = 30) -> Dict[str, int]:
+    """최근 실제 제작된 음원들(data/luna_music/*/meta.json)의 장르 빈도를 집계합니다."""
+    luna_dir = DATA_DIR / "luna_music"
+    counts = {g: 0 for g in LUNA_GENRES}
+    if not luna_dir.exists():
+        return counts
+
+    meta_files = sorted(
+        luna_dir.glob("*/meta.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True
+    )[:limit]
+
+    for mf in meta_files:
+        try:
+            with open(mf, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                raw_g = (d.get("genre") or "").strip().lower()
+                leo_g = (d.get("leo_brief", {}).get("genre") or "").strip().lower()
+                matched = None
+                for k, v in LUNA_GENRES.items():
+                    if k == raw_g or k == leo_g or v.lower() in raw_g:
+                        matched = k
+                        break
+                if matched:
+                    counts[matched] += 1
+        except Exception:
+            continue
+    return counts
+
+
+def pick_balanced_genres(count: int = 2, stats: Optional[Dict[str, int]] = None) -> List[str]:
+    """
+    최근 실제 제작 빈도의 역가중치를 적용하여,
+    가장 덜 생성된 장르들을 우선적으로 가중 랜덤 선별합니다 (중복 없음).
+    """
+    if stats is None:
+        stats = get_production_genre_stats(limit=30)
+
+    candidates = list(LUNA_GENRES.keys())
+    weights = []
+    for g in candidates:
+        base = GENRE_BASE_WEIGHTS.get(g, 1.0)
+        recent_cnt = stats.get(g, 0)
+        # 출현 빈도가 높을수록 급격히 감점 (1 / (1 + n * 1.5))
+        w = base / (1.0 + recent_cnt * 1.5)
+        weights.append(w)
+
+    selected = []
+    cand_pool = list(candidates)
+    weight_pool = list(weights)
+
+    for _ in range(count):
+        if not cand_pool:
+            break
+        chosen = random.choices(cand_pool, weights=weight_pool, k=1)[0]
+        selected.append(chosen)
+        idx = cand_pool.index(chosen)
+        cand_pool.pop(idx)
+        weight_pool.pop(idx)
+
+    return selected
+
+
+def pick_balanced_moods(count: int = 2, exclude: Optional[List[str]] = None) -> List[str]:
+    """무드 다양성을 위해 무작위 2개 무드를 선별합니다 (중복 없음)."""
+    cand = [m for m in LUNA_MOODS.keys() if m not in (exclude or [])]
+    return random.sample(cand, min(count, len(cand)))
+
+
 def analyze_music_trends_for_luna(region_code: str = "KR") -> Dict[str, Any]:
     """
     유튜브 음악(Music, 카테고리 10)의 실시간 급상승 차트를 분석하여,
     에이전트 루나가 즉시 작곡에 착수할 수 있는 '음악 기획 브리프 3선'을 자동 도출합니다.
-    - 편향된 고정 예시 제거, 확장 장르/무드 풀, 동적 샘플링 및 최근 주제 배제 적용
+    - 장르 다양성 보장: 1·2번 브리프는 제작 이력 기반 가중치로 코드가 선별, 3번 브리프는 LLM이 차트에 맞춰 자율 선택
+    - 프롬프트 내 하드코딩된 장르 나열 및 (예: ...) 닻내림을 전면 제거
     """
     trends = fetch_top20_trends(category_id="10", region_code=region_code)
     raw_items = trends.get("items", [])
@@ -419,23 +505,43 @@ def analyze_music_trends_for_luna(region_code: str = "KR") -> Dict[str, Any]:
 {history_list}
 """
 
+    # 3. 코드 레벨 장르 & 무드 배정 (가중 랜덤 회전)
+    assigned_genres = pick_balanced_genres(count=2)
+    assigned_moods = pick_balanced_moods(count=2)
+    g1, g2 = assigned_genres[0], assigned_genres[1]
+    m1, m2 = assigned_moods[0], assigned_moods[1]
+    g1_name, g2_name = LUNA_GENRES[g1], LUNA_GENRES[g2]
+    m1_name, m2_name = LUNA_MOODS[m1], LUNA_MOODS[m2]
+
     allowed_genres_str = ", ".join(f'"{k}"({v})' for k, v in LUNA_GENRES.items())
     allowed_moods_str = ", ".join(f'"{k}"({v})' for k, v in LUNA_MOODS.items())
 
     system_prompt = f"""당신은 유튜브 알고리즘 및 글로벌 음악 트렌드 분석 전문가 '에이전트 레오(Agent Leo)'입니다.
 현재 실시간 유튜브 음악 급상승 차트를 분석하여, AI 음악 아티스트 '에이전트 루나(Agent Luna)'가 즉시 제작할 수 있는 [음악 기획 브리프 3선]을 도출해야 합니다.
 
-[작성 및 다양성 규칙]
-1. **장르 및 무드 다양성 필수**:
-   - 3개의 브리프는 서로 완전히 다른 장르(genre)와 무드(mood)를 선택해야 합니다.
-   - 허용 장르: {allowed_genres_str}
-   - 허용 무드: {allowed_moods_str}
-2. **클리셰(돌려막기) 엄격 방지**:
-   - '비 오는 창가 로파이', '새벽 드라이브 신스웨이브', '우주 명상 앰비언트' 같은 흔해빠진 상투적 클리셰 조합을 기계적으로 반복하지 마세요.
-   - 실제 현재 급상승 차트의 최신 가사 정서(예: 성인의 회상, 계절의 전환, 청춘의 방황, 따스한 위로, 골목길의 햇살, 낯선 여행지의 설렘 등)에서 영감을 얻어 참신한 서사를 부여하세요.
-   - 어쿠스틱 포크, 시티팝, 네오클래시컬 피아노, 슬로우 R&B, 재즈 라운지 등 다채로운 사운드 스펙트럼을 적극 활용하세요.
+[장르 및 무드 배정 지침 (필수 준수)]
+1. **브리프 1 배정**:
+   - 장르: 반드시 '{g1}' ({g1_name})
+   - 무드: 반드시 '{m1}' ({m1_name})
+   - 차트의 인기 요인 중 이 장르/무드와 결합할 수 있는 서사와 감성을 녹여내세요.
+2. **브리프 2 배정**:
+   - 장르: 반드시 '{g2}' ({g2_name})
+   - 무드: 반드시 '{m2}' ({m2_name})
+   - 브리프 1과 완전히 대조되는 차별화된 스토리라인과 타깃 리스너를 설정하세요.
+3. **브리프 3 자율 선정**:
+   - 장르: 현재 급상승 차트의 최신 정서와 가장 잘 어울리는 장르를 자유롭게 선정하세요.
+   - 단, 1번('{g1}')과 2번('{g2}')에서 사용한 장르는 절대 중복 선택할 수 없으며, 반드시 서로 다른 제3의 장르를 골라야 합니다.
+   - 무드 역시 1번('{m1}'), 2번('{m2}')과 다른 무드를 선정하세요.
+
+[허용 장르 및 무드 풀]
+- 허용 장르: {allowed_genres_str}
+- 허용 무드: {allowed_moods_str}
+
+[클리셰(돌려막기) 방지 및 작성 규칙]
+- 흔해빠진 상투적 클리셰(비 오는 창가 로파이, 새벽 드라이브 등)를 기계적으로 반복하지 마세요.
+- 실제 현재 급상승 차트 곡들의 가사 정서(예: 성인의 회상, 계절의 전환, 청춘의 방황, 따스한 위로, 골목길의 햇살, 낯선 여행지의 설렘 등)에서 영감을 얻어 참신한 일상적/시네마틱 서사를 부여하세요.
 {history_notice}
-3. 반드시 유효한 JSON만 반환하세요.
+- 반드시 유효한 JSON만 반환하세요.
 
 ```json
 {{
@@ -445,10 +551,10 @@ def analyze_music_trends_for_luna(region_code: str = "KR") -> Dict[str, Any]:
     {{
       "brief_id": 1,
       "title_concept": "참신하고 감각적인 곡 제목 아이디어 (영문 + 국문)",
-      "genre": "선택한 장르 키 (예: citypop)",
-      "genre_name": "선택한 장르 한글 명칭",
-      "mood": "선택한 무드 키 (예: nostalgia)",
-      "mood_name": "선택한 무드 한글 명칭",
+      "genre": "{g1}",
+      "genre_name": "{g1_name}",
+      "mood": "{m1}",
+      "mood_name": "{m1_name}",
       "topic": "곡 테마 및 감성 스토리라인 (차트의 정서나 일상/시네마틱 순간에서 포착한 구체적 묘사)",
       "angle": "레오의 30초 도입부 후킹 전략 (어떤 악기와 사운드 텍스처로 귀를 사로잡을지)",
       "target_audience": "타깃 리스너층 (예: 늦은 오후 카페에서 글을 쓰는 창작자)",
@@ -456,11 +562,11 @@ def analyze_music_trends_for_luna(region_code: str = "KR") -> Dict[str, Any]:
     }},
     {{
       "brief_id": 2,
-      "title_concept": "두 번째 곡 제목 (1번과 전혀 다른 장르와 소재)",
-      "genre": "다른 장르 키 (예: acoustic)",
-      "genre_name": "장르 한글 명칭",
-      "mood": "다른 무드 키 (예: bittersweet)",
-      "mood_name": "무드 한글 명칭",
+      "title_concept": "두 번째 곡 제목 (1번과 완전히 다른 소재)",
+      "genre": "{g2}",
+      "genre_name": "{g2_name}",
+      "mood": "{m2}",
+      "mood_name": "{m2_name}",
       "topic": "곡 테마 및 감성 스토리라인",
       "angle": "30초 후킹 전략",
       "target_audience": "타깃 리스너",
@@ -468,11 +574,11 @@ def analyze_music_trends_for_luna(region_code: str = "KR") -> Dict[str, Any]:
     }},
     {{
       "brief_id": 3,
-      "title_concept": "세 번째 곡 제목 (1·2번과 완전히 다른 장르와 소재)",
-      "genre": "또 다른 장르 키 (예: piano)",
-      "genre_name": "장르 한글 명칭",
-      "mood": "또 다른 무드 키 (예: warm)",
-      "mood_name": "무드 한글 명칭",
+      "title_concept": "세 번째 곡 제목 (차트 기반 추천 곡)",
+      "genre": "차트 정서에 어울리는 제3의 장르 키 (1, 2번 제외)",
+      "genre_name": "제3의 장르 한글 명칭",
+      "mood": "제3의 무드 키 (1, 2번 제외)",
+      "mood_name": "제3의 무드 한글 명칭",
       "topic": "곡 테마 및 감성 스토리라인",
       "angle": "30초 후킹 전략",
       "target_audience": "타깃 리스너",
@@ -486,7 +592,7 @@ def analyze_music_trends_for_luna(region_code: str = "KR") -> Dict[str, Any]:
 {titles_text or "최신 감성/어쿠스틱/인디 팝 음원 차트"}
 
 위 차트를 바탕으로 루나를 위한 완전히 새롭고 차별화된 음악 기획 브리프 3선을 생성해주세요.
-비슷한 주제나 클리셰를 반복하지 말고 각 브리프마다 확고한 개성을 부여해주세요."""
+브리프 1은 '{g1_name}', 브리프 2는 '{g2_name}' 장르로 작성하고, 브리프 3은 차트에 맞는 다른 장르로 기획해주세요."""
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -495,124 +601,109 @@ def analyze_music_trends_for_luna(region_code: str = "KR") -> Dict[str, Any]:
 
     parsed = None
     try:
-        # temperature를 0.88로 설정하여 창의적인 음악 기획 도출
         parsed, _ = llm_client.call_llm_json(messages, max_tokens=3500, temperature=0.88)
     except Exception as e:
         print(f"[TrendScout] Music trend analysis error: {e}")
 
+    # Fallback 필요 시 동적 가중치 장르에 맞추어 생성
     if not parsed or not isinstance(parsed, dict) or not parsed.get("luna_briefs"):
-        # 다채로운 Fallback 테마 풀 (비상시에도 매번 다른 음악 제안)
-        fallback_pools = [
-            {
-                "chart_insights": "지나간 계절의 기억과 따스한 온기를 전하는 어쿠스틱·인디 팝 사운드가 차트 전반에서 깊은 위로를 전하고 있습니다.",
-                "top_keywords": ["계절의온기", "어쿠스틱위로", "골목길오후", "청춘의기억", "마음의쉼표"],
-                "luna_briefs": [
-                    {
-                        "brief_id": 1,
-                        "title_concept": "Old Bookstore Sunlight (헌책방에 드리운 햇살)",
-                        "genre": "acoustic",
-                        "genre_name": "Warm Acoustic / Folk",
-                        "mood": "nostalgia",
-                        "mood_name": "아련한 그리움 (Nostalgia)",
-                        "topic": "오래된 종이 냄새와 먼지 낀 유리창 사이로 비치는 오후 3시의 햇살을 바라보며 잊고 지낸 순수를 되찾는 시간.",
-                        "angle": "도입부 핑거스타일 어쿠스틱 기타 선율과 섬세한 첼로의 온화한 잔향으로 10초 만에 향수 자극",
-                        "target_audience": "복잡한 도시를 벗어나 아날로그 감성의 위로를 찾는 사람",
-                        "keywords": ["어쿠스틱", "포크", "햇살BGM"]
-                    },
-                    {
-                        "brief_id": 2,
-                        "title_concept": "City Lights in Rearview (백미러 속 도시의 불빛)",
-                        "genre": "citypop",
-                        "genre_name": "Nostalgic City Pop",
-                        "mood": "bittersweet",
-                        "mood_name": "달콤씁쓸한 기억 (Bittersweet)",
-                        "topic": "떠나온 도시의 화려한 불빛을 뒤로하고 혼자만의 여행길에 오르는 찰나의 낭만과 쌉싸름한 해방감.",
-                        "angle": "도입부 빈티지 신스 브라스와 경쾌한 슬랩 베이스 그루브로 세련된 레트로 감성 즉시 점화",
-                        "target_audience": "야간 퇴근길이나 주말 드라이브를 즐기는 2030 세대",
-                        "keywords": ["시티팝", "야간드라이브", "레트로"]
-                    },
-                    {
-                        "brief_id": 3,
-                        "title_concept": "First Snow on Whispering Leaves (낙엽 위에 내린 첫눈)",
-                        "genre": "piano",
-                        "genre_name": "Neoclassical Piano",
-                        "mood": "dreamy",
-                        "mood_name": "몽환적 여운 (Dreamy Reverie)",
-                        "topic": "가을의 끝자락 마른 낙엽 위로 조용히 내려앉는 첫눈의 설렘과 아련함을 담은 서정적 독주곡.",
-                        "angle": "부드러운 펠트 피아노 타건음과 앰비언트 스트링 패드로 마음속 불안을 씻어내는 정화 설계",
-                        "target_audience": "명상, 독서, 또는 늦은 밤 일기를 쓰는 힐링 리스너",
-                        "keywords": ["피아노", "첫눈", "수면힐링"]
-                    }
-                ]
-            },
-            {
-                "chart_insights": "도심의 밤공기 속에서 혼자만의 리듬을 찾는 세련된 어번(Urban) 그루브와 몽환적인 재즈 선율이 큰 호응을 얻고 있습니다.",
-                "top_keywords": ["심야라운지", "어번그루브", "재즈칠아웃", "도심의별빛", "깊은사색"],
-                "luna_briefs": [
-                    {
-                        "brief_id": 1,
-                        "title_concept": "Neon Velvet Jazz (네온 벨벳 라운지)",
-                        "genre": "jazz",
-                        "genre_name": "Late Night Jazz / Lounge",
-                        "mood": "reflective",
-                        "mood_name": "조용한 사색 (Reflective Silence)",
-                        "topic": "비 온 뒤 젖은 도심 골목의 재즈 바 구석에서 칵테일 한 잔과 함께 듣는 색소폰의 서정.",
-                        "angle": "도입부 브러시 드럼과 멜로우한 재즈 기타 리프가 만드는 깊이 있는 심야의 여유",
-                        "target_audience": "하루를 우아하게 마무리하고 싶은 홈바/와인 애호가",
-                        "keywords": ["재즈", "라운지BGM", "심야와인"]
-                    },
-                    {
-                        "brief_id": 2,
-                        "title_concept": "Slow Motion Skyline (슬로우 스카이라인)",
-                        "genre": "rnb-chill",
-                        "genre_name": "Slow R&B Chillout",
-                        "mood": "breezy",
-                        "mood_name": "선선한 바람 (Breezy Afternoon)",
-                        "topic": "옥상 난간에 기대어 노을이 번져가는 하늘을 바라보며 시원한 바람을 맞을 때의 나른한 자유.",
-                        "angle": "도입부 808 딥 베이스와 몽환적인 칠 R&B 건반 아르페지오로 편안한 그루브 전달",
-                        "target_audience": "트렌디한 무드로 휴식을 취하고 싶은 리스너",
-                        "keywords": ["알앤비", "노을", "칠아웃"]
-                    },
-                    {
-                        "brief_id": 3,
-                        "title_concept": "Deep Ocean Breathing (심해의 숨결)",
-                        "genre": "dark-ambient",
-                        "genre_name": "Dark Atmospheric Ambient",
-                        "mood": "focus",
-                        "mood_name": "깊은 몰입 (Deep Focus)",
-                        "topic": "아무런 빛도 소음도 닿지 않는 깊은 바닷속에서 온전한 내면의 고요와 마주하는 궁극의 몰입 시간.",
-                        "angle": "초저역대 서브 펄스와 공간감 넘치는 하모닉스 사운드로 잡념을 100% 차단하는 집중 설계",
-                        "target_audience": "코딩, 딥워크, 논문 작성 등 극한의 집중이 필요한 크리에이터",
-                        "keywords": ["다크앰비언트", "딥포커스", "심해음악"]
-                    }
-                ]
-            }
-        ]
-        parsed = random.choice(fallback_pools)
+        rem_genres = [g for g in LUNA_GENRES.keys() if g not in (g1, g2)]
+        g3 = random.choice(rem_genres)
+        g3_name = LUNA_GENRES[g3]
+        rem_moods = [m for m in LUNA_MOODS.keys() if m not in (m1, m2)]
+        m3 = random.choice(rem_moods)
+        m3_name = LUNA_MOODS[m3]
 
-    # 장르 및 무드 이름 보정 & 히스토리 기록
+        parsed = {
+            "chart_insights": "지나간 계절의 기억과 따스한 온기를 전하는 다채로운 사운드가 차트 전반에서 깊은 위로를 전하고 있습니다.",
+            "top_keywords": ["계절의온기", "사운드위로", "청춘의기억", "마음의쉼표", "감성플레이리스트"],
+            "luna_briefs": [
+                {
+                    "brief_id": 1,
+                    "title_concept": f"Whispers of {g1_name} (기억의 여운)",
+                    "genre": g1,
+                    "genre_name": g1_name,
+                    "mood": m1,
+                    "mood_name": m1_name,
+                    "topic": f"{g1_name}의 독창적인 사운드 텍스처로 풀어내는 나만의 작은 휴식.",
+                    "angle": "도입부 15초 만에 귀를 사로잡는 시그니처 멜로디와 사운드스케이프",
+                    "target_audience": "일상 속 감성적 위로와 몰입을 원하는 리스너",
+                    "keywords": [g1, m1, "감성BGM"]
+                },
+                {
+                    "brief_id": 2,
+                    "title_concept": f"Echoes in the City ({g2_name}의 밤)",
+                    "genre": g2,
+                    "genre_name": g2_name,
+                    "mood": m2,
+                    "mood_name": m2_name,
+                    "topic": f"{g2_name}의 세련된 리듬감과 함께 펼쳐지는 낭만적인 순간.",
+                    "angle": "귀를 사로잡는 그루브와 몽환적인 톤 설계",
+                    "target_audience": "야간 퇴근길이나 드라이브를 즐기는 2030 세대",
+                    "keywords": [g2, m2, "트렌디음악"]
+                },
+                {
+                    "brief_id": 3,
+                    "title_concept": f"Dawn Reflections ({g3_name}의 사색)",
+                    "genre": g3,
+                    "genre_name": g3_name,
+                    "mood": m3,
+                    "mood_name": m3_name,
+                    "topic": f"차트 트렌드의 정서를 담아낸 {g3_name} 서정곡.",
+                    "angle": "차분한 터치와 따뜻한 화성 진행으로 깊은 몰입감 선사",
+                    "target_audience": "명상, 독서, 또는 사색을 즐기는 힐링 리스너",
+                    "keywords": [g3, m3, "힐링플레이리스트"]
+                }
+            ]
+        }
+
+    # 4. 후처리 가드레일 (Post-processing Guardrail): 배정 장르 100% 강제 검증 및 중복 방지
     briefs = parsed.get("luna_briefs") or []
+
+    # 1번 브리프 장르/무드 강제 확정
+    if len(briefs) >= 1 and isinstance(briefs[0], dict):
+        briefs[0]["genre"] = g1
+        briefs[0]["genre_name"] = g1_name
+        briefs[0]["mood"] = m1
+        briefs[0]["mood_name"] = m1_name
+
+    # 2번 브리프 장르/무드 강제 확정
+    if len(briefs) >= 2 and isinstance(briefs[1], dict):
+        briefs[1]["genre"] = g2
+        briefs[1]["genre_name"] = g2_name
+        briefs[1]["mood"] = m2
+        briefs[1]["mood_name"] = m2_name
+
+    # 3번 브리프: 1·2번과 중복 시 제3의 장르로 자동 회전 교체
+    if len(briefs) >= 3 and isinstance(briefs[2], dict):
+        b3_g = (briefs[2].get("genre") or "").strip().lower()
+        if b3_g in (g1, g2) or b3_g not in LUNA_GENRES:
+            remaining = [g for g in LUNA_GENRES.keys() if g not in (g1, g2)]
+            new_g = random.choice(remaining)
+            briefs[2]["genre"] = new_g
+            briefs[2]["genre_name"] = LUNA_GENRES[new_g]
+        else:
+            briefs[2]["genre"] = b3_g
+            briefs[2]["genre_name"] = LUNA_GENRES[b3_g]
+
+        b3_m = (briefs[2].get("mood") or "").strip().lower()
+        if b3_m in (m1, m2) or b3_m not in LUNA_MOODS:
+            remaining_m = [m for m in LUNA_MOODS.keys() if m not in (m1, m2)]
+            new_m = random.choice(remaining_m)
+            briefs[2]["mood"] = new_m
+            briefs[2]["mood_name"] = LUNA_MOODS[new_m]
+        else:
+            briefs[2]["mood"] = b3_m
+            briefs[2]["mood_name"] = LUNA_MOODS[b3_m]
+
+    # 신규 브리프 타이틀 히스토리 누적 저장
     saved_brief_titles = []
     for b in briefs:
-        if not isinstance(b, dict):
-            continue
-        g_key = b.get("genre", "lofi").lower()
-        if g_key in LUNA_GENRES:
-            b["genre_name"] = LUNA_GENRES[g_key]
-        elif not b.get("genre_name"):
-            b["genre_name"] = g_key.capitalize()
+        if isinstance(b, dict):
+            b_title = b.get("title_concept") or b.get("title") or ""
+            if b_title:
+                saved_brief_titles.append(b_title)
 
-        m_key = b.get("mood", "dreamy").lower()
-        if m_key in LUNA_MOODS:
-            b["mood_name"] = LUNA_MOODS[m_key]
-        elif not b.get("mood_name"):
-            b["mood_name"] = m_key.capitalize()
-
-        b_title = b.get("title_concept") or b.get("title") or ""
-        if b_title:
-            saved_brief_titles.append(b_title)
-
-    # 신규 브리프 히스토리 누적 저장
     if saved_brief_titles:
         _save_topic_history("music", saved_brief_titles)
 
@@ -624,4 +715,5 @@ def analyze_music_trends_for_luna(region_code: str = "KR") -> Dict[str, Any]:
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
         "analysis": parsed
     }
+
 
