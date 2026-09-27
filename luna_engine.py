@@ -265,10 +265,10 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
   "vocal_language": "{target_lang}",
   "has_lyrics": true,
   "vocal_style": "{target_lang_name} 감성 보컬 스타일 설명",
-  "lyrics": "[Verse 1]\\n가사 1절...\\n\\n[Pre-Chorus]\\n빌드업...\\n\\n[Chorus]\\n후렴구...\\n\\n[Verse 2]\\n가사 2절...\\n\\n[Chorus]\\n후렴구...\\n\\n[Bridge]\\n브릿지 감정 고조...\\n\\n[Final Chorus]\\n마지막 후렴...\\n\\n[Outro]\\n아웃트로 여운...",
   "lyria_prompt": "영문 Lyria 작곡 프롬프트 (구체적 BPM, 3분 완곡 구조, 독창적 리드 악기, '{lang_lyria_hint}' 포함)",
   "visual_prompt": "영문 앨범 커버 프롬프트 (16:9 와이드, 시네마틱 감성)",
-  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"]
+  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"],
+  "lyrics": "[Verse 1]\\n가사 1절...\\n\\n[Pre-Chorus]\\n빌드업...\\n\\n[Chorus]\\n후렴구...\\n\\n[Verse 2]\\n가사 2절...\\n\\n[Chorus]\\n후렴구...\\n\\n[Bridge]\\n브릿지 감정 고조...\\n\\n[Final Chorus]\\n마지막 후렴...\\n\\n[Outro]\\n아웃트로 여운..."
 }}"""
     else:
         vocal_prompt_section = f"""[연주곡 요구사항 (순수 인스트루멘털 BGM)]
@@ -285,10 +285,10 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
   "vocal_language": null,
   "has_lyrics": false,
   "vocal_style": null,
-  "lyrics": null,
   "lyria_prompt": "영문 Lyria 작곡 프롬프트 (구체적 BPM, 3분 완곡 악기 편성, 'No vocals, purely instrumental, gentle outro fade-out' 포함)",
   "visual_prompt": "영문 앨범 커버 프롬프트 (16:9 와이드, 시네마틱 감성)",
-  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"]
+  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"],
+  "lyrics": null
 }}"""
 
     prompt = f"""당신은 글로벌 AI 음악 아티스트 '에이전트 루나(Agent Luna)'의 수석 총괄 프로듀서이자 작곡가입니다.
@@ -325,8 +325,10 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
 
     concept = None
     try:
-        parsed, raw = llm_client.call_llm_json(messages, max_tokens=2048, temperature=0.75)
-        if isinstance(parsed, dict) and parsed.get("title") and parsed.get("lyria_prompt"):
+        parsed, raw = llm_client.call_llm_json(messages, max_tokens=4096, temperature=0.75)
+        if isinstance(parsed, dict) and parsed.get("title"):
+            if not parsed.get("lyria_prompt"):
+                parsed["lyria_prompt"] = f"Masterpiece {genre_spec['name']} with {genre_spec['instruments']}, {genre_spec['bpm_range']}, {lang_lyria_hint if should_have_lyrics else 'purely instrumental, no vocals'}"
             concept = parsed
             concept["has_lyrics"] = bool(parsed.get("has_lyrics") or parsed.get("lyrics"))
     except Exception as e:
