@@ -44,3 +44,6 @@ google-genai>=2.0.0
 # drawtext(자막 번인)를 지원하는 ffmpeg 번들.
 # 시스템 ffmpeg 가 libfreetype 없이 빌드된 경우 producer 가 이쪽을 선택한다.
 imageio-ffmpeg>=0.6.0
+
+# Threads/X 웹 UI 폴백 (공식 API가 제공하지 않는 Threads 좋아요·팔로우)
+playwright>=1.50.0

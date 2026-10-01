@@ -3390,6 +3390,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const marketingThreadsStatusBadge = document.getElementById('marketingThreadsStatusBadge');
   const btnPublishThreadsLive = document.getElementById('btnPublishThreadsLive');
   const threadsPublishResultBox = document.getElementById('threadsPublishResultBox');
+  const engagementPlatform = document.getElementById('engagementPlatform');
+  const engagementAccountId = document.getElementById('engagementAccountId');
+  const engagementPostId = document.getElementById('engagementPostId');
+  const engagementProfileUrl = document.getElementById('engagementProfileUrl');
+  const engagementPostUrl = document.getElementById('engagementPostUrl');
+  const engagementUseWeb = document.getElementById('engagementUseWeb');
+  const btnPreviewEngagement = document.getElementById('btnPreviewEngagement');
+  const btnRunEngagement = document.getElementById('btnRunEngagement');
+  const engagementResultBox = document.getElementById('engagementResultBox');
 
   async function loadThreadsStatus() {
     try {
@@ -3554,6 +3563,85 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  function selectedEngagementActions() {
+    return [
+      ['engagementActionFollow', 'follow'],
+      ['engagementActionLike', 'like'],
+      ['engagementActionRepost', 'repost']
+    ].filter(([id]) => document.getElementById(id)?.checked).map(([, action]) => action);
+  }
+
+  function renderEngagementResults(data) {
+    if (!engagementResultBox) return;
+    const labels = {
+      dry_run: '검토 완료', success: '실행 완료', already_done: '이미 완료',
+      skipped_duplicate: '중복 건너뜀', web_required: '웹 방식 필요',
+      blocked_quota: '일일 한도 초과', failed: '실패'
+    };
+    const rows = (data.results || []).map(item => {
+      const detail = item.detail ? ` · ${escapeHtml(String(item.detail))}` : '';
+      return `<div style="padding: 5px 0; border-bottom: 1px solid var(--border-color);">
+        <strong>${escapeHtml(item.action)}</strong> — ${escapeHtml(labels[item.status] || item.status)}${detail}
+      </div>`;
+    }).join('');
+    engagementResultBox.style.display = 'block';
+    engagementResultBox.innerHTML = `<div style="background: rgba(15,23,42,0.65); border: 1px solid var(--border-color); border-radius: 7px; padding: 9px 12px; font-size: 0.8rem;">${rows || '결과가 없습니다.'}</div>`;
+  }
+
+  async function runEngagement(dryRun) {
+    const platform = engagementPlatform?.value || 'threads';
+    const accountId = engagementAccountId?.value.trim() || '';
+    const postId = engagementPostId?.value.trim() || '';
+    const actions = selectedEngagementActions();
+    const useWeb = Boolean(engagementUseWeb?.checked);
+    if (!accountId || !postId) {
+      showAlert('대상 계정 ID와 게시물 ID를 입력해주세요.', 'error');
+      return;
+    }
+    if (actions.length === 0) {
+      showAlert('실행할 동작을 하나 이상 선택해주세요.', 'error');
+      return;
+    }
+    if (useWeb && (!engagementProfileUrl?.value.trim() || !engagementPostUrl?.value.trim())) {
+      showAlert('전용 브라우저 사용 시 프로필 URL과 게시물 URL이 모두 필요합니다.', 'error');
+      return;
+    }
+    if (!dryRun && !confirm(`${platform === 'threads' ? 'Threads' : 'X'}에서 ${actions.join(', ')} 동작을 실제 실행하시겠습니까?`)) return;
+
+    const activeButton = dryRun ? btnPreviewEngagement : btnRunEngagement;
+    if (activeButton) activeButton.disabled = true;
+    try {
+      const response = await fetch('/api/engagement/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targets: [{
+            platform,
+            account_id: accountId,
+            post_id: postId,
+            profile_url: engagementProfileUrl?.value.trim() || '',
+            post_url: engagementPostUrl?.value.trim() || ''
+          }],
+          actions,
+          dry_run: dryRun,
+          use_web_fallback: useWeb,
+          confirm_live: !dryRun
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || '참여 자동화 요청에 실패했습니다.');
+      renderEngagementResults(data);
+      showAlert(dryRun ? '드라이런 검토가 완료되었습니다.' : '참여 자동화 실행이 완료되었습니다.', 'success');
+    } catch (err) {
+      showAlert('참여 자동화 오류: ' + err.message, 'error');
+    } finally {
+      if (activeButton) activeButton.disabled = false;
+    }
+  }
+
+  if (btnPreviewEngagement) btnPreviewEngagement.addEventListener('click', () => runEngagement(true));
+  if (btnRunEngagement) btnRunEngagement.addEventListener('click', () => runEngagement(false));
 
   // ==============================================================
   // 20. [Phase 10] 캡컷(CapCut) 타임라인 조립 & 렌더링 모드 양자택일
@@ -4185,7 +4273,6 @@ document.addEventListener('DOMContentLoaded', () => {
   loadLunaBgmOptions();
   loadYoutubePlaylists();
 });
-
 
 
 

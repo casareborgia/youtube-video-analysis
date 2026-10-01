@@ -253,9 +253,45 @@ GEMINI_API_KEY=...
 
 ---
 
+### Threads/X 참여 자동화 설정
+
+스하리(팔로우·좋아요·리포스트)는 기본적으로 드라이런으로 동작합니다. X 공식 API 실행에는 OAuth 2.0 User Access Token과 사용자 ID를 `.env`에 설정합니다.
+
+```bash
+X_USER_ACCESS_TOKEN=...
+X_USER_ID=...
+```
+
+Threads 공식 API는 리포스트만 제공하므로 Threads의 팔로우·좋아요는 전용 Playwright 프로필을 사용합니다. 최초 1회 브라우저를 설치하고 전용 프로필에서 Threads와 X에 직접 로그인해야 합니다.
+
+```bash
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -m playwright install chromium
+.venv/bin/python engagement_automation.py login
+```
+
+대시보드의 **Threads & X → Threads/X 스하리 자동화** 패널에서 대상을 입력하고 먼저 드라이런으로 검토할 수 있습니다. `POST /api/engagement/run`도 `dry_run=true`가 기본입니다. 실제 실행은 `dry_run=false`와 `confirm_live=true`를 함께 전달해야 합니다. 한 요청 10개 대상, 하루 전체 30개 동작, 팔로우 10회, 좋아요 25회, 리포스트 10회로 제한되며 이력은 `data/social_engagement.db`에 저장됩니다.
+
+```json
+{
+  "targets": [{
+    "platform": "x",
+    "post_id": "2105629134760370403",
+    "account_id": "1453335049198202883",
+    "post_url": "https://x.com/example/status/2105629134760370403",
+    "profile_url": "https://x.com/example"
+  }],
+  "actions": ["follow", "like", "repost"],
+  "dry_run": true,
+  "use_web_fallback": false
+}
+```
+
+---
+
 ## API 개요
 
-FastAPI 라우트 **61개**. 전체 스펙은 서버 실행 후 http://localhost:8765/docs 에서 확인할 수 있습니다.
+FastAPI 라우트 **64개**. 전체 스펙은 서버 실행 후 http://localhost:8765/docs 에서 확인할 수 있습니다.
 
 | 그룹 | 주요 엔드포인트 |
 |---|---|
@@ -269,6 +305,7 @@ FastAPI 라우트 **61개**. 전체 스펙은 서버 실행 후 http://localhost
 | 유튜브 | `GET /api/youtube/channels` · `POST /api/youtube/channels/select` · `GET /api/youtube/auth/login` · `POST /api/youtube/upload` |
 | 마케팅 | `POST /api/marketing/generate` · `GET /api/marketing/history` |
 | 스레드 | `GET /api/threads/status` · `POST /api/threads/publish` |
+| 참여 자동화 | `GET /api/engagement/capabilities` · `POST /api/engagement/run` · `GET /api/engagement/history` |
 | 음악 | `POST /api/luna/generate` · `POST /api/luna/render` · `POST /api/luna/upload` |
 | LLM | `GET /api/llm/status` · `GET /api/llm/models` · `POST /api/llm/select-model` |
 
@@ -292,6 +329,7 @@ youtube-video-analysis/
 ├── uploader.py             # YouTube OAuth(다중 채널) · 업로드 · 브랜딩
 ├── marketing.py            # 스레드 · SEO 블로그 · 뉴스레터 생성
 ├── threads_client.py       # Meta Threads API 연동
+├── engagement_automation.py # Threads/X 팔로우·좋아요·리포스트 자동화
 ├── luna_engine.py          # AI 음악 생성 · 앨범아트 · 뮤직비디오
 ├── analyze.py              # CLI 단독 분석 스크립트
 ├── run.sh                  # 원클릭 실행
@@ -335,6 +373,7 @@ youtube-video-analysis/
 - **컨셉 팩의 내부 이름은 아직 레드라인 기준입니다.** `generate_redline_image_prompts()`, `first_frame_redline` 등 함수·필드명이 그대로라, 인물 컨셉 결과도 `redline` 이 붙은 키에 담깁니다. 동작에는 영향이 없습니다.
 - **`info_breakdown` · `product_review` 팩은 프롬프트 구조까지만 확인했습니다.** 실제 이미지 생성으로 눈으로 검증한 것은 레드라인과 인물·서사 두 팩입니다.
 - **실제 유튜브 업로드는 미검증입니다.** 인자 불일치는 해소했고 다중 채널 연결은 동작하지만, 진짜 영상을 올려본 적은 없습니다.
+- **Threads 좋아요·팔로우는 웹 UI 폴백입니다.** Threads 공식 API가 해당 동작을 제공하지 않아 플랫폼 UI 변경이나 로그인 만료 시 수동 확인이 필요할 수 있습니다.
 - **생성 시간** — 씬 6개 약 2분, 10~12개 약 3분, 이미지 생성 포함 합성은 씬당 20~40초가 추가됩니다. OSMU 통합 마케팅은 3분 이상.
 - **macOS 기준으로 개발되었습니다.** 폴더 열기(`open`), 시스템 TTS 폴백(`say`) 등 일부 기능은 macOS 전용입니다.
 

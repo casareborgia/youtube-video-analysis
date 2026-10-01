@@ -1078,6 +1078,32 @@
                 </div>
                 <div id="threadsPublishResultBox" style="display: none; margin-bottom: 12px;"></div>
 
+                <details style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.35); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;">
+                  <summary style="cursor: pointer; color: #c7d2fe; font-size: 0.9rem; font-weight: 700;">
+                    <i class="fa-solid fa-repeat"></i> Threads/X 스하리 자동화
+                  </summary>
+                  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 12px;">
+                    <select id="engagementPlatform" class="form-control" aria-label="플랫폼">
+                      <option value="threads">Threads</option>
+                      <option value="x">X</option>
+                    </select>
+                    <input id="engagementAccountId" class="form-control" placeholder="대상 계정 ID" autocomplete="off">
+                    <input id="engagementPostId" class="form-control" placeholder="대상 게시물 ID" autocomplete="off">
+                    <input id="engagementProfileUrl" class="form-control" placeholder="프로필 URL (웹 방식 필수)" autocomplete="off">
+                    <input id="engagementPostUrl" class="form-control" placeholder="게시물 URL (웹 방식 필수)" autocomplete="off" style="grid-column: 1 / -1;">
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 10px; color: var(--text-secondary); font-size: 0.8rem;">
+                    <label><input id="engagementActionFollow" type="checkbox" checked> 팔로우</label>
+                    <label><input id="engagementActionLike" type="checkbox" checked> 좋아요</label>
+                    <label><input id="engagementActionRepost" type="checkbox" checked> 리포스트</label>
+                    <label title="Threads 팔로우·좋아요에는 웹 방식이 필요합니다."><input id="engagementUseWeb" type="checkbox"> 전용 브라우저 사용</label>
+                    <span style="flex: 1;"></span>
+                    <button id="btnPreviewEngagement" type="button" class="btn btn-sm btn-outline"><i class="fa-solid fa-flask"></i> 드라이런</button>
+                    <button id="btnRunEngagement" type="button" class="btn btn-sm btn-primary"><i class="fa-solid fa-play"></i> 실제 실행</button>
+                  </div>
+                  <div id="engagementResultBox" style="display: none; margin-top: 10px;"></div>
+                </details>
+
                 <div id="threadsPostList" style="display: flex; flex-direction: column; gap: 10px;">
                   <div class="empty-state-box" style="padding: 30px;">
                     <i class="fa-brands fa-threads fa-2x"></i>

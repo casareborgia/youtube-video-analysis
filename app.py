@@ -37,6 +37,7 @@ import uploader
 import luna_engine
 import threads_client
 import capcut_builder
+import engagement_automation
 
 app = FastAPI(title="TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오")
 
@@ -1437,6 +1438,21 @@ class ThreadsPublishRequest(BaseModel):
     posts: List[str]
     delay_seconds: Optional[float] = 2.0
 
+class EngagementTargetRequest(BaseModel):
+    platform: str
+    post_id: str
+    account_id: str
+    post_url: Optional[str] = ""
+    profile_url: Optional[str] = ""
+    label: Optional[str] = ""
+
+class EngagementRunRequest(BaseModel):
+    targets: List[EngagementTargetRequest]
+    actions: Optional[List[str]] = None
+    dry_run: bool = True
+    use_web_fallback: bool = False
+    confirm_live: bool = False
+
 @app.get("/api/threads/status")
 async def get_threads_status():
     """Threads 연동 상태 및 계정 정보 확인"""
@@ -1489,6 +1505,67 @@ async def publish_threads_series(req: ThreadsPublishRequest):
 async def disconnect_threads():
     """Threads 계정 연동 해제"""
     return threads_client.disconnect()
+
+
+# ==========================================
+# Threads/X 스하리(팔로우·좋아요·리포스트) 자동화
+# ==========================================
+@app.get("/api/engagement/capabilities")
+async def get_engagement_capabilities():
+    return {
+        "status": "success",
+        "default_mode": "dry_run",
+        "platforms": {
+            "threads": {"api": ["repost"], "web_fallback": ["follow", "like", "repost"]},
+            "x": {"api": ["follow", "like", "repost"], "web_fallback": ["follow", "like", "repost"]},
+        },
+        "limits": {
+            "targets_per_request": 10,
+            "daily_total": 30,
+            "daily_follow": 10,
+            "daily_like": 25,
+            "daily_repost": 10,
+        },
+    }
+
+
+@app.post("/api/engagement/run")
+async def run_engagement_automation(req: EngagementRunRequest):
+    """대상 목록을 드라이런으로 검토하거나 명시적 승인 후 스하리를 실행한다."""
+    if not req.dry_run and not req.confirm_live:
+        raise HTTPException(status_code=400, detail="실제 실행에는 confirm_live=true가 필요합니다.")
+    targets = [
+        engagement_automation.EngagementTarget(
+            platform=t.platform.strip().lower(),
+            post_id=t.post_id.strip(),
+            account_id=t.account_id.strip(),
+            post_url=(t.post_url or "").strip(),
+            profile_url=(t.profile_url or "").strip(),
+            label=(t.label or "").strip(),
+        )
+        for t in req.targets
+    ]
+    try:
+        loop = asyncio.get_event_loop()
+        service = engagement_automation.get_service()
+        return await loop.run_in_executor(
+            None,
+            lambda: service.execute(
+                targets=targets,
+                actions=req.actions,
+                dry_run=req.dry_run,
+                use_web_fallback=req.use_web_fallback,
+            ),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"참여 자동화 실패: {exc}")
+
+
+@app.get("/api/engagement/history")
+async def get_engagement_history(limit: int = Query(100, ge=1, le=500)):
+    return {"status": "success", "data": engagement_automation.EngagementStore().history(limit)}
 
 
 # ==========================================
