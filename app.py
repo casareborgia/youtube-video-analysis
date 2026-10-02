@@ -42,6 +42,7 @@ import social_store
 import x_client
 import content_service
 import publish_service
+import reply_service
 
 app = FastAPI(title="TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오")
 
@@ -1760,6 +1761,84 @@ async def schedule_job_api(job_id: str, req: ScheduleJobRequest):
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"작업 예약 실패: {e}")
+
+
+# ==========================================
+# Phase 5: 댓글·답글 자동화 API
+# ==========================================
+class CreateReplyDraftsRequest(BaseModel):
+    platform: str
+    comments: List[Dict[str, Any]]
+    actor_account_id: str
+    tone: str = "friendly"
+    post_context: Optional[str] = None
+    dry_run: bool = True
+
+
+class BatchRepliesRequest(BaseModel):
+    job_ids: List[str]
+    worker_id: Optional[str] = "manual_reply_worker"
+    dry_run: Optional[bool] = None
+
+
+@app.get("/api/social/comments/{platform}/{post_id}")
+async def get_post_comments_api(platform: str, post_id: str):
+    """대상 게시물의 최근 댓글/답글 목록 조회 (권한 검증 포함)"""
+    try:
+        service = reply_service.ReplyService()
+        res = service.fetch_post_replies(platform=platform, post_id=post_id)
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"댓글 조회 실패: {e}")
+
+
+@app.post("/api/social/replies/drafts-from-comments")
+async def create_reply_drafts_api(req: CreateReplyDraftsRequest):
+    """댓글 목록 기반 AI 답글 초안 생성"""
+    try:
+        service = reply_service.ReplyService()
+        res = service.create_reply_drafts_from_comments(
+            platform=req.platform,
+            comments=req.comments,
+            actor_account_id=req.actor_account_id,
+            tone=req.tone,
+            post_context=req.post_context,
+            dry_run=req.dry_run,
+        )
+        return {"status": "success", "drafts": res}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"답글 초안 생성 실패: {e}")
+
+
+@app.post("/api/social/replies/batch-preview")
+async def preview_batch_replies_api(req: BatchRepliesRequest):
+    """배치 답글 실행 전 승인 상태 및 대상 미리보기"""
+    try:
+        service = reply_service.ReplyService()
+        res = service.preview_batch_replies(job_ids=req.job_ids)
+        return {"status": "success", "preview": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"미리보기 실패: {e}")
+
+
+@app.post("/api/social/replies/batch-execute")
+async def execute_batch_replies_api(req: BatchRepliesRequest):
+    """승인된 배치 답글 실행"""
+    try:
+        service = reply_service.ReplyService()
+        res = service.execute_batch_replies(
+            job_ids=req.job_ids,
+            worker_id=req.worker_id or "manual_reply_worker",
+            dry_run=req.dry_run,
+        )
+        return {"status": "success", "result": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"배치 답글 실행 실패: {e}")
+
 
 
 
