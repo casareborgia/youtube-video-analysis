@@ -101,6 +101,27 @@ def save_config(updates: dict):
     if current.get("app_secret"):
         os.environ["THREADS_APP_SECRET"] = current["app_secret"]
 
+    # SocialStore 동기화
+    if current.get("user_id"):
+        try:
+            import social_store
+            store = social_store.SocialStore()
+            if current.get("access_token"):
+                store.upsert_account(
+                    platform="threads",
+                    account_id=str(current["user_id"]),
+                    username=current.get("username", ""),
+                    display_name=current.get("name", ""),
+                    credential_ref="data/threads_config.json",
+                    status="connected",
+                    scopes=["threads_basic", "threads_content_publish", "threads_read_replies"],
+                    token_expires_at=int(current.get("token_expires_at", 0)),
+                )
+            else:
+                store.delete_account("threads", str(current["user_id"]))
+        except Exception:
+            pass
+
 
 def get_status() -> dict:
     """현재 Threads 계정 연동 상태 및 프로필 정보 조회"""

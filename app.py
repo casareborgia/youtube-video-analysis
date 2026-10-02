@@ -38,6 +38,8 @@ import luna_engine
 import threads_client
 import capcut_builder
 import engagement_automation
+import social_store
+import x_client
 
 app = FastAPI(title="TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오")
 
@@ -1505,6 +1507,98 @@ async def publish_threads_series(req: ThreadsPublishRequest):
 async def disconnect_threads():
     """Threads 계정 연동 해제"""
     return threads_client.disconnect()
+
+
+# ==========================================
+# X (Twitter) OAuth 2.0 PKCE 인증 및 계정 관리 API
+# ==========================================
+_x_oauth_states: Dict[str, Dict[str, Any]] = {}
+
+
+@app.get("/api/x/status")
+async def get_x_status():
+    """X 계정 연동 상태, 스코프 및 만료 정보 조회"""
+    return x_client.get_status()
+
+
+@app.get("/api/x/auth/login")
+async def x_oauth_login(redirect_uri: Optional[str] = None):
+    """X OAuth 2.0 PKCE 인증 창으로 리다이렉트"""
+    try:
+        data = x_client.get_oauth_authorization_url(redirect_uri=redirect_uri)
+        # state와 code_verifier 캐싱 (최대 10분)
+        state = data["state"]
+        _x_oauth_states[state] = {
+            "code_verifier": data["code_verifier"],
+            "created_at": time.time(),
+        }
+        # 오래된 state 정리
+        now = time.time()
+        for s in list(_x_oauth_states.keys()):
+            if now - _x_oauth_states[s]["created_at"] > 600:
+                _x_oauth_states.pop(s, None)
+
+        return RedirectResponse(url=data["url"])
+    except x_client.XClientError as e:
+        raise HTTPException(status_code=e.status_code, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"X OAuth 로그인 URL 생성 실패: {e}")
+
+
+@app.get("/api/x/auth/callback")
+async def x_oauth_callback(
+    code: str = Query(...),
+    state: str = Query(...),
+    redirect_uri: Optional[str] = None,
+):
+    """X OAuth 2.0 콜백 수신 및 PKCE 검증 후 토큰 발급"""
+    try:
+        saved_info = _x_oauth_states.pop(state, None)
+        verifier = saved_info.get("code_verifier", "") if saved_info else ""
+        if not verifier:
+            return PlainTextResponse("X OAuth 상태 검증 실패: 유효하지 않거나 만료된 state입니다.", status_code=400)
+
+        res = x_client.handle_oauth_callback(code=code, code_verifier=verifier, redirect_uri=redirect_uri)
+        return RedirectResponse(url="/?x_connected=1")
+    except x_client.XClientError as e:
+        return PlainTextResponse(f"X 계정 연동 실패 ({e.code}): {e}", status_code=e.status_code)
+    except Exception as e:
+        return PlainTextResponse(f"X 계정 연동 실패: {e}", status_code=400)
+
+
+@app.post("/api/x/auth/refresh")
+async def refresh_x_token():
+    """X 액세스 토큰 수동 갱신"""
+    try:
+        res = x_client.refresh_access_token()
+        return res
+    except x_client.XClientError as e:
+        raise HTTPException(status_code=e.status_code, detail=f"[{e.code}] {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"토큰 갱신 실패: {e}")
+
+
+@app.post("/api/x/auth/disconnect")
+async def disconnect_x():
+    """X 계정 연동 해제"""
+    return x_client.disconnect()
+
+
+@app.get("/api/social/accounts")
+async def get_social_accounts():
+    """공통 저장소에 등록된 Threads / X 계정 목록 및 상태 조회"""
+    try:
+        st = social_store.SocialStore()
+        accounts = st.list_accounts()
+        return {
+            "status": "success",
+            "accounts": accounts,
+            "threads_status": threads_client.get_status(),
+            "x_status": x_client.get_status(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"계정 목록 조회 실패: {e}")
+
 
 
 # ==========================================

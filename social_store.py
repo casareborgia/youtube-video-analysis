@@ -543,6 +543,15 @@ class SocialStore:
                 results.append(d)
             return results
 
+    def delete_account(self, platform: str, account_id: str) -> bool:
+        """연동 해제된 계정을 삭제하거나 상태를 정리"""
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM social_accounts WHERE platform = ? AND account_id = ?",
+                (platform, account_id),
+            )
+            return cur.rowcount > 0
+
     # ==========================================
     # 공통 작업 (social_jobs) 관리
     # ==========================================
