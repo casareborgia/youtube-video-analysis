@@ -15,6 +15,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Protocol
@@ -85,10 +86,25 @@ class EngagementStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 
-    def _connect(self):
-        conn = sqlite3.connect(self.path)
+    @contextmanager
+    def _connect(self, immediate: bool = False):
+        conn = sqlite3.connect(self.path, timeout=30.0)
         conn.row_factory = sqlite3.Row
-        return conn
+        try:
+            if immediate:
+                conn.isolation_level = None
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    yield conn
+                    conn.execute("COMMIT")
+                except Exception:
+                    conn.execute("ROLLBACK")
+                    raise
+            else:
+                with conn:
+                    yield conn
+        finally:
+            conn.close()
 
     def _init_schema(self):
         with self._connect() as conn:
@@ -124,6 +140,65 @@ class EngagementStore:
                 (target.platform, target.account_id, target.post_id, action, int(dry_run)),
             ).fetchone()
         return row is not None
+
+    def reserve_slot(
+        self,
+        target: EngagementTarget,
+        action: str,
+        policy: EngagementPolicy,
+        dry_run: bool,
+    ) -> Tuple[bool, str]:
+        """
+        BEGIN IMMEDIATE 쓰기 트랜잭션으로 중복 검사, 일일 한도 검사, 실행 슬롯 예약을 원자적 수행.
+        동시 다중 워커 실행 시에도 일일 한도 초과를 원천 차단.
+        """
+        if dry_run:
+            if self.already_completed(target, action, dry_run=True):
+                return False, "skipped_duplicate"
+            return True, "dry_run"
+
+        with self._connect(immediate=True) as conn:
+            # 1. 중복 확인
+            row = conn.execute(
+                """SELECT 1 FROM engagement_events
+                   WHERE platform=? AND account_id=? AND post_id=? AND action=?
+                     AND dry_run=0 AND status IN ('success', 'already_done', 'reserved')""",
+                (target.platform, target.account_id, target.post_id, action),
+            ).fetchone()
+            if row is not None:
+                return False, "skipped_duplicate"
+
+            # 2. 일일 전체 한도 확인 (진행 중인 reserved 슬롯 포함)
+            day = self._day_key()
+            total_count = conn.execute(
+                """SELECT COUNT(*) FROM engagement_events
+                   WHERE day_key=? AND dry_run=0 AND status IN ('success', 'already_done', 'reserved')""",
+                (day,),
+            ).fetchone()[0]
+            if total_count >= policy.daily_total:
+                return False, "daily_total"
+
+            # 3. 일일 동작별 한도 확인
+            action_count = conn.execute(
+                """SELECT COUNT(*) FROM engagement_events
+                   WHERE day_key=? AND action=? AND dry_run=0 AND status IN ('success', 'already_done', 'reserved')""",
+                (day, action),
+            ).fetchone()[0]
+            if action_count >= policy.limit_for(action):
+                return False, f"daily_{action}"
+
+            # 4. 슬롯 원자적 예약 (status='reserved')
+            now_ts = int(time.time())
+            conn.execute(
+                """INSERT INTO engagement_events
+                   (created_at, day_key, platform, account_id, post_id, action, status, dry_run, detail)
+                   VALUES (?, ?, ?, ?, ?, ?, 'reserved', 0, 'slot_reserved')
+                   ON CONFLICT(platform, account_id, post_id, action, dry_run)
+                   DO UPDATE SET created_at=excluded.created_at, day_key=excluded.day_key,
+                                 status='reserved', detail='slot_reserved'""",
+                (now_ts, day, target.platform, target.account_id, target.post_id, action),
+            )
+            return True, "reserved"
 
     def daily_count(self, action: Optional[str] = None) -> int:
         query = "SELECT COUNT(*) FROM engagement_events WHERE day_key=? AND dry_run=0 AND status IN ('success','already_done')"
@@ -372,21 +447,18 @@ class EngagementAutomationService:
         for target in targets:
             for action in actions:
                 item = {"platform": target.platform, "post_id": target.post_id, "action": action}
-                if self.store.already_completed(target, action, dry_run):
-                    item["status"] = "skipped_duplicate"
+                allowed, reason = self.store.reserve_slot(target, action, self.policy, dry_run)
+                if not allowed:
+                    if reason == "skipped_duplicate":
+                        item["status"] = "skipped_duplicate"
+                    else:
+                        item.update(status="blocked_quota", detail=reason)
                     results.append(item)
                     continue
+
                 if dry_run:
                     item["status"] = "dry_run"
                     self.store.record(target, action, "dry_run", True, item)
-                    results.append(item)
-                    continue
-                if self.store.daily_count() >= self.policy.daily_total:
-                    item.update(status="blocked_quota", detail="daily_total")
-                    results.append(item)
-                    continue
-                if self.store.daily_count(action) >= self.policy.limit_for(action):
-                    item.update(status="blocked_quota", detail=f"daily_{action}")
                     results.append(item)
                     continue
 
