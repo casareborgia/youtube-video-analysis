@@ -35,6 +35,7 @@ X_OAUTH_AUTH_URL = "https://twitter.com/i/oauth2/authorize"
 X_OAUTH_TOKEN_URL = "https://api.twitter.com/2/oauth2/token"
 X_OAUTH_REVOKE_URL = "https://api.twitter.com/2/oauth2/revoke"
 X_USERS_ME_URL = "https://api.twitter.com/2/users/me"
+X_TWEETS_URL = "https://api.twitter.com/2/tweets"
 
 # 기본 필수 권한 범위 (게시 발행, 읽기, 사용자 조회, 토큰 갱신, 스하리 인터랙션)
 DEFAULT_SCOPES = [
@@ -170,6 +171,7 @@ def _http_request(
     method: str = "GET",
     headers: Optional[Dict[str, str]] = None,
     data: Optional[Dict[str, Any]] = None,
+    json_data: Optional[Dict[str, Any]] = None,
     auth_basic: Optional[Tuple[str, str]] = None,
     timeout: int = 30,
 ) -> Dict[str, Any]:
@@ -183,7 +185,10 @@ def _http_request(
         req_headers["Authorization"] = f"Basic {b64}"
 
     req_data = None
-    if data is not None:
+    if json_data is not None:
+        req_data = json.dumps(json_data, ensure_ascii=False).encode("utf-8")
+        req_headers["Content-Type"] = "application/json"
+    elif data is not None:
         req_data = urllib.parse.urlencode({k: v for k, v in data.items() if v is not None}).encode("utf-8")
         req_headers["Content-Type"] = "application/x-www-form-urlencoded"
 
@@ -544,3 +549,49 @@ def disconnect(store: Optional[social_store.SocialStore] = None) -> Dict[str, An
             pass
 
     return {"status": "success", "message": "X 계정 연동이 성공적으로 해제되었습니다."}
+
+
+# ==========================================
+# X (Twitter) API v2 게시물 및 타래 발행
+# ==========================================
+def publish_tweet(
+    text: str,
+    reply_to_id: Optional[str] = None,
+    media_ids: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """
+    X API v2 POST /2/tweets 를 통한 단일 트윗 또는 타래 답글 발행.
+    """
+    clean_text = (text or "").strip()
+    if not clean_text:
+        raise ValueError("트윗 본문은 비어 있을 수 없습니다.")
+    if len(clean_text) > 280:
+        raise ValueError(f"트윗 글자수는 최대 280자까지 허용됩니다 (현재: {len(clean_text)}자).")
+
+    conf = load_config()
+    access_token = conf.get("access_token")
+    if not access_token:
+        raise XClientError("X access_token이 설정되지 않았습니다. 로그인이 필요합니다.", code=ERR_INVALID_CREDENTIALS)
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+    }
+
+    payload: Dict[str, Any] = {"text": clean_text}
+    if reply_to_id:
+        payload["reply"] = {"in_reply_to_tweet_id": str(reply_to_id).strip()}
+    if media_ids:
+        payload["media"] = {"media_ids": [str(m) for m in media_ids]}
+
+    res = _http_request(X_TWEETS_URL, method="POST", headers=headers, json_data=payload)
+    data = res.get("data", {})
+    tweet_id = str(data.get("id", ""))
+    if not tweet_id:
+        raise XClientError(f"트윗 발행 응답에 id가 없습니다: {res}", code=ERR_API_ERROR)
+
+    return {
+        "id": tweet_id,
+        "text": data.get("text", clean_text),
+        "url": f"https://x.com/i/web/status/{tweet_id}",
+    }
+

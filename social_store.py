@@ -154,8 +154,8 @@ class WorkerOwnershipError(SocialStoreError):
 class SocialStore:
     """Threads/X 통합 자동화 공통 저장소 클래스"""
 
-    def __init__(self, path: Path = DEFAULT_DB_PATH):
-        self.path = Path(path)
+    def __init__(self, path: Optional[Path] = None):
+        self.path = Path(path if path is not None else DEFAULT_DB_PATH)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._init_schema()
 

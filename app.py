@@ -41,6 +41,7 @@ import engagement_automation
 import social_store
 import x_client
 import content_service
+import publish_service
 
 app = FastAPI(title="TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오")
 
@@ -1710,6 +1711,56 @@ async def convert_draft_to_publish_api(job_id: str, approve: bool = True):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"발행 요청 변환 실패: {e}")
+
+
+# ==========================================
+# Phase 4: Threads/X 게시물 통합 발행 API
+# ==========================================
+class PublishJobRequest(BaseModel):
+    dry_run: Optional[bool] = None
+    worker_id: Optional[str] = "manual_api_worker"
+
+
+class ScheduleJobRequest(BaseModel):
+    scheduled_at: int
+
+
+@app.post("/api/social/publish/{job_id}")
+async def execute_publish_job_api(job_id: str, req: PublishJobRequest):
+    """승인된 게시물/타래 발행 실행 (드라이런 또는 라이브)"""
+    try:
+        service = publish_service.PublishService()
+        res = service.execute_publish_job(
+            job_id=job_id,
+            worker_id=req.worker_id or "manual_api_worker",
+            dry_run=req.dry_run,
+        )
+        return res
+    except social_store.InvalidStateTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"발행 실행 실패: {e}")
+
+
+@app.post("/api/social/jobs/{job_id}/schedule")
+async def schedule_job_api(job_id: str, req: ScheduleJobRequest):
+    """작업 예약 실행 시각 설정"""
+    try:
+        st = social_store.SocialStore()
+        job = st.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="존재하지 않는 작업 ID입니다.")
+        if job["approved_at"] <= 0:
+            raise HTTPException(status_code=400, detail="승인되지 않은 작업은 예약할 수 없습니다.")
+        updated = st.transition_job_status(job_id, "scheduled", scheduled_at=req.scheduled_at)
+        return {"status": "success", "job": updated}
+    except social_store.InvalidStateTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"작업 예약 실패: {e}")
+
 
 
 
