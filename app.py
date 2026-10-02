@@ -40,6 +40,7 @@ import capcut_builder
 import engagement_automation
 import social_store
 import x_client
+import content_service
 
 app = FastAPI(title="TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오")
 
@@ -1598,6 +1599,118 @@ async def get_social_accounts():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"계정 목록 조회 실패: {e}")
+
+
+# ==========================================
+# Phase 3: 콘텐츠 생성·검토 및 편집 가능 초안(Draft) API
+# ==========================================
+class DraftFromMarketingRequest(BaseModel):
+    marketing_data: Dict[str, Any]
+    actor_account_id: str
+    dry_run: bool = True
+
+
+class ManualDraftRequest(BaseModel):
+    platform: str
+    posts: List[str]
+    actor_account_id: str
+    dry_run: bool = True
+    topic: str = ""
+
+
+class UpdateDraftItemRequest(BaseModel):
+    content: str
+
+
+class GenerateReplyRequest(BaseModel):
+    platform: str
+    original_post: str
+    post_context: Optional[str] = None
+    tone: str = "friendly"
+    audience: Optional[str] = None
+
+
+@app.post("/api/social/drafts/from-marketing")
+async def create_draft_from_marketing_api(req: DraftFromMarketingRequest):
+    """marketing.generate_threads_x() 생성 결과를 통합 초안으로 변환 저장"""
+    try:
+        res = content_service.create_draft_from_marketing(
+            marketing_data=req.marketing_data,
+            actor_account_id=req.actor_account_id,
+            dry_run=req.dry_run,
+        )
+        return {"status": "success", "draft": res}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"초안 생성 실패: {e}")
+
+
+@app.post("/api/social/drafts/manual")
+async def create_manual_draft_api(req: ManualDraftRequest):
+    """사용자 직접 입력 단일/타래 초안 생성"""
+    try:
+        res = content_service.create_manual_draft(
+            platform=req.platform,
+            posts=req.posts,
+            actor_account_id=req.actor_account_id,
+            dry_run=req.dry_run,
+            topic=req.topic,
+        )
+        return {"status": "success", "draft": res}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"수동 초안 생성 실패: {e}")
+
+
+@app.put("/api/social/drafts/{job_id}/items/{item_index}")
+async def update_draft_item_api(job_id: str, item_index: int, req: UpdateDraftItemRequest):
+    """초안 항목 내용 편집"""
+    try:
+        res = content_service.update_draft_item(
+            job_id=job_id,
+            item_index=item_index,
+            new_content=req.content,
+        )
+        return {"status": "success", "draft": res}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except social_store.InvalidStateTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"초안 항목 수정 실패: {e}")
+
+
+@app.post("/api/social/reply/generate")
+async def generate_reply_api(req: GenerateReplyRequest):
+    """원문, 맥락, 선택 톤 기반 AI 댓글·답글 초안 생성"""
+    try:
+        res = content_service.generate_reply_draft(
+            platform=req.platform,
+            original_post=req.original_post,
+            post_context=req.post_context,
+            tone=req.tone,
+            audience=req.audience,
+        )
+        return {"status": "success", "reply": res}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"답글 생성 실패: {e}")
+
+
+@app.post("/api/social/drafts/{job_id}/convert-to-publish")
+async def convert_draft_to_publish_api(job_id: str, approve: bool = True):
+    """초안을 승인 및 손실 없는 발행 요청 페이로드로 변환"""
+    try:
+        payload = content_service.convert_draft_to_publish_request(job_id=job_id, approve=approve)
+        return {"status": "success", "publish_request": payload}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"발행 요청 변환 실패: {e}")
+
 
 
 
