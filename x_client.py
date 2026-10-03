@@ -595,3 +595,85 @@ def publish_tweet(
         "url": f"https://x.com/i/web/status/{tweet_id}",
     }
 
+
+# ==========================================
+# X (Twitter) API v2 스하리 참여 동작 (좋아요, 팔로우, 리포스트)
+# ==========================================
+def like_tweet(
+    tweet_id: str,
+    acting_user_id: Optional[str] = None,
+    access_token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    X API v2 POST /2/users/:id/likes 를 통한 트윗 좋아요.
+    이미 좋아요가 되어 있는 경우에도 안전하게 성공/상태 반환.
+    """
+    clean_tweet_id = str(tweet_id or "").strip()
+    if not clean_tweet_id:
+        raise ValueError("tweet_id는 필수입니다.")
+
+    conf = load_config()
+    token = (access_token or conf.get("access_token") or "").strip()
+    user_id = (acting_user_id or conf.get("user_id") or "").strip()
+    if not token or not user_id:
+        raise XClientError("X access_token과 user_id가 필요합니다.", code=ERR_INVALID_CREDENTIALS)
+
+    url = f"https://api.x.com/2/users/{urllib.parse.quote(user_id)}/likes"
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {"tweet_id": clean_tweet_id}
+
+    res = _http_request(url, method="POST", headers=headers, json_data=payload)
+    return res.get("data", res)
+
+
+def follow_user(
+    target_user_id: str,
+    acting_user_id: Optional[str] = None,
+    access_token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    X API v2 POST /2/users/:id/following 을 통한 계정 팔로우.
+    """
+    clean_target = str(target_user_id or "").strip()
+    if not clean_target:
+        raise ValueError("target_user_id는 필수입니다.")
+
+    conf = load_config()
+    token = (access_token or conf.get("access_token") or "").strip()
+    user_id = (acting_user_id or conf.get("user_id") or "").strip()
+    if not token or not user_id:
+        raise XClientError("X access_token과 user_id가 필요합니다.", code=ERR_INVALID_CREDENTIALS)
+
+    url = f"https://api.x.com/2/users/{urllib.parse.quote(user_id)}/following"
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {"target_user_id": clean_target}
+
+    res = _http_request(url, method="POST", headers=headers, json_data=payload)
+    return res.get("data", res)
+
+
+def retweet(
+    tweet_id: str,
+    acting_user_id: Optional[str] = None,
+    access_token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    X API v2 POST /2/users/:id/retweets 를 통한 트윗 리포스트(리트윗).
+    """
+    clean_tweet_id = str(tweet_id or "").strip()
+    if not clean_tweet_id:
+        raise ValueError("tweet_id는 필수입니다.")
+
+    conf = load_config()
+    token = (access_token or conf.get("access_token") or "").strip()
+    user_id = (acting_user_id or conf.get("user_id") or "").strip()
+    if not token or not user_id:
+        raise XClientError("X access_token과 user_id가 필요합니다.", code=ERR_INVALID_CREDENTIALS)
+
+    url = f"https://api.x.com/2/users/{urllib.parse.quote(user_id)}/retweets"
+    headers = {"Authorization": f"Bearer {token}"}
+    payload = {"tweet_id": clean_tweet_id}
+
+    res = _http_request(url, method="POST", headers=headers, json_data=payload)
+    return res.get("data", res)
+

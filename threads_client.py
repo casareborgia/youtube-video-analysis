@@ -412,3 +412,20 @@ def disconnect():
         "token_expires_at": 0
     })
     return {"status": "success", "message": "Threads 계정 연결이 해제되었습니다."}
+
+
+def repost_post(post_id: str, access_token: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Threads Graph API v1.0 POST /{post_id}/repost 를 통한 리포스트 발행.
+    """
+    clean_post_id = str(post_id or "").strip()
+    if not clean_post_id:
+        raise ValueError("post_id는 필수입니다.")
+
+    conf = load_config()
+    token = (access_token or conf.get("access_token") or "").strip()
+    if not token:
+        raise RuntimeError("Threads access_token이 설정되지 않았습니다. 로그인이 필요합니다.")
+
+    url = f"{THREADS_API_BASE}/{urllib.parse.quote(clean_post_id)}/repost"
+    return _http_request(url, method="POST", params={"access_token": token})

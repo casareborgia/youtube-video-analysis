@@ -1848,13 +1848,22 @@ async def execute_batch_replies_api(req: BatchRepliesRequest):
 # Threads/X 스하리(팔로우·좋아요·리포스트) 자동화
 # ==========================================
 @app.get("/api/engagement/capabilities")
+@app.get("/api/social/capabilities")
 async def get_engagement_capabilities():
     return {
         "status": "success",
         "default_mode": "dry_run",
         "platforms": {
-            "threads": {"api": ["repost"], "web_fallback": ["follow", "like", "repost"]},
-            "x": {"api": ["follow", "like", "repost"], "web_fallback": ["follow", "like", "repost"]},
+            "threads": {
+                "publish": ["single", "thread"],
+                "reply": ["single"],
+                "engagement": {"api": ["repost"], "web_fallback": ["follow", "like", "repost"]},
+            },
+            "x": {
+                "publish": ["single", "thread"],
+                "reply": ["single"],
+                "engagement": {"api": ["follow", "like", "repost"], "web_fallback": ["follow", "like", "repost"]},
+            },
         },
         "limits": {
             "targets_per_request": 10,
@@ -1867,6 +1876,7 @@ async def get_engagement_capabilities():
 
 
 @app.post("/api/engagement/run")
+@app.post("/api/social/engagement/run")
 async def run_engagement_automation(req: EngagementRunRequest):
     """대상 목록을 드라이런으로 검토하거나 명시적 승인 후 스하리를 실행한다."""
     if not req.dry_run and not req.confirm_live:
@@ -1903,6 +1913,23 @@ async def run_engagement_automation(req: EngagementRunRequest):
 @app.get("/api/engagement/history")
 async def get_engagement_history(limit: int = Query(100, ge=1, le=500)):
     return {"status": "success", "data": engagement_automation.EngagementStore().history(limit)}
+
+
+@app.get("/api/social/history")
+@app.get("/api/social/jobs")
+async def get_social_history_or_jobs(
+    platform: Optional[str] = None,
+    job_type: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = Query(50, ge=1, le=200),
+):
+    """통합 소셜 작업 및 실행 이력을 조회한다."""
+    try:
+        store = social_store.SocialStore()
+        jobs = store.list_jobs(platform=platform, job_type=job_type, status=status, limit=limit)
+        return {"status": "success", "jobs": jobs}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"이력 조회 실패: {exc}")
 
 
 # ==========================================

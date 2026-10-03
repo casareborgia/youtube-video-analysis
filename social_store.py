@@ -1048,6 +1048,72 @@ class SocialStore:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def list_job_items(self, job_id: str) -> List[Dict[str, Any]]:
+        return self.get_job_items(job_id)
+
+    def add_job_item(
+        self,
+        job_id: str,
+        item_order: int,
+        content: Any,
+        status: str = "pending",
+        error_message: str = "",
+        media_url: str = "",
+    ) -> None:
+        clean_content = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
+        clean_content = sanitize_sensitive_data(clean_content)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO social_job_items
+                (job_id, item_index, content, media_url, status, error_message)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(job_id, item_index)
+                DO UPDATE SET
+                    content = excluded.content,
+                    media_url = excluded.media_url,
+                    status = excluded.status,
+                    error_message = excluded.error_message
+                """,
+                (
+                    job_id,
+                    int(item_order),
+                    clean_content,
+                    media_url,
+                    status,
+                    sanitize_sensitive_data(error_message),
+                ),
+            )
+
+    def update_job_status(
+        self,
+        job_id: str,
+        status: str,
+        result_payload: Optional[Dict[str, Any]] = None,
+        error_code: str = "",
+        error_message: str = "",
+    ) -> Dict[str, Any]:
+        """작업 상태 및 결과 페이로드를 업데이트한다."""
+        now_ts = int(time.time())
+        clean_result = sanitize_sensitive_data(json.dumps(result_payload or {}, ensure_ascii=False))
+        clean_err = sanitize_sensitive_data(error_message)
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE social_jobs
+                SET status = ?,
+                    finished_at = CASE WHEN ? IN ('succeeded', 'failed', 'partially_failed', 'cancelled') THEN ? ELSE finished_at END,
+                    result_payload = ?,
+                    last_error_code = ?,
+                    last_error_message = ?,
+                    updated_at = ?
+                WHERE job_id = ?
+                """,
+                (status, status, now_ts, clean_result, error_code, clean_err, now_ts, job_id),
+            )
+            row = conn.execute("SELECT * FROM social_jobs WHERE job_id = ?", (job_id,)).fetchone()
+            return self._parse_job_row(row) if row else {}
+
     def update_job_item(
         self,
         job_id: str,

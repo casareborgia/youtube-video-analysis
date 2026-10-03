@@ -2,7 +2,7 @@
 
 스하리(팔로우 + 좋아요 + 리포스트)를 대상별로 한 번만 실행하고,
 일일 한도와 감사 로그를 SQLite에 보관한다. 실제 실행은 명시적으로
-``dry_run=False``를 전달했을 때만 허용한다.
+dry_run=False를 전달했을 때만 허용한다.
 """
 
 from __future__ import annotations
@@ -18,8 +18,10 @@ import urllib.request
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Protocol
+from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple
 
+import social_store
+from social_store import SocialStore, sanitize_sensitive_data
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -81,9 +83,17 @@ class EngagementClient(Protocol):
 
 
 class EngagementStore:
-    def __init__(self, path: Path = DB_PATH):
-        self.path = Path(path)
+    """
+    스하리 참여 이력 및 일일 한도 저장소.
+    SocialStore와 동일한 DB 및 통합 스키마를 공유하며,
+    공통 작업(social_jobs) 및 항목(social_job_items)과 완벽 동기화된다.
+    """
+
+    def __init__(self, path: Optional[Path] = None):
+        self.path = Path(path) if path is not None else DB_PATH
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        # SocialStore와 스키마 및 DB 인스턴스 공유
+        self.social_store = SocialStore(path=self.path)
         self._init_schema()
 
     @contextmanager
@@ -132,6 +142,9 @@ class EngagementStore:
         return time.strftime("%Y-%m-%d", time.localtime())
 
     def already_completed(self, target: EngagementTarget, action: str, dry_run: bool) -> bool:
+        """
+        이미 성공 또는 완료된 상태인지 확인 (중복 실행 및 토글/취소 방지).
+        """
         with self._connect() as conn:
             row = conn.execute(
                 """SELECT 1 FROM engagement_events
@@ -198,6 +211,13 @@ class EngagementStore:
                                  status='reserved', detail='slot_reserved'""",
                 (now_ts, day, target.platform, target.account_id, target.post_id, action),
             )
+            # social_dedup_keys 동시 등록
+            dedup_key = f"{target.platform}:{target.account_id}:{action}:{target.post_id}:0"
+            conn.execute(
+                """INSERT OR REPLACE INTO social_dedup_keys (dedup_key, job_id, created_at)
+                   VALUES (?, 'reserved', ?)""",
+                (dedup_key, now_ts),
+            )
             return True, "reserved"
 
     def daily_count(self, action: Optional[str] = None) -> int:
@@ -210,7 +230,8 @@ class EngagementStore:
             return int(conn.execute(query, params).fetchone()[0])
 
     def record(self, target: EngagementTarget, action: str, status: str, dry_run: bool, detail: Any = ""):
-        detail_text = detail if isinstance(detail, str) else json.dumps(detail, ensure_ascii=False)
+        detail_raw = detail if isinstance(detail, str) else json.dumps(detail, ensure_ascii=False)
+        detail_text = sanitize_sensitive_data(detail_raw)
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO engagement_events
@@ -224,6 +245,20 @@ class EngagementStore:
                     target.post_id, action, status, int(dry_run), detail_text[:4000],
                 ),
             )
+            # 완료 시 dedup_key 업데이트
+            if not dry_run and status in ("success", "already_done"):
+                dedup_key = f"{target.platform}:{target.account_id}:{action}:{target.post_id}:0"
+                conn.execute(
+                    """INSERT OR REPLACE INTO social_dedup_keys (dedup_key, job_id, created_at)
+                       VALUES (?, ?, ?)""",
+                    (dedup_key, status, int(time.time())),
+                )
+            elif not dry_run and status in ("failed", "web_required"):
+                dedup_key = f"{target.platform}:{target.account_id}:{action}:{target.post_id}:0"
+                conn.execute(
+                    "DELETE FROM social_dedup_keys WHERE dedup_key = ? AND job_id = 'reserved'",
+                    (dedup_key,),
+                )
 
     def history(self, limit: int = 100) -> List[Dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 500))
@@ -248,31 +283,57 @@ def _json_request(url: str, method: str, token: str, body: Optional[dict] = None
             return json.loads(raw) if raw else {"ok": True}
     except urllib.error.HTTPError as exc:
         raw = exc.read().decode("utf-8", errors="replace")
-        raise EngagementError(f"API 오류 {exc.code}: {raw[:500]}") from exc
+        raise EngagementError(f"API 오류 {exc.code}: {sanitize_sensitive_data(raw[:500])}") from exc
 
 
 class XApiEngagementClient:
-    """X API v2 사용자 참여 동작."""
+    """X API v2 공식 사용자 참여 동작 (좋아요, 팔로우, 리포스트)."""
 
     def __init__(self, token: Optional[str] = None, acting_user_id: Optional[str] = None):
-        self.token = (token or os.environ.get("X_USER_ACCESS_TOKEN", "")).strip()
-        self.acting_user_id = (acting_user_id or os.environ.get("X_USER_ID", "")).strip()
+        import x_client
+
+        conf = x_client.load_config()
+        self.token = (token or conf.get("access_token") or os.environ.get("X_USER_ACCESS_TOKEN", "")).strip()
+        self.acting_user_id = (acting_user_id or conf.get("user_id") or os.environ.get("X_USER_ID", "")).strip()
         if not self.token or not self.acting_user_id:
-            raise EngagementError("X_USER_ACCESS_TOKEN과 X_USER_ID가 필요합니다.")
+            raise EngagementError("X_USER_ACCESS_TOKEN과 X_USER_ID가 필요합니다. X 로그인이 필요합니다.")
 
     def perform(self, action: str, target: EngagementTarget) -> Dict[str, Any]:
-        base = f"https://api.x.com/2/users/{urllib.parse.quote(self.acting_user_id)}"
-        if action == "follow":
-            return _json_request(f"{base}/following", "POST", self.token, {"target_user_id": target.account_id})
-        if action == "like":
-            return _json_request(f"{base}/likes", "POST", self.token, {"tweet_id": target.post_id})
-        if action == "repost":
-            return _json_request(f"{base}/retweets", "POST", self.token, {"tweet_id": target.post_id})
+        import x_client
+
+        try:
+            if action == "follow":
+                res = x_client.follow_user(
+                    target_user_id=target.account_id,
+                    acting_user_id=self.acting_user_id,
+                    access_token=self.token,
+                )
+                return {"status": "success", "response": res, "via": "official_api"}
+            if action == "like":
+                res = x_client.like_tweet(
+                    tweet_id=target.post_id,
+                    acting_user_id=self.acting_user_id,
+                    access_token=self.token,
+                )
+                return {"status": "success", "response": res, "via": "official_api"}
+            if action == "repost":
+                res = x_client.retweet(
+                    tweet_id=target.post_id,
+                    acting_user_id=self.acting_user_id,
+                    access_token=self.token,
+                )
+                return {"status": "success", "response": res, "via": "official_api"}
+        except x_client.XClientError as exc:
+            # 이미 좋아요/팔로우된 상태인 경우 에러 메시지 분석
+            msg = str(exc).lower()
+            if "already" in msg or "duplicate" in msg:
+                return {"status": "already_done", "detail": str(exc), "via": "official_api"}
+            raise EngagementError(str(exc)) from exc
         raise UnsupportedAction(f"X에서 지원하지 않는 동작: {action}")
 
 
 class ThreadsApiEngagementClient:
-    """Threads 공식 API 참여 동작. 공개 API에서는 리포스트만 처리한다."""
+    """Threads 공식 API 참여 동작. 공개 Graph API에서는 리포스트만 공식 제공한다."""
 
     def __init__(self, token: Optional[str] = None):
         if token is None:
@@ -284,17 +345,26 @@ class ThreadsApiEngagementClient:
 
     def perform(self, action: str, target: EngagementTarget) -> Dict[str, Any]:
         if action != "repost":
-            raise UnsupportedAction(f"Threads 공식 API는 {action} 동작을 제공하지 않습니다.")
-        post_id = urllib.parse.quote(target.post_id)
-        url = f"https://graph.threads.net/v1.0/{post_id}/repost?access_token={urllib.parse.quote(self.token)}"
-        return _json_request(url, "POST", self.token)
+            raise UnsupportedAction(
+                f"Threads 공식 API는 {action} 동작을 제공하지 않습니다. 웹 브라우저 자동화 방식을 사용하세요."
+            )
+        import threads_client
+
+        try:
+            res = threads_client.repost_post(post_id=target.post_id, access_token=self.token)
+            return {"status": "success", "response": res, "via": "official_api"}
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "already" in msg or "duplicate" in msg:
+                return {"status": "already_done", "detail": str(exc), "via": "official_api"}
+            raise EngagementError(str(exc)) from exc
 
 
 class WebEngagementClient:
     """Threads/X 웹 UI 폴백.
 
-    전용 Playwright 프로필을 사용한다. 첫 실사용 전 ``open_login_session``으로
-    브라우저를 열어 각 플랫폼에 직접 로그인해야 한다.
+    전용 Playwright 프로필을 사용한다.
+    이미 완료된 상태를 사전에 감지하여 취소(Un-like, Un-follow)를 절대 수행하지 않는다.
     """
 
     def __init__(self, profile_dir: Optional[str] = None, headless: Optional[bool] = None):
@@ -350,27 +420,32 @@ class WebEngagementClient:
             page.goto(url, wait_until="domcontentloaded", timeout=30_000)
             page.wait_for_timeout(1200)
 
+            # 사전 상태 검사: 이미 완료된 경우 절대 클릭하지 않고 즉시 already_done 반환
             if action == "follow":
                 done = self._first_visible(page, [
                     f'button[data-testid="{target.account_id}-unfollow"]',
                     'button:has-text("Following")', 'button:has-text("팔로잉")',
+                    'button[aria-label*="Following"]', 'button[aria-label*="팔로잉"]',
                 ])
                 if done:
                     context.close()
-                    return {"status": "already_done"}
+                    return {"status": "already_done", "via": "web"}
                 button = self._first_visible(page, [
                     f'button[data-testid="{target.account_id}-follow"]',
                     'button:has-text("Follow")', 'button:has-text("팔로우")',
+                    'button[aria-label*="Follow"]', 'button[aria-label*="팔로우"]',
                 ])
             elif action == "like":
                 done = self._first_visible(page, [
                     'button[aria-label*="Unlike"]', 'button[aria-label*="좋아요 취소"]',
+                    '[data-testid="unlike"]',
                 ])
                 if done:
                     context.close()
-                    return {"status": "already_done"}
+                    return {"status": "already_done", "via": "web"}
                 button = self._first_visible(page, [
                     'button[aria-label*="Like"]', 'button[aria-label*="좋아요"]',
+                    '[data-testid="like"]',
                 ])
             elif action == "repost":
                 done = self._first_visible(page, [
@@ -381,7 +456,7 @@ class WebEngagementClient:
                 ])
                 if done:
                     context.close()
-                    return {"status": "already_done"}
+                    return {"status": "already_done", "via": "web"}
                 button = self._first_visible(page, [
                     '[data-testid="retweet"]',
                     'button[aria-label*="Repost"]', 'button[aria-label*="리포스트"]',
@@ -412,8 +487,8 @@ class WebEngagementClient:
 
 class EngagementAutomationService:
     def __init__(self, store: Optional[EngagementStore] = None, policy: Optional[EngagementPolicy] = None):
-        self.store = store or EngagementStore()
-        self.policy = policy or EngagementPolicy()
+        self.store = store if store is not None else EngagementStore()
+        self.policy = policy if policy is not None else EngagementPolicy()
 
     def _client(self, platform: str, use_web_fallback: bool) -> EngagementClient:
         if use_web_fallback:
@@ -443,8 +518,35 @@ class EngagementAutomationService:
         for target in targets:
             target.validate()
 
+        # 공통 작업 모델(social_jobs) 등록
+        primary_platform = targets[0].platform
+        primary_account = targets[0].account_id
+        job_id = None
+        if hasattr(self.store, "social_store"):
+            try:
+                job_res = self.store.social_store.create_job(
+                    platform=primary_platform,
+                    job_type="engagement",
+                    actor_account_id=primary_account,
+                    dry_run=dry_run,
+                    content_payload={
+                        "targets_count": len(targets),
+                        "actions": actions,
+                        "dry_run": dry_run,
+                        "use_web_fallback": use_web_fallback,
+                    },
+                )
+                job_id = job_res.get("job_id")
+                if job_id:
+                    self.store.social_store.update_job_status(job_id=job_id, status="running")
+            except Exception:
+                job_id = None
+
         results = []
-        for target in targets:
+        has_failure = False
+        has_success = False
+
+        for target_idx, target in enumerate(targets):
             for action in actions:
                 item = {"platform": target.platform, "post_id": target.post_id, "action": action}
                 allowed, reason = self.store.reserve_slot(target, action, self.policy, dry_run)
@@ -453,13 +555,30 @@ class EngagementAutomationService:
                         item["status"] = "skipped_duplicate"
                     else:
                         item.update(status="blocked_quota", detail=reason)
+                        has_failure = True
                     results.append(item)
+                    if job_id and hasattr(self.store, "social_store"):
+                        self.store.social_store.add_job_item(
+                            job_id=job_id,
+                            item_order=len(results),
+                            content={"target": target.__dict__, "action": action},
+                            status=item["status"],
+                            error_message=reason if reason != "skipped_duplicate" else "",
+                        )
                     continue
 
                 if dry_run:
                     item["status"] = "dry_run"
                     self.store.record(target, action, "dry_run", True, item)
                     results.append(item)
+                    has_success = True
+                    if job_id and hasattr(self.store, "social_store"):
+                        self.store.social_store.add_job_item(
+                            job_id=job_id,
+                            item_order=len(results),
+                            content={"target": target.__dict__, "action": action},
+                            status="dry_run",
+                        )
                     continue
 
                 try:
@@ -470,22 +589,66 @@ class EngagementAutomationService:
                         status = "success"
                     item.update(status=status, response=response)
                     self.store.record(target, action, status, False, response)
+                    has_success = True
+                    if job_id and hasattr(self.store, "social_store"):
+                        self.store.social_store.add_job_item(
+                            job_id=job_id,
+                            item_order=len(results),
+                            content={"target": target.__dict__, "action": action},
+                            status=status,
+                        )
                 except UnsupportedAction as exc:
                     item.update(status="web_required", detail=str(exc))
                     self.store.record(target, action, "web_required", False, str(exc))
+                    has_failure = True
+                    if job_id and hasattr(self.store, "social_store"):
+                        self.store.social_store.add_job_item(
+                            job_id=job_id,
+                            item_order=len(results),
+                            content={"target": target.__dict__, "action": action},
+                            status="web_required",
+                            error_message=str(exc),
+                        )
                 except Exception as exc:
-                    item.update(status="failed", detail=str(exc))
-                    self.store.record(target, action, "failed", False, str(exc))
+                    err_msg = sanitize_sensitive_data(str(exc))
+                    item.update(status="failed", detail=err_msg)
+                    self.store.record(target, action, "failed", False, err_msg)
+                    has_failure = True
+                    if job_id and hasattr(self.store, "social_store"):
+                        self.store.social_store.add_job_item(
+                            job_id=job_id,
+                            item_order=len(results),
+                            content={"target": target.__dict__, "action": action},
+                            status="failed",
+                            error_message=err_msg,
+                        )
                 results.append(item)
                 if self.policy.delay_seconds > 0:
                     time.sleep(self.policy.delay_seconds)
 
-        return {
+        # 공통 작업 완료 상태 판정 및 업데이트
+        if job_id and hasattr(self.store, "social_store"):
+            if has_failure and has_success:
+                final_status = "partially_failed"
+            elif has_failure and not has_success:
+                final_status = "failed"
+            else:
+                final_status = "succeeded"
+            self.store.social_store.update_job_status(
+                job_id=job_id,
+                status=final_status,
+                result_payload={"results_count": len(results), "dry_run": dry_run},
+            )
+
+        resp = {
             "status": "success",
             "dry_run": dry_run,
             "requested_targets": len(targets),
             "results": results,
         }
+        if job_id:
+            resp["job_id"] = job_id
+        return resp
 
 
 def get_service() -> EngagementAutomationService:
