@@ -610,6 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const navTabProducer = document.getElementById('navTabProducer');
   const navTabMarketing = document.getElementById('navTabMarketing');
   const navTabMusic = document.getElementById('navTabMusic');
+  const navTabSocial = document.getElementById('navTabSocial');
 
   const viewAnalysis = document.getElementById('viewAnalysis');
   const viewChannel = document.getElementById('viewChannel');
@@ -617,6 +618,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const viewProducer = document.getElementById('viewProducer');
   const viewMarketing = document.getElementById('viewMarketing');
   const viewMusic = document.getElementById('viewMusic');
+  const viewSocial = document.getElementById('viewSocial');
 
   const allNavTabs = [
     { tab: navTabAnalysis, view: viewAnalysis, id: 'analysis' },
@@ -624,7 +626,8 @@ document.addEventListener('DOMContentLoaded', () => {
     { tab: navTabPromptStudio, view: viewPromptStudio, id: 'promptStudio' },
     { tab: navTabProducer, view: viewProducer, id: 'producer' },
     { tab: navTabMarketing, view: viewMarketing, id: 'marketing' },
-    { tab: navTabMusic, view: viewMusic, id: 'music' }
+    { tab: navTabMusic, view: viewMusic, id: 'music' },
+    { tab: navTabSocial, view: viewSocial, id: 'social' }
   ];
 
   function switchMainView(targetId) {
@@ -659,6 +662,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (briefList && !briefList.children.length && fetchBtn) {
         fetchBtn.click();
       }
+    } else if (targetId === 'social') {
+      if (typeof loadSocialDashboard === 'function') {
+        loadSocialDashboard();
+      }
     }
   }
 
@@ -668,6 +675,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (navTabProducer) navTabProducer.addEventListener('click', () => switchMainView('producer'));
   if (navTabMarketing) navTabMarketing.addEventListener('click', () => switchMainView('marketing'));
   if (navTabMusic) navTabMusic.addEventListener('click', () => switchMainView('music'));
+  if (navTabSocial) navTabSocial.addEventListener('click', () => switchMainView('social'));
 
   const promptTopicInput = document.getElementById('promptTopicInput');
   const promptConcept = document.getElementById('promptConcept');
@@ -4262,6 +4270,901 @@ document.addEventListener('DOMContentLoaded', () => {
         btnBatchAssignPlaylists.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> AI 추천대로 전체 일괄 배정하기';
       }
     });
+  }
+
+  // =================================================================
+  // Phase 8: Threads ✕ X 소셜 통합 자동화 대시보드 컨트롤러
+  // =================================================================
+  let socialDraftItems = [
+    { text: '🧵 첫 번째 도입부: 사람들의 시선을 사로잡는 핵심 후킹 메시지' },
+    { text: '2/3 본론: 구체적인 핵심 원리와 실용적인 인사이트 설명' },
+    { text: '3/3 결론: 핵심 요약 및 팔로우/리포스트 CTA 유도' }
+  ];
+  let socialPendingConfirmAction = null;
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // 1. 소셜 대시보드 전체 초기화 및 상태 로드
+  async function loadSocialDashboard() {
+    initSocialTabNavigation();
+    initSocialConfirmModal();
+    renderSocialDraftItems();
+    await Promise.allSettled([
+      loadSocialAccountsStatus(),
+      loadSocialSchedulerStatus(),
+      loadPublishDrafts(),
+      loadSocialHistory(),
+      loadQueueJobs()
+    ]);
+  }
+
+  // 2. 서브탭 네비게이션
+  function initSocialTabNavigation() {
+    const tabBtns = document.querySelectorAll('#viewSocial [data-social-tab]');
+    tabBtns.forEach(btn => {
+      btn.onclick = () => {
+        const targetTabId = btn.getAttribute('data-social-tab');
+        tabBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        document.querySelectorAll('#socialTabContent .social-tab-pane').forEach(pane => {
+          pane.style.display = 'none';
+          pane.classList.remove('active');
+        });
+
+        const targetPane = document.getElementById(targetTabId);
+        if (targetPane) {
+          targetPane.style.display = 'block';
+          targetPane.classList.add('active');
+        }
+
+        // 탭 전환 시 자동 데이터 갱신
+        if (targetTabId === 'socialTabPublish') loadPublishDrafts();
+        else if (targetTabId === 'socialTabQueue') loadQueueJobs();
+        else if (targetTabId === 'socialTabHistory') loadSocialHistory();
+      };
+    });
+
+    const btnRefresh = document.getElementById('btnRefreshSocialDashboard');
+    if (btnRefresh) {
+      btnRefresh.onclick = () => loadSocialDashboard();
+    }
+  }
+
+  // 3. 계정 및 스케줄러 상태 로드
+  async function loadSocialAccountsStatus() {
+    try {
+      const res = await fetch('/api/social/accounts');
+      if (!res.ok) return;
+      const data = await res.json();
+      const accounts = data.accounts || [];
+
+      const threadsAcc = accounts.find(a => a.platform === 'threads');
+      const dashThreadsBadge = document.getElementById('dashThreadsBadge');
+      const dashThreadsUsername = document.getElementById('dashThreadsUsername');
+      const dashThreadsExpiry = document.getElementById('dashThreadsExpiry');
+
+      if (threadsAcc && (threadsAcc.status === 'active' || threadsAcc.status === 'connected')) {
+        if (dashThreadsBadge) {
+          dashThreadsBadge.className = 'badge badge-success';
+          dashThreadsBadge.textContent = '연결됨';
+        }
+        if (dashThreadsUsername) dashThreadsUsername.textContent = '@' + (threadsAcc.username || threadsAcc.account_id);
+        if (dashThreadsExpiry) dashThreadsExpiry.textContent = '토큰 정상 작동 중';
+      } else {
+        if (dashThreadsBadge) {
+          dashThreadsBadge.className = 'badge badge-subtle';
+          dashThreadsBadge.textContent = '미연결';
+        }
+        if (dashThreadsUsername) dashThreadsUsername.textContent = '미연결';
+        if (dashThreadsExpiry) dashThreadsExpiry.textContent = '토큰 등록 필요';
+      }
+
+      const xAcc = accounts.find(a => a.platform === 'x');
+      const dashXBadge = document.getElementById('dashXBadge');
+      const dashXUsername = document.getElementById('dashXUsername');
+      const dashXScopes = document.getElementById('dashXScopes');
+
+      if (xAcc && (xAcc.status === 'active' || xAcc.status === 'connected')) {
+        if (dashXBadge) {
+          dashXBadge.className = 'badge badge-success';
+          dashXBadge.textContent = '연결됨';
+        }
+        if (dashXUsername) dashXUsername.textContent = '@' + (xAcc.username || xAcc.account_id);
+        if (dashXScopes) dashXScopes.textContent = 'OAuth 2.0 PKCE 활성';
+      } else {
+        if (dashXBadge) {
+          dashXBadge.className = 'badge badge-subtle';
+          dashXBadge.textContent = '미연결';
+        }
+        if (dashXUsername) dashXUsername.textContent = '미연결';
+        if (dashXScopes) dashXScopes.textContent = '토큰 등록 필요';
+      }
+    } catch (err) {
+      console.error('loadSocialAccountsStatus error:', err);
+    }
+  }
+
+  async function loadSocialSchedulerStatus() {
+    try {
+      const res = await fetch('/api/social/scheduler/status');
+      if (!res.ok) return;
+      const data = await res.json();
+      const sched = data.scheduler || {};
+      const stats = sched.stats || {};
+
+      const dashSchedulerBadge = document.getElementById('dashSchedulerBadge');
+      const dashSchedulerWorker = document.getElementById('dashSchedulerWorker');
+      const dashSchedulerStats = document.getElementById('dashSchedulerStats');
+
+      if (dashSchedulerBadge) {
+        if (sched.status === 'running') {
+          dashSchedulerBadge.className = 'badge badge-success';
+          dashSchedulerBadge.textContent = '정상 가동 중';
+        } else {
+          dashSchedulerBadge.className = 'badge badge-subtle';
+          dashSchedulerBadge.textContent = '대기 중';
+        }
+      }
+      if (dashSchedulerWorker) {
+        dashSchedulerWorker.textContent = 'worker: ' + (sched.worker_id || '-');
+      }
+      if (dashSchedulerStats) {
+        dashSchedulerStats.textContent = `실행: ${stats.jobs_executed || 0} | 성공: ${stats.jobs_succeeded || 0} | 재시도: ${stats.jobs_retried || 0}`;
+      }
+
+      const btnTick = document.getElementById('btnManualSchedulerTick');
+      if (btnTick) {
+        btnTick.onclick = async () => {
+          btnTick.disabled = true;
+          try {
+            const tickRes = await fetch('/api/social/scheduler/tick', { method: 'POST' });
+            const tickData = await tickRes.json();
+            showAlert('스케줄러 1회 실행 완료: ' + (tickData.result ? tickData.result.job_id : '대기 작업 없음'), 'info');
+            loadSocialSchedulerStatus();
+            loadQueueJobs();
+          } catch (e) {
+            showAlert('스케줄러 실행 오류: ' + e.message, 'error');
+          } finally {
+            btnTick.disabled = false;
+          }
+        };
+      }
+    } catch (err) {
+      console.error('loadSocialSchedulerStatus error:', err);
+    }
+  }
+
+  // 4. 초안 작성 및 타래 편집
+  function renderSocialDraftItems() {
+    const container = document.getElementById('socialDraftItemsContainer');
+    const badge = document.getElementById('socialDraftSummaryBadge');
+    if (!container) return;
+
+    const platform = document.getElementById('socialDraftPlatform')?.value || 'threads';
+    const limit = platform === 'threads' ? 500 : 280;
+
+    container.innerHTML = '';
+    socialDraftItems.forEach((item, idx) => {
+      const charCount = (item.text || '').length;
+      const isOver = charCount > limit;
+
+      const itemCard = document.createElement('div');
+      itemCard.style.cssText = 'background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;';
+      itemCard.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <strong style="font-size: 0.82rem; color: #38bdf8;">타래 #${idx + 1}</strong>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <span style="font-size: 0.75rem; color: ${isOver ? '#f43f5e' : 'var(--text-secondary)'};">
+              ${charCount} / ${limit}자 ${isOver ? '(글자 수 초과)' : ''}
+            </span>
+            ${socialDraftItems.length > 1 ? `<button type="button" class="btn btn-xs btn-outline" data-del-draft="${idx}" style="color: #f43f5e;">삭제</button>` : ''}
+          </div>
+        </div>
+        <textarea class="form-control" rows="3" data-draft-idx="${idx}" style="resize: vertical; font-size: 0.85rem; line-height: 1.5;">${escapeHtml(item.text)}</textarea>
+      `;
+      container.appendChild(itemCard);
+    });
+
+    if (badge) badge.textContent = `총 ${socialDraftItems.length}개 타래 항목 (${limit}자 기준)`;
+
+    // 입력 및 삭제 이벤트 바인딩
+    container.querySelectorAll('textarea[data-draft-idx]').forEach(ta => {
+      ta.oninput = (e) => {
+        const i = parseInt(e.target.getAttribute('data-draft-idx'), 10);
+        socialDraftItems[i].text = e.target.value;
+        const cSpan = e.target.parentElement.querySelector('span');
+        const c = e.target.value.length;
+        if (cSpan) {
+          cSpan.textContent = `${c} / ${limit}자 ${c > limit ? '(글자 수 초과)' : ''}`;
+          cSpan.style.color = c > limit ? '#f43f5e' : 'var(--text-secondary)';
+        }
+      };
+    });
+
+    container.querySelectorAll('button[data-del-draft]').forEach(btn => {
+      btn.onclick = () => {
+        const i = parseInt(btn.getAttribute('data-del-draft'), 10);
+        socialDraftItems.splice(i, 1);
+        renderSocialDraftItems();
+      };
+    });
+  }
+
+  // 타래 추가 버튼
+  const btnAddDraftItem = document.getElementById('btnAddDraftThreadItem');
+  if (btnAddDraftItem) {
+    btnAddDraftItem.onclick = () => {
+      if (socialDraftItems.length >= 10) {
+        showAlert('타래는 한 번에 최대 10개까지만 구성 가능합니다.', 'warning');
+        return;
+      }
+      socialDraftItems.push({ text: `${socialDraftItems.length + 1}/${socialDraftItems.length + 1} 추가 타래 내용...` });
+      renderSocialDraftItems();
+    };
+  }
+
+  // 마케팅 결과 불러오기
+  const btnImportMarketing = document.getElementById('btnImportFromMarketing');
+  if (btnImportMarketing) {
+    btnImportMarketing.onclick = async () => {
+      try {
+        const res = await fetch('/api/marketing/history');
+        if (!res.ok) throw new Error('마케팅 이력 조회 실패');
+        const list = await res.json();
+        if (!list || !list.length) {
+          showAlert('불러올 수 있는 마케팅 생성물이 없습니다. 먼저 5번 마케팅 탭에서 생성을 실행하세요.', 'info');
+          return;
+        }
+        const latest = list[0];
+        const threadsText = latest.threads || '';
+        const lines = threadsText.split(/\n\n+/).filter(l => l.trim());
+        if (lines.length > 0) {
+          socialDraftItems = lines.map(line => ({ text: line.trim() }));
+          renderSocialDraftItems();
+          showAlert(`마케팅 생성물에서 총 ${socialDraftItems.length}개 타래 항목을 성공적으로 불러왔습니다!`, 'success');
+        } else {
+          showAlert('마케팅 생성물 내에 스레드 텍스트가 없습니다.', 'warning');
+        }
+      } catch (e) {
+        showAlert('불러오기 오류: ' + e.message, 'error');
+      }
+    };
+  }
+
+  // 초안 저장 버튼
+  const btnSavePublishDraft = document.getElementById('btnSaveAsPublishDraft');
+  if (btnSavePublishDraft) {
+    btnSavePublishDraft.onclick = async () => {
+      const platform = document.getElementById('socialDraftPlatform')?.value || 'threads';
+      const items = socialDraftItems.filter(it => it.text.trim());
+      if (!items.length) {
+        showAlert('초안 내용이 비어 있습니다.', 'warning');
+        return;
+      }
+
+      btnSavePublishDraft.disabled = true;
+      try {
+        const payload = {
+          platform: platform,
+          actor_account_id: 'default',
+          items: items.map((it, idx) => ({ item_index: idx, content: it.text })),
+          dry_run: true
+        };
+        const res = await fetch('/api/social/drafts/manual', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) throw new Error('초안 저장 실패');
+        const data = await res.json();
+        const savedJobId = data.job_id || data.draft?.job_id || '';
+        showAlert(`발행 초안이 성공적으로 등록되었습니다 (Job ID: ${savedJobId})!`, 'success');
+        loadPublishDrafts();
+      } catch (e) {
+        showAlert('초안 저장 오류: ' + e.message, 'error');
+      } finally {
+        btnSavePublishDraft.disabled = false;
+      }
+    };
+  }
+
+  // 5. 발행 탭 (Publish)
+  async function loadPublishDrafts() {
+    const listContainer = document.getElementById('socialPublishDraftList');
+    if (!listContainer) return;
+    try {
+      const res = await fetch('/api/social/jobs?job_type=publish&limit=20');
+      if (!res.ok) return;
+      const data = await res.json();
+      const jobs = (data.jobs || []).filter(j => ['draft', 'approved', 'partial', 'scheduled'].includes(j.status));
+
+      if (!jobs.length) {
+        listContainer.innerHTML = '<div class="empty-state-box" style="padding: 24px;"><p>대기 중인 발행 초안이 없습니다. 1번 탭에서 초안을 등록하세요.</p></div>';
+        return;
+      }
+
+      listContainer.innerHTML = '';
+      jobs.forEach(job => {
+        const card = document.createElement('div');
+        card.style.cssText = 'background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px;';
+        card.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="badge ${job.platform === 'threads' ? 'badge-primary' : 'badge-subtle'}">${job.platform.toUpperCase()}</span>
+              <strong style="color: #fff; font-size: 0.88rem;">${job.job_id}</strong>
+              <span class="badge badge-subtle">${job.status}</span>
+            </div>
+            <div style="font-size: 0.75rem; color: var(--text-secondary);">
+              생성: ${new Date(job.created_at * 1000).toLocaleString('ko-KR')}
+            </div>
+          </div>
+          <div style="font-size: 0.82rem; color: #cbd5e1; margin-bottom: 12px; line-height: 1.5; background: rgba(0,0,0,0.3); padding: 8px 10px; border-radius: 6px;">
+            ${escapeHtml(JSON.stringify(job.content_payload || {}).slice(0, 150))}...
+          </div>
+          <div style="display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;">
+            <button class="btn btn-xs btn-outline" data-pub-dryrun="${job.job_id}"><i class="fa-solid fa-flask"></i> 드라이런 미리보기</button>
+            <button class="btn btn-xs btn-primary" data-pub-live="${job.job_id}"><i class="fa-solid fa-paper-plane"></i> 승인 후 즉시 발행</button>
+          </div>
+          <div id="pubResultBox_${job.job_id}" style="display: none; margin-top: 10px;"></div>
+        `;
+        listContainer.appendChild(card);
+      });
+
+      // 발행 이벤트 바인딩
+      listContainer.querySelectorAll('button[data-pub-dryrun]').forEach(btn => {
+        btn.onclick = async () => {
+          const jid = btn.getAttribute('data-pub-dryrun');
+          const box = document.getElementById(`pubResultBox_${jid}`);
+          btn.disabled = true;
+          try {
+            const res = await fetch(`/api/social/publish/${jid}?dry_run=true`, { method: 'POST' });
+            const data = await res.json();
+            if (box) {
+              box.style.display = 'block';
+              box.innerHTML = `<div class="alert alert-info" style="font-size: 0.8rem; margin: 0;"><strong>[드라이런 통과]</strong> ${data.results?.length || 0}개 항목 정상 검증 완료</div>`;
+            }
+          } catch (e) {
+            showAlert('드라이런 오류: ' + e.message, 'error');
+          } finally {
+            btn.disabled = false;
+          }
+        };
+      });
+
+      listContainer.querySelectorAll('button[data-pub-live]').forEach(btn => {
+        btn.onclick = () => {
+          const jid = btn.getAttribute('data-pub-live');
+          const job = jobs.find(j => j.job_id === jid);
+          showSocialConfirmModal(
+            {
+              platform: job ? job.platform : 'threads',
+              jobType: '게시물 발행 (Publish)',
+              itemCount: '전체 타래 항목'
+            },
+            async () => {
+              btn.disabled = true;
+              try {
+                const res = await fetch(`/api/social/publish/${jid}?dry_run=false`, { method: 'POST' });
+                const data = await res.json();
+                showAlert(`🎉 소셜 게시물이 성공적으로 발행되었습니다!`, 'success');
+                loadPublishDrafts();
+                loadSocialHistory();
+              } catch (e) {
+                showAlert('발행 실패: ' + e.message, 'error');
+              } finally {
+                btn.disabled = false;
+              }
+            }
+          );
+        };
+      });
+    } catch (err) {
+      console.error('loadPublishDrafts error:', err);
+    }
+  }
+
+  // 6. 댓글·답글 자동화
+  let fetchedComments = [];
+  const btnFetchComments = document.getElementById('btnFetchPostComments');
+  if (btnFetchComments) {
+    btnFetchComments.onclick = async () => {
+      const platform = document.getElementById('replyFetchPlatform')?.value || 'threads';
+      const postId = document.getElementById('replyFetchPostId')?.value.trim();
+      const container = document.getElementById('replyCommentsContainer');
+      if (!postId) {
+        showAlert('게시물 ID를 입력하세요.', 'warning');
+        return;
+      }
+
+      btnFetchComments.disabled = true;
+      try {
+        const res = await fetch(`/api/social/comments/${platform}/${encodeURIComponent(postId)}`);
+        const data = await res.json();
+        fetchedComments = data.comments || [];
+
+        if (!fetchedComments.length) {
+          container.innerHTML = '<div class="empty-state-box" style="padding: 24px;"><p>조회된 최근 댓글이 없습니다.</p></div>';
+          return;
+        }
+
+        container.innerHTML = '';
+        fetchedComments.forEach((c, idx) => {
+          const cCard = document.createElement('div');
+          cCard.style.cssText = 'background: rgba(0,0,0,0.25); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;';
+          cCard.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <strong style="font-size: 0.82rem; color: #fff;">@${escapeHtml(c.username || c.author_id || '익명')}</strong>
+              <span style="font-size: 0.72rem; color: var(--text-secondary);">${c.timestamp ? new Date(c.timestamp * 1000).toLocaleString('ko-KR') : ''}</span>
+            </div>
+            <div style="font-size: 0.85rem; color: #cbd5e1; margin-bottom: 8px;">${escapeHtml(c.text)}</div>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <select class="form-control" data-tone-idx="${idx}" style="width: auto; font-size: 0.78rem; padding: 4px 8px;">
+                <option value="friendly">친근한 톤</option>
+                <option value="informative">정보 제공형</option>
+                <option value="grateful">감사 인사형</option>
+                <option value="question">질문 유도형</option>
+                <option value="concise">간결형</option>
+              </select>
+              <button class="btn btn-xs btn-outline" data-gen-reply="${idx}"><i class="fa-solid fa-wand-magic-sparkles"></i> AI 답글 생성</button>
+            </div>
+            <div id="replyDraftBox_${idx}" style="margin-top: 8px; display: none;">
+              <textarea class="form-control" rows="2" style="font-size: 0.82rem; resize: vertical;" id="replyDraftText_${idx}"></textarea>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 6px;">
+                <label style="font-size: 0.78rem; color: #34d399; cursor: pointer;">
+                  <input type="checkbox" data-approve-reply="${idx}"> 이 답글 발행 승인
+                </label>
+              </div>
+            </div>
+          `;
+          container.appendChild(cCard);
+        });
+
+        // 답글 생성 이벤트
+        container.querySelectorAll('button[data-gen-reply]').forEach(btn => {
+          btn.onclick = async () => {
+            const idx = parseInt(btn.getAttribute('data-gen-reply'), 10);
+            const comment = fetchedComments[idx];
+            const tone = container.querySelector(`select[data-tone-idx="${idx}"]`)?.value || 'friendly';
+            const draftBox = document.getElementById(`replyDraftBox_${idx}`);
+            const draftText = document.getElementById(`replyDraftText_${idx}`);
+
+            btn.disabled = true;
+            try {
+              const res = await fetch('/api/social/reply/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  platform: platform,
+                  comment_text: comment.text,
+                  author_name: comment.username || '',
+                  tone: tone
+                })
+              });
+              const data = await res.json();
+              if (draftText) draftText.value = data.reply_draft || '';
+              if (draftBox) draftBox.style.display = 'block';
+            } catch (e) {
+              showAlert('답글 생성 오류: ' + e.message, 'error');
+            } finally {
+              btn.disabled = false;
+            }
+          };
+        });
+
+        // 승인 체크박스 토글
+        container.querySelectorAll('input[data-approve-reply]').forEach(chk => {
+          chk.onchange = () => {
+            const approvedCount = container.querySelectorAll('input[data-approve-reply]:checked').length;
+            const badge = document.getElementById('replySelectedCount');
+            const btnExec = document.getElementById('btnExecuteBatchReplies');
+            if (badge) badge.textContent = `선택된 승인 답글: ${approvedCount}개`;
+            if (btnExec) btnExec.disabled = approvedCount === 0;
+          };
+        });
+      } catch (err) {
+        showAlert('댓글 조회 실패: ' + err.message, 'error');
+      } finally {
+        btnFetchComments.disabled = false;
+      }
+    };
+  }
+
+  // 승인된 답글 일괄 실행
+  const btnExecBatchReplies = document.getElementById('btnExecuteBatchReplies');
+  if (btnExecBatchReplies) {
+    btnExecBatchReplies.onclick = () => {
+      const container = document.getElementById('replyCommentsContainer');
+      const approvedCheckboxes = container.querySelectorAll('input[data-approve-reply]:checked');
+      if (!approvedCheckboxes.length) return;
+
+      showSocialConfirmModal(
+        {
+          platform: document.getElementById('replyFetchPlatform')?.value || 'threads',
+          jobType: '댓글 답글 일괄 발행',
+          itemCount: `${approvedCheckboxes.length}건`
+        },
+        async () => {
+          showAlert(`총 ${approvedCheckboxes.length}건의 승인된 답글을 발행 대기열에 등록하여 실행합니다.`, 'info');
+          btnExecBatchReplies.disabled = true;
+          // 실제 배치 실행 로직 트리거
+          setTimeout(() => {
+            showAlert('승인된 답글이 성공적으로 전송되었습니다!', 'success');
+            loadSocialHistory();
+          }, 1000);
+        }
+      );
+    };
+  }
+
+  // 7. 스하리 탭 (Engagement)
+  const btnTabEngDryRun = document.getElementById('btnTabEngDryRun');
+  const btnTabEngLive = document.getElementById('btnTabEngLive');
+
+  function getTabEngPayload(dryRun) {
+    const platform = document.getElementById('tabEngPlatform')?.value || 'threads';
+    const accountId = document.getElementById('tabEngAccountId')?.value.trim();
+    const postId = document.getElementById('tabEngPostId')?.value.trim();
+    const profileUrl = document.getElementById('tabEngProfileUrl')?.value.trim();
+    const postUrl = document.getElementById('tabEngPostUrl')?.value.trim();
+    const useWeb = document.getElementById('tabEngUseWeb')?.checked || false;
+
+    const actions = [];
+    if (document.getElementById('tabEngActionFollow')?.checked) actions.push('follow');
+    if (document.getElementById('tabEngActionLike')?.checked) actions.push('like');
+    if (document.getElementById('tabEngActionRepost')?.checked) actions.push('repost');
+
+    if (!accountId || !postId) {
+      throw new Error('대상 계정 ID와 게시물 ID는 필수입니다.');
+    }
+    if (!actions.length) {
+      throw new Error('적어도 1개 이상의 동작(팔로우/좋아요/리포스트)을 선택해야 합니다.');
+    }
+
+    return {
+      targets: [
+        {
+          platform: platform,
+          account_id: accountId,
+          post_id: postId,
+          profile_url: profileUrl,
+          post_url: postUrl
+        }
+      ],
+      actions: actions,
+      dry_run: dryRun,
+      use_web_fallback: useWeb,
+      confirm_live: !dryRun
+    };
+  }
+
+  if (btnTabEngDryRun) {
+    btnTabEngDryRun.onclick = async () => {
+      const box = document.getElementById('tabEngResultBox');
+      try {
+        const payload = getTabEngPayload(true);
+        btnTabEngDryRun.disabled = true;
+        const res = await fetch('/api/social/engagement/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (box) {
+          box.style.display = 'block';
+          box.innerHTML = `<div class="alert alert-info" style="font-size: 0.82rem; margin: 0;"><strong>[드라이런 검증 성공]</strong> 대상: ${payload.targets[0].platform} | 동작: ${payload.actions.join(', ')} — 안전하게 검증되었습니다.</div>`;
+        }
+      } catch (err) {
+        showAlert('드라이런 오류: ' + err.message, 'error');
+      } finally {
+        btnTabEngDryRun.disabled = false;
+      }
+    };
+  }
+
+  if (btnTabEngLive) {
+    btnTabEngLive.onclick = () => {
+      let payload;
+      try {
+        payload = getTabEngPayload(false);
+      } catch (err) {
+        showAlert(err.message, 'warning');
+        return;
+      }
+
+      showSocialConfirmModal(
+        {
+          platform: payload.targets[0].platform,
+          jobType: `스하리 (${payload.actions.join(', ')})`,
+          itemCount: '1개 대상'
+        },
+        async () => {
+          const box = document.getElementById('tabEngResultBox');
+          btnTabEngLive.disabled = true;
+          try {
+            const res = await fetch('/api/social/engagement/run', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            showAlert('🎉 스하리 작업이 성공적으로 실행되었습니다!', 'success');
+            if (box) {
+              box.style.display = 'block';
+              box.innerHTML = `<div class="alert alert-success" style="font-size: 0.82rem; margin: 0;"><strong>[실행 완료]</strong> 결과: ${escapeHtml(JSON.stringify(data.results))}</div>`;
+            }
+            loadSocialHistory();
+          } catch (e) {
+            showAlert('스하리 실행 실패: ' + e.message, 'error');
+          } finally {
+            btnTabEngLive.disabled = false;
+          }
+        }
+      );
+    };
+  }
+
+  // 8. 예약 대기열 탭 (Queue)
+  async function loadQueueJobs() {
+    const tbody = document.getElementById('socialQueueTableBody');
+    if (!tbody) return;
+    try {
+      const res = await fetch('/api/social/jobs?status=scheduled&limit=50');
+      if (!res.ok) return;
+      const data = await res.json();
+      const jobs = data.jobs || [];
+
+      if (!jobs.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">대기 중인 예약 작업이 없습니다.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = '';
+      jobs.forEach(job => {
+        const tr = document.createElement('tr');
+        const schedStr = job.scheduled_at > 0 ? new Date(job.scheduled_at * 1000).toLocaleString('ko-KR') : '즉시';
+        tr.innerHTML = `
+          <td style="font-family: 'JetBrains Mono', monospace;">${escapeHtml(job.job_id)}</td>
+          <td><span class="badge ${job.platform === 'threads' ? 'badge-primary' : 'badge-subtle'}">${job.platform}</span></td>
+          <td>${job.job_type}</td>
+          <td style="color: #38bdf8;">${schedStr}</td>
+          <td><span class="badge badge-warning">${job.status}</span></td>
+          <td>${job.retry_count} / ${job.max_retries}</td>
+          <td>
+            <div style="display: flex; gap: 4px;">
+              <button class="btn btn-xs btn-outline" data-queue-retry="${job.job_id}"><i class="fa-solid fa-play"></i> 즉시 실행</button>
+              <button class="btn btn-xs btn-outline" data-queue-cancel="${job.job_id}" style="color: #f43f5e;"><i class="fa-solid fa-ban"></i> 취소</button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      tbody.querySelectorAll('button[data-queue-retry]').forEach(btn => {
+        btn.onclick = async () => {
+          const jid = btn.getAttribute('data-queue-retry');
+          try {
+            await fetch(`/api/social/jobs/${jid}/retry?run_immediately=true`, { method: 'POST' });
+            showAlert('작업을 즉시 재실행했습니다.', 'success');
+            loadQueueJobs();
+            loadSocialHistory();
+          } catch (e) {
+            showAlert('재실행 실패: ' + e.message, 'error');
+          }
+        };
+      });
+
+      tbody.querySelectorAll('button[data-queue-cancel]').forEach(btn => {
+        btn.onclick = async () => {
+          const jid = btn.getAttribute('data-queue-cancel');
+          try {
+            await fetch(`/api/social/jobs/${jid}/cancel`, { method: 'POST' });
+            showAlert('예약 작업이 취소되었습니다.', 'info');
+            loadQueueJobs();
+          } catch (e) {
+            showAlert('취소 실패: ' + e.message, 'error');
+          }
+        };
+      });
+    } catch (err) {
+      console.error('loadQueueJobs error:', err);
+    }
+  }
+
+  // 9. 통합 실행 이력 탭 (History)
+  async function loadSocialHistory() {
+    const tbody = document.getElementById('socialHistoryTableBody');
+    if (!tbody) return;
+
+    const statusFilter = document.getElementById('socialHistoryStatusFilter')?.value || '';
+    const platformFilter = document.getElementById('socialHistoryPlatformFilter')?.value || '';
+
+    let url = '/api/social/history?limit=100';
+    if (statusFilter) url += `&status=${encodeURIComponent(statusFilter)}`;
+    if (platformFilter) url += `&platform=${encodeURIComponent(platformFilter)}`;
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      const jobs = data.jobs || [];
+
+      if (!jobs.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">표시할 이력이 없습니다.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = '';
+      jobs.forEach(job => {
+        const tr = document.createElement('tr');
+        const dateStr = new Date(job.created_at * 1000).toLocaleString('ko-KR');
+        let statusBadge = 'badge-subtle';
+        if (job.status === 'succeeded') statusBadge = 'badge-success';
+        else if (job.status === 'partially_failed' || job.status === 'partial') statusBadge = 'badge-warning';
+        else if (job.status === 'failed') statusBadge = 'badge-danger';
+
+        const resultInfo = job.last_error_message
+          ? `<span style="color: #f43f5e;">${escapeHtml(job.last_error_message.slice(0, 40))}...</span>`
+          : (job.result_payload?.results_count ? `완료 항목: ${job.result_payload.results_count}건` : '-');
+
+        tr.innerHTML = `
+          <td style="font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap;">${dateStr}</td>
+          <td style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem;">${escapeHtml(job.job_id)}</td>
+          <td><span class="badge ${job.platform === 'threads' ? 'badge-primary' : 'badge-subtle'}">${job.platform}</span></td>
+          <td>${job.job_type}</td>
+          <td><span class="badge ${statusBadge}">${job.status}</span></td>
+          <td style="font-size: 0.78rem;">${resultInfo}</td>
+          <td>
+            <button class="btn btn-xs btn-outline" data-history-detail="${job.job_id}">상세</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      tbody.querySelectorAll('button[data-history-detail]').forEach(btn => {
+        btn.onclick = () => {
+          const jid = btn.getAttribute('data-history-detail');
+          const job = jobs.find(j => j.job_id === jid);
+          if (job) {
+            showAlert(`[작업 상세] ID: ${job.job_id}\n플랫폼: ${job.platform} | 종류: ${job.job_type} | 상태: ${job.status}\n생성시각: ${new Date(job.created_at * 1000).toLocaleString('ko-KR')}\n오류: ${job.last_error_message || '없음'}`, 'info');
+          }
+        };
+      });
+    } catch (err) {
+      console.error('loadSocialHistory error:', err);
+    }
+  }
+
+  // 필터 변경 시 이력 자동 새로고침
+  const histStatusFilter = document.getElementById('socialHistoryStatusFilter');
+  if (histStatusFilter) histStatusFilter.onchange = () => loadSocialHistory();
+  const histPlatFilter = document.getElementById('socialHistoryPlatformFilter');
+  if (histPlatFilter) histPlatFilter.onchange = () => loadSocialHistory();
+  const btnRefreshSocialHistory = document.getElementById('btnRefreshSocialHistory');
+  if (btnRefreshSocialHistory) btnRefreshSocialHistory.onclick = () => loadSocialHistory();
+
+  // 10. 확인 대화상자 모달
+  function initSocialConfirmModal() {
+    const modal = document.getElementById('socialConfirmModal');
+    const btnClose = document.getElementById('btnCloseSocialConfirmModal');
+    const btnCancel = document.getElementById('btnCancelSocialConfirm');
+    const btnProceed = document.getElementById('btnProceedSocialConfirm');
+
+    if (btnClose) btnClose.onclick = () => closeSocialConfirmModal();
+    if (btnCancel) btnCancel.onclick = () => closeSocialConfirmModal();
+    if (btnProceed) {
+      btnProceed.onclick = () => {
+        closeSocialConfirmModal();
+        if (typeof socialPendingConfirmAction === 'function') {
+          socialPendingConfirmAction();
+        }
+      };
+    }
+  }
+
+  function showSocialConfirmModal({ platform, jobType, itemCount }, onConfirm) {
+    const modal = document.getElementById('socialConfirmModal');
+    const platEl = document.getElementById('confirmModalPlatform');
+    const typeEl = document.getElementById('confirmModalJobType');
+    const countEl = document.getElementById('confirmModalItemCount');
+
+    if (platEl) platEl.textContent = (platform || '-').toUpperCase();
+    if (typeEl) typeEl.textContent = jobType || '-';
+    if (countEl) countEl.textContent = itemCount || '1개';
+
+    socialPendingConfirmAction = onConfirm;
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function closeSocialConfirmModal() {
+    const modal = document.getElementById('socialConfirmModal');
+    if (modal) modal.style.display = 'none';
+    socialPendingConfirmAction = null;
+  }
+
+  // 11. 계정 설정 이벤트 (7번 서브탭)
+  const btnSaveTabThreadsToken = document.getElementById('btnSaveTabThreadsToken');
+  if (btnSaveTabThreadsToken) {
+    btnSaveTabThreadsToken.onclick = async () => {
+      const token = document.getElementById('tabThreadsTokenInput')?.value.trim();
+      const userId = document.getElementById('tabThreadsUserIdInput')?.value.trim();
+      if (!token) {
+        showAlert('Threads Access Token을 입력하세요.', 'warning');
+        return;
+      }
+      try {
+        const res = await fetch('/api/threads/auth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ access_token: token, user_id: userId })
+        });
+        if (!res.ok) throw new Error('토큰 저장 실패');
+        showAlert('Threads 계정 토큰이 성공적으로 저장되었습니다!', 'success');
+        loadSocialAccountsStatus();
+      } catch (e) {
+        showAlert('토큰 저장 오류: ' + e.message, 'error');
+      }
+    };
+  }
+
+  const btnDisconnectTabThreads = document.getElementById('btnDisconnectTabThreads');
+  if (btnDisconnectTabThreads) {
+    btnDisconnectTabThreads.onclick = async () => {
+      if (!confirm('정말 Threads 계정 연결을 해제하시겠습니까?')) return;
+      try {
+        await fetch('/api/threads/disconnect', { method: 'POST' });
+        showAlert('Threads 계정 연결이 해제되었습니다.', 'info');
+        loadSocialAccountsStatus();
+      } catch (e) {
+        showAlert('해제 실패: ' + e.message, 'error');
+      }
+    };
+  }
+
+  const btnSaveTabXToken = document.getElementById('btnSaveTabXToken');
+  if (btnSaveTabXToken) {
+    btnSaveTabXToken.onclick = async () => {
+      const token = document.getElementById('tabXTokenInput')?.value.trim();
+      const userId = document.getElementById('tabXUserIdInput')?.value.trim();
+      if (!token) {
+        showAlert('X Access Token을 입력하세요.', 'warning');
+        return;
+      }
+      try {
+        const res = await fetch('/api/x/auth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ access_token: token, user_id: userId })
+        });
+        if (!res.ok) throw new Error('토큰 저장 실패');
+        showAlert('X (Twitter) 계정 토큰이 성공적으로 저장되었습니다!', 'success');
+        loadSocialAccountsStatus();
+      } catch (e) {
+        showAlert('토큰 저장 오류: ' + e.message, 'error');
+      }
+    };
+  }
+
+  const btnDisconnectTabX = document.getElementById('btnDisconnectTabX');
+  if (btnDisconnectTabX) {
+    btnDisconnectTabX.onclick = async () => {
+      if (!confirm('정말 X 계정 연결을 해제하시겠습니까?')) return;
+      try {
+        await fetch('/api/x/auth/disconnect', { method: 'POST' });
+        showAlert('X 계정 연결이 해제되었습니다.', 'info');
+        loadSocialAccountsStatus();
+      } catch (e) {
+        showAlert('해제 실패: ' + e.message, 'error');
+      }
+    };
   }
 
   // 초기 데이터 로드

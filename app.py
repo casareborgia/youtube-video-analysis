@@ -1615,8 +1615,9 @@ class DraftFromMarketingRequest(BaseModel):
 
 class ManualDraftRequest(BaseModel):
     platform: str
-    posts: List[str]
-    actor_account_id: str
+    posts: Optional[List[str]] = None
+    items: Optional[List[Dict[str, Any]]] = None
+    actor_account_id: str = "default"
     dry_run: bool = True
     topic: str = ""
 
@@ -1653,14 +1654,21 @@ async def create_draft_from_marketing_api(req: DraftFromMarketingRequest):
 async def create_manual_draft_api(req: ManualDraftRequest):
     """사용자 직접 입력 단일/타래 초안 생성"""
     try:
+        post_list = req.posts or []
+        if not post_list and req.items:
+            post_list = [it.get("content", "") if isinstance(it, dict) else str(it) for it in req.items]
+        if not post_list:
+            raise ValueError("게시글 내용(posts 또는 items)을 1개 이상 입력해주세요.")
+
         res = content_service.create_manual_draft(
             platform=req.platform,
-            posts=req.posts,
+            posts=post_list,
             actor_account_id=req.actor_account_id,
             dry_run=req.dry_run,
             topic=req.topic,
         )
-        return {"status": "success", "draft": res}
+        job_id = res.get("job_id", "") if isinstance(res, dict) else ""
+        return {"status": "success", "draft": res, "job_id": job_id}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
