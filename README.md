@@ -25,7 +25,7 @@
 ## 목차
 
 - [무엇을 하는 도구인가](#무엇을-하는-도구인가)
-- [6단계 파이프라인](#6단계-파이프라인)
+- [7단계 파이프라인](#7단계-파이프라인)
 - [아키텍처](#아키텍처)
 - [빠른 시작](#빠른-시작)
 - [외부 연동 설정](#외부-연동-설정)
@@ -48,7 +48,7 @@
 
 ---
 
-## 6단계 파이프라인
+## 7단계 파이프라인
 
 웹 UI의 탭이 곧 워크플로 순서입니다.
 
@@ -117,6 +117,18 @@
 - **감성 가사(Lyrics) & 보컬 모드 지원** — 시티팝, R&B, 어쿠스틱 포크 등 장르별 보컬 친화도에 따른 자동 가사 기획 및 보컬 멜로디 스타일 주입 (수면/명상은 순수 연주곡 유지)
 - **나노바나나(Imagen) 16:9 감성 앨범 아트** 생성 및 시네마틱 켄번즈 줌인 영상 렌더링
 - **레오 ✕ 루나 알고리즘 패키징** — 유튜브 CTR 극대화 제목, `[Lyrics / 가사]` 전문이 포함된 감성 SEO 설명란, 시청자 반응 유도용 고정 댓글 자동 등록
+
+### 7. Threads ✕ X 통합 자동화
+
+Threads와 X(Twitter)를 아우르는 소셜 오케스트레이션 대시보드입니다.
+
+- **초안 검토 및 실시간 편집** — 5단계 마케팅 타래를 원클릭으로 소셜 초안으로 변환하거나 수동으로 단일/타래 글 작성 및 글자 수 검증
+- **게시물 발행 오케스트레이터** — 단일/타래 글 즉시 또는 예약 발행, 멱등키 보장, 타래 부분 실패 방지, 드라이런 모의 검증
+- **댓글 수집 및 AI 답글 자동화** — 내 게시물의 최신 댓글을 조회하고, 톤앤매너(친근/전문/재치)에 맞춘 AI 맞춤형 답글을 일괄 생성·승인·발행
+- **스하리(팔로우·좋아요·리포스트) 자동화** — X 공식 API 및 전용 브라우저 폴백 기반 일일 한도(팔로우 10, 좋아요 25, 리포스트 10) 안전 보호
+- **로컬 백그라운드 스케줄러** — SQLite 기반 원자적 분산 락/리스 점유, 지수 백오프 자동 재시도, 기한 지난 예약 작업 복구
+- **계정 및 OAuth 2.0 PKCE 관리** — Threads 토큰 등록/해제, X OAuth 2.0 PKCE 인증 플로우(State/Verifier 검증) 및 토큰 자동 갱신
+- **통합 실행 이력 및 감사 로그** — 플랫폼/상태별 필터링, 상세 실행 결과 및 에러 추적, XSS 방지 및 인증정보 유출 방지
 
 ---
 
@@ -253,45 +265,50 @@ GEMINI_API_KEY=...
 
 ---
 
-### Threads/X 참여 자동화 설정
+### Threads/X 소셜 통합 연동 설정
 
-스하리(팔로우·좋아요·리포스트)는 기본적으로 드라이런으로 동작합니다. X 공식 API 실행에는 OAuth 2.0 User Access Token과 사용자 ID를 `.env`에 설정합니다.
+#### 1. Threads 계정 설정
+- Meta Threads 토큰은 웹 UI 대시보드의 **[7. Threads ✕ X 통합 자동화 → 6. 계정/연결 설정]** 탭 또는 설정 모달에서 토큰 및 User ID를 등록할 수 있습니다.
+- 환경변수로 설정 시:
+  ```bash
+  THREADS_USER_ID=...
+  THREADS_ACCESS_TOKEN=...
+  ```
 
-```bash
-X_USER_ACCESS_TOKEN=...
-X_USER_ID=...
-```
+#### 2. X (Twitter) OAuth 2.0 PKCE 인증 설정
+- **X Developer Portal**에서 프로젝트/앱을 생성하고 OAuth 2.0 User Authentication Settings를 활성화합니다.
+  - Type of App: **Web App** 또는 **Single page App**
+  - Callback URI / Redirect URL: `http://localhost:8765/api/x/auth/callback` (또는 포트 8000)
+  - Scopes: `tweet.read`, `tweet.write`, `users.read`, `like.write`, `follows.write`, `offline.access`
+- `.env`에 클라이언트 정보를 등록하거나 UI에서 직접 연결을 시작합니다:
+  ```bash
+  X_CLIENT_ID=...
+  X_CLIENT_SECRET=...
+  X_REDIRECT_URI=http://localhost:8765/api/x/auth/callback
+  # 또는 기존 정적 User Access Token 직접 입력 가능:
+  # X_USER_ACCESS_TOKEN=...
+  # X_USER_ID=...
+  ```
+- 웹 UI에서 **[X OAuth 2.0 연결 시작]** 버튼을 클릭하면 브라우저 인가 창이 열리며, 승인 완료 시 액세스/리프레시 토큰이 안전하게 저장(`data/x_config.json`, Git 제외)됩니다.
 
-Threads 공식 API는 리포스트만 제공하므로 Threads의 팔로우·좋아요는 전용 Playwright 프로필을 사용합니다. 최초 1회 브라우저를 설치하고 전용 프로필에서 Threads와 X에 직접 로그인해야 합니다.
+#### 3. 웹 브라우저 폴백 (전용 Playwright 프로필)
+- Threads의 팔로우·좋아요 등 공식 API 미지원 기능은 로컬 Playwright 브라우저로 폴백 동작합니다. 최초 1회 브라우저를 설치하고 전용 프로필에서 로그인합니다:
+  ```bash
+  uv run playwright install chromium
+  uv run python engagement_automation.py login
+  ```
+- 프로필 경로는 `data/social_browser_profile/`이며 `.gitignore`에 의해 보호됩니다.
 
-```bash
-.venv/bin/pip install -r requirements.txt
-.venv/bin/python -m playwright install chromium
-.venv/bin/python engagement_automation.py login
-```
-
-대시보드의 **Threads & X → Threads/X 스하리 자동화** 패널에서 대상을 입력하고 먼저 드라이런으로 검토할 수 있습니다. `POST /api/engagement/run`도 `dry_run=true`가 기본입니다. 실제 실행은 `dry_run=false`와 `confirm_live=true`를 함께 전달해야 합니다. 한 요청 10개 대상, 하루 전체 30개 동작, 팔로우 10회, 좋아요 25회, 리포스트 10회로 제한되며 이력은 `data/social_engagement.db`에 저장됩니다.
-
-```json
-{
-  "targets": [{
-    "platform": "x",
-    "post_id": "2105629134760370403",
-    "account_id": "1453335049198202883",
-    "post_url": "https://x.com/example/status/2105629134760370403",
-    "profile_url": "https://x.com/example"
-  }],
-  "actions": ["follow", "like", "repost"],
-  "dry_run": true,
-  "use_web_fallback": false
-}
-```
+#### 4. 드라이런·승인·예약 운영 규칙
+- **모든 쓰기 작업 기본 드라이런**: 게시물 발행, 댓글 답글, 스하리 참여 모두 `dry_run=true`가 기본값입니다.
+- **2단계 승인 가드**: 실제 외부 SNS 전송(`confirm_live=true`) 시 웹 UI에서 대상 플랫폼, 계정, 작업 개수가 명시된 확인 대화상자(`socialConfirmModal`)의 확인을 거쳐야만 요청이 전달됩니다.
+- **예약 실행 및 지수 백오프**: `social_jobs` 테이블에 `scheduled` 상태로 저장되며, 로컬 백그라운드 스케줄러가 원자적 리스 점유(`locked_by`, `locked_at`)를 통해 중복 실행을 차단하고 실패 시 3회까지 지수 백오프로 재시도합니다.
 
 ---
 
 ## API 개요
 
-FastAPI 라우트 **64개**. 전체 스펙은 서버 실행 후 http://localhost:8765/docs 에서 확인할 수 있습니다.
+FastAPI 라우트 **80개 이상**. 전체 스펙은 서버 실행 후 http://localhost:8765/docs 에서 대화형 Swagger로 확인할 수 있습니다.
 
 | 그룹 | 주요 엔드포인트 |
 |---|---|
@@ -304,8 +321,12 @@ FastAPI 라우트 **64개**. 전체 스펙은 서버 실행 후 http://localhost
 | 제작 | `POST /api/producer/build` · `POST /api/producer/images` · `GET /api/producer/status/{job_id}` · `POST /api/capcut/export` |
 | 유튜브 | `GET /api/youtube/channels` · `POST /api/youtube/channels/select` · `GET /api/youtube/auth/login` · `POST /api/youtube/upload` |
 | 마케팅 | `POST /api/marketing/generate` · `GET /api/marketing/history` |
-| 스레드 | `GET /api/threads/status` · `POST /api/threads/publish` |
-| 참여 자동화 | `GET /api/engagement/capabilities` · `POST /api/engagement/run` · `GET /api/engagement/history` |
+| 소셜 계정/인증 | `GET /api/social/accounts` · `GET /api/x/auth/login` · `GET /api/x/auth/callback` · `POST /api/x/auth/disconnect` |
+| 소셜 초안/발행 | `POST /api/social/drafts/from-marketing` · `POST /api/social/drafts/manual` · `PUT /api/social/drafts/{job_id}/items/{idx}` · `POST /api/social/publish/{job_id}` |
+| 소셜 댓글/답글 | `GET /api/social/comments/{platform}/{post_id}` · `POST /api/social/replies/batch-preview` · `POST /api/social/replies/batch-execute` |
+| 소셜 스하리 | `GET /api/social/capabilities` · `POST /api/social/engagement/run` |
+| 소셜 대기열/예약 | `GET /api/social/jobs` · `POST /api/social/jobs/{job_id}/schedule` · `POST /api/social/jobs/{job_id}/cancel` · `POST /api/social/jobs/{job_id}/retry` · `GET /api/social/scheduler/status` · `POST /api/social/scheduler/tick` |
+| 소셜 통합 이력 | `GET /api/social/history` |
 | 음악 | `POST /api/luna/generate` · `POST /api/luna/render` · `POST /api/luna/upload` |
 | LLM | `GET /api/llm/status` · `GET /api/llm/models` · `POST /api/llm/select-model` |
 
