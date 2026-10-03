@@ -57,6 +57,27 @@ class TestSocialUIAPIIntegration(unittest.TestCase):
         self.assertIn("viewSocial", resp.text)
         self.assertIn("socialConfirmModal", resp.text)
         self.assertIn("btnRefreshSocialHistory", resp.text)
+        # 환경설정 모달 내 X 연동 요소 검증
+        self.assertIn("envXBadge", resp.text)
+        self.assertIn("btnConnectX", resp.text)
+        self.assertIn("envXTokenInput", resp.text)
+
+    def test_x_settings_and_status(self):
+        # 1. status 조회
+        resp = self.client.get("/api/x/status")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("platform", data)
+        self.assertEqual(data["platform"], "x")
+
+        # 2. settings 저장
+        resp2 = self.client.post("/api/x/settings", json={
+            "access_token": "test_mock_token",
+            "user_id": "test_mock_uid"
+        })
+        self.assertEqual(resp2.status_code, 200)
+        data2 = resp2.json()
+        self.assertEqual(data2.get("platform"), "x")
 
 if __name__ == "__main__":
     unittest.main()

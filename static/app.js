@@ -3501,6 +3501,107 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ==============================================================
+  // 19-1. [설정 모달] X (Twitter) API & OAuth 2.0 PKCE 설정
+  // ==============================================================
+  const envXBadge = document.getElementById('envXBadge');
+  const btnConnectX = document.getElementById('btnConnectX');
+  const envXTokenInput = document.getElementById('envXTokenInput');
+  const envXUserIdInput = document.getElementById('envXUserIdInput');
+  const btnSaveXToken = document.getElementById('btnSaveXToken');
+  const envXAccountInfo = document.getElementById('envXAccountInfo');
+  const btnDisconnectX = document.getElementById('btnDisconnectX');
+
+  async function loadXEnvStatus() {
+    try {
+      const res = await fetch('/api/x/status');
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const isConn = data.connected;
+      const uname = data.username ? `@${data.username}` : (data.account_id ? `ID: ${data.account_id}` : '');
+
+      if (envXBadge) {
+        if (isConn) {
+          envXBadge.className = 'badge badge-success';
+          envXBadge.textContent = '연결됨';
+        } else {
+          envXBadge.className = 'badge badge-subtle';
+          envXBadge.textContent = '미연결';
+        }
+      }
+
+      if (envXAccountInfo) {
+        envXAccountInfo.textContent = isConn
+          ? `✅ 연결된 계정: ${uname} (OAuth 2.0 활성)`
+          : '연결된 계정 없음 (OAuth 연결 또는 토큰 등록 필요)';
+      }
+    } catch (err) {
+      console.warn('X 상태 조회 실패:', err);
+    }
+  }
+
+  // X OAuth 2.0 PKCE 로그인 시작
+  if (btnConnectX) {
+    btnConnectX.addEventListener('click', () => {
+      window.location.href = '/api/x/auth/login';
+    });
+  }
+
+  // X 토큰 직접 저장
+  if (btnSaveXToken) {
+    btnSaveXToken.addEventListener('click', async () => {
+      const token = envXTokenInput ? envXTokenInput.value.trim() : '';
+      const uid = envXUserIdInput ? envXUserIdInput.value.trim() : '';
+
+      if (!token) {
+        showAlert('X OAuth 2.0 User Access Token을 입력해주세요.', 'error');
+        return;
+      }
+
+      btnSaveXToken.disabled = true;
+      btnSaveXToken.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 저장 중...';
+
+      try {
+        const res = await fetch('/api/x/settings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ access_token: token, user_id: uid })
+        });
+
+        const data = await res.json();
+        if (data.connected) {
+          showAlert(`X @${data.username || uid} 계정에 성공적으로 연결되었습니다!`, 'success');
+        } else {
+          showAlert(data.message || '토큰이 저장되었습니다.', 'info');
+        }
+        if (envXTokenInput) envXTokenInput.value = '';
+        loadXEnvStatus();
+        if (typeof loadSocialAccountsStatus === 'function') loadSocialAccountsStatus();
+      } catch (err) {
+        showAlert('X 설정 저장 실패: ' + err.message, 'error');
+      } finally {
+        btnSaveXToken.disabled = false;
+        btnSaveXToken.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> 저장';
+      }
+    });
+  }
+
+  // X 연결 해제
+  if (btnDisconnectX) {
+    btnDisconnectX.addEventListener('click', async () => {
+      if (!confirm('X 계정 연결을 해제하시겠습니까?')) return;
+      try {
+        await fetch('/api/x/auth/disconnect', { method: 'POST' });
+        showAlert('X 계정 연결이 해제되었습니다.', 'success');
+        loadXEnvStatus();
+        if (typeof loadSocialAccountsStatus === 'function') loadSocialAccountsStatus();
+      } catch (err) {
+        showAlert('연결 해제 오류: ' + err.message, 'error');
+      }
+    });
+  }
+
   // Threads에 5개 타래 즉시 자동 연쇄 발행
   if (btnPublishThreadsLive) {
     btnPublishThreadsLive.addEventListener('click', async () => {
@@ -5172,9 +5273,17 @@ document.addEventListener('DOMContentLoaded', () => {
   loadTrends();
   loadEnvSettings();
   loadThreadsStatus();
+  loadXEnvStatus();
   loadCapcutStatus();
   loadLunaBgmOptions();
   loadYoutubePlaylists();
+
+  // X OAuth 콜백 후 리다이렉트 감지
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('x_connected') === '1') {
+    showAlert('🎉 X (Twitter) 계정이 OAuth 2.0 PKCE로 성공적으로 연결되었습니다!', 'success');
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
 });
 
 

@@ -1519,9 +1519,34 @@ async def disconnect_threads():
 _x_oauth_states: Dict[str, Dict[str, Any]] = {}
 
 
+class XSettingsRequest(BaseModel):
+    access_token: Optional[str] = None
+    user_id: Optional[str] = None
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
+
+
 @app.get("/api/x/status")
 async def get_x_status():
     """X 계정 연동 상태, 스코프 및 만료 정보 조회"""
+    return x_client.get_status()
+
+
+@app.post("/api/x/settings")
+@app.post("/api/x/auth/token")
+async def update_x_settings(req: XSettingsRequest):
+    """X 액세스 토큰 또는 Client ID/Secret 저장"""
+    updates = {}
+    if req.access_token is not None:
+        updates["access_token"] = req.access_token.strip()
+    if req.user_id is not None:
+        updates["user_id"] = req.user_id.strip()
+    if req.client_id is not None:
+        updates["client_id"] = req.client_id.strip()
+    if req.client_secret is not None:
+        updates["client_secret"] = req.client_secret.strip()
+
+    x_client.save_config(updates)
     return x_client.get_status()
 
 

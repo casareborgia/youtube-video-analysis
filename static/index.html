@@ -2033,7 +2033,44 @@
             </div>
           </div>
 
-          <!-- 4. 시스템 엔진 및 렌더러 상태 -->
+          <!-- 4. X (Twitter) API & OAuth 2.0 PKCE 설정 -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div>
+                <strong style="font-size: 0.95rem; color: #fff;"><i class="fa-brands fa-x-twitter" style="color: #fff;"></i> X (Twitter) API & OAuth 2.0 PKCE 연동</strong>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">트윗/타래 발행, 답글 및 스하리(좋아요/리포스트/팔로우) 자동화</div>
+              </div>
+              <span id="envXBadge" class="badge badge-subtle">확인 중...</span>
+            </div>
+
+            <div style="display: flex; gap: 8px; align-items: center; margin-top: 10px; margin-bottom: 10px; background: rgba(0,0,0,0.25); padding: 10px; border-radius: 6px;">
+              <div style="flex: 1; font-size: 0.78rem;">
+                <span style="color: #38bdf8; font-weight: bold;">⚡ 공식 OAuth 2.0 PKCE 원클릭 연결</span>
+                <div style="font-size: 0.72rem; color: var(--text-secondary);">X Developer Portal 앱 권한으로 안전하게 로그인 및 토큰 발급</div>
+              </div>
+              <button type="button" id="btnConnectX" class="btn btn-sm btn-primary" style="white-space: nowrap;">
+                <i class="fa-brands fa-x-twitter"></i> X 계정 연결하기
+              </button>
+            </div>
+
+            <div style="margin-top: 10px;">
+              <label style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">
+                <strong>또는 X User Access Token 직접 입력</strong> (수동 등록)
+              </label>
+              <div style="display: flex; gap: 8px;">
+                <input type="password" id="envXTokenInput" class="form-control" placeholder="X OAuth 2.0 User Access Token" style="flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                <input type="text" id="envXUserIdInput" class="form-control" placeholder="User ID (선택)" style="width: 140px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                <button type="button" id="btnSaveXToken" class="btn btn-sm" style="background: #000; border: 1px solid #fff; color: #fff;"><i class="fa-solid fa-floppy-disk"></i> 저장</button>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 0.75rem;">
+              <span id="envXAccountInfo" style="color: #38bdf8;">연결된 계정 없음</span>
+              <button type="button" id="btnDisconnectX" class="btn btn-xs btn-outline" style="color: #f43f5e;">연결 해제</button>
+            </div>
+          </div>
+
+          <!-- 5. 시스템 엔진 및 렌더러 상태 -->
           <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px;">
             <strong style="font-size: 0.9rem; color: #fff;"><i class="fa-solid fa-server"></i> 로컬 AI & 미디어 렌더러 엔진</strong>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 0.8rem;">
