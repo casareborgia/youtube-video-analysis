@@ -43,6 +43,7 @@ import x_client
 import content_service
 import publish_service
 import reply_service
+import scheduler_service
 
 app = FastAPI(title="TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오")
 
@@ -1761,6 +1762,59 @@ async def schedule_job_api(job_id: str, req: ScheduleJobRequest):
         raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"작업 예약 실패: {e}")
+
+
+@app.post("/api/social/jobs/{job_id}/cancel")
+async def cancel_job_api(job_id: str):
+    """예약 또는 대기 중인 작업 취소"""
+    try:
+        scheduler = scheduler_service.get_scheduler()
+        cancelled = scheduler.cancel_job(job_id)
+        return {"status": "success", "job": cancelled}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"작업 취소 실패: {e}")
+
+
+@app.post("/api/social/jobs/{job_id}/retry")
+async def retry_job_api(job_id: str, run_immediately: bool = True):
+    """실패한 작업 수동 재시도"""
+    try:
+        scheduler = scheduler_service.get_scheduler()
+        retried = scheduler.retry_job_manually(job_id, run_immediately=run_immediately)
+        return {"status": "success", "job": retried}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"작업 재시도 실패: {e}")
+
+
+@app.get("/api/social/scheduler/status")
+async def get_scheduler_status_api():
+    """로컬 예약 실행기 상태 및 실행 통계 조회"""
+    scheduler = scheduler_service.get_scheduler()
+    return {"status": "success", "scheduler": scheduler.get_status()}
+
+
+@app.post("/api/social/scheduler/tick")
+async def trigger_scheduler_tick_api():
+    """로컬 예약 실행기 1회 즉시 실행 (관리자/테스트용)"""
+    scheduler = scheduler_service.get_scheduler()
+    result = scheduler.run_once()
+    return {"status": "success", "result": result}
+
+
+@app.on_event("startup")
+async def startup_scheduler():
+    scheduler = scheduler_service.get_scheduler()
+    scheduler.start(interval_seconds=5.0)
+
+
+@app.on_event("shutdown")
+async def shutdown_scheduler():
+    scheduler = scheduler_service.get_scheduler()
+    scheduler.stop(timeout=2.0)
 
 
 # ==========================================
