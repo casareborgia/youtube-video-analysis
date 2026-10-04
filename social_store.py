@@ -26,7 +26,7 @@ DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_DB_PATH = DATA_DIR / "social_engagement.db"
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 VALID_PLATFORMS = {"threads", "x"}
 VALID_JOB_TYPES = {"publish", "reply", "engagement"}
@@ -40,6 +40,35 @@ VALID_JOB_STATUSES = {
     "failed",
     "cancelled",
 }
+
+VALID_RELATIONSHIP_TYPES = {
+    "self_account",
+    "known_follower",
+    "followed_or_following",
+    "engaged_before",
+    "commented_on_my_content",
+    "replied_by_me",
+    "suppressed",
+    "duplicate_candidate",
+}
+
+RELATIONSHIP_PRIORITY_ORDER = [
+    "self_account",
+    "known_follower",
+    "followed_or_following",
+    "engaged_before",
+    "commented_on_my_content",
+    "replied_by_me",
+    "suppressed",
+    "duplicate_candidate",
+]
+
+
+def normalize_account_key(raw_key: str) -> str:
+    """계정 키 또는 사용자명을 정규화 (@ 제거, 공백 제거, 소문자화)."""
+    if not raw_key:
+        return ""
+    return raw_key.strip().lstrip("@").lower()
 
 # 엄격한 상태 전이 매핑 (draft에서 바로 scheduled 또는 running으로 갈 수 없음)
 VALID_TRANSITIONS: Dict[str, Set[str]] = {
@@ -238,9 +267,12 @@ class SocialStore:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_social_accounts_plat ON social_accounts(platform, status)")
 
-            # 3. v1에서 v2로의 마이그레이션 처리
+            # 3. v1, v2, v3 마이그레이션 처리
             if current_ver == 1:
                 self._migrate_v1_to_v2(conn)
+                self._migrate_v2_to_v3(conn)
+            elif current_ver == 2:
+                self._migrate_v2_to_v3(conn)
             elif current_ver == 0:
                 conn.execute(
                     """
@@ -274,7 +306,6 @@ class SocialStore:
                 )
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_social_jobs_sched ON social_jobs(status, scheduled_at)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_social_jobs_actor ON social_jobs(actor_account_id, platform)")
-                conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
 
             # 4. social_job_items 타래/배치 하위 항목 테이블
             conn.execute(
@@ -328,6 +359,37 @@ class SocialStore:
                 """
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_social_attempts_job ON social_job_attempts(job_id)")
+
+            # 7. social_relationships 관계 캐시 및 제외 신호 테이블 (v3 신설)
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS social_relationships (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    platform TEXT NOT NULL,
+                    actor_account_id TEXT NOT NULL,
+                    target_account_key TEXT NOT NULL,
+                    target_user_id TEXT,
+                    target_username TEXT,
+                    relationship_type TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    confidence TEXT NOT NULL DEFAULT 'observed',
+                    first_seen_at INTEGER NOT NULL,
+                    last_seen_at INTEGER NOT NULL,
+                    expires_at INTEGER,
+                    metadata_json TEXT NOT NULL DEFAULT '{}',
+                    UNIQUE(platform, actor_account_id, target_account_key, relationship_type, source)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_social_relationship_lookup
+                ON social_relationships(platform, actor_account_id, target_account_key, relationship_type)
+                """
+            )
+
+            if current_ver == 0:
+                conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
 
     def _migrate_v1_to_v2(self, conn: sqlite3.Connection) -> None:
         """v1 -> v2 마이그레이션. social_job_items 임시 백업 및 복원으로 ON DELETE CASCADE 유실 원천 방지."""
@@ -448,7 +510,121 @@ class SocialStore:
             )
             """
         )
-        conn.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
+        conn.execute("PRAGMA user_version = 2")
+
+    def _migrate_v2_to_v3(self, conn: sqlite3.Connection) -> None:
+        """v2 -> v3 마이그레이션. social_relationships 테이블 신설 및 기존 성공 액션/답글 백필."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS social_relationships (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                platform TEXT NOT NULL,
+                actor_account_id TEXT NOT NULL,
+                target_account_key TEXT NOT NULL,
+                target_user_id TEXT,
+                target_username TEXT,
+                relationship_type TEXT NOT NULL,
+                source TEXT NOT NULL,
+                confidence TEXT NOT NULL DEFAULT 'observed',
+                first_seen_at INTEGER NOT NULL,
+                last_seen_at INTEGER NOT NULL,
+                expires_at INTEGER,
+                metadata_json TEXT NOT NULL DEFAULT '{}',
+                UNIQUE(platform, actor_account_id, target_account_key, relationship_type, source)
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_social_relationship_lookup
+            ON social_relationships(platform, actor_account_id, target_account_key, relationship_type)
+            """
+        )
+
+        # 1. engagement_events에서 실제 성공한 액션(status='success', dry_run=0) 백필
+        try:
+            events = conn.execute(
+                """
+                SELECT platform, account_id, post_id, action, created_at, detail
+                FROM engagement_events
+                WHERE status = 'success' AND dry_run = 0
+                """
+            ).fetchall()
+            for ev in events:
+                plat = ev["platform"]
+                actor = ev["account_id"]
+                target_key = normalize_account_key(ev["post_id"])
+                target_user = None
+                detail_text = ev["detail"] or ""
+                match = re.search(r"@([A-Za-z0-9_.]+)", detail_text)
+                if match:
+                    target_user = match.group(1)
+                    target_key = normalize_account_key(target_user)
+                if not target_key:
+                    continue
+                created_at = int(ev["created_at"])
+                conn.execute(
+                    """
+                    INSERT OR IGNORE INTO social_relationships
+                    (platform, actor_account_id, target_account_key, target_username,
+                     relationship_type, source, confidence, first_seen_at, last_seen_at, metadata_json)
+                    VALUES (?, ?, ?, ?, 'engaged_before', 'engagement_events', 'observed', ?, ?, ?)
+                    """,
+                    (
+                        plat,
+                        actor,
+                        target_key,
+                        target_user,
+                        created_at,
+                        created_at,
+                        json.dumps({"action": ev["action"], "post_id": ev["post_id"]}),
+                    ),
+                )
+        except Exception:
+            pass
+
+        # 2. social_jobs에서 succeeded 답글(job_type='reply', status='succeeded', dry_run=0) 백필
+        try:
+            jobs = conn.execute(
+                """
+                SELECT platform, actor_account_id, content_payload, created_at
+                FROM social_jobs
+                WHERE job_type = 'reply' AND status = 'succeeded' AND dry_run = 0
+                """
+            ).fetchall()
+            for j in jobs:
+                plat = j["platform"]
+                actor = j["actor_account_id"]
+                payload_str = j["content_payload"] or "{}"
+                try:
+                    payload = json.loads(payload_str)
+                except Exception:
+                    payload = {}
+                author = payload.get("author") or payload.get("username")
+                if author:
+                    target_key = normalize_account_key(author)
+                    created_at = int(j["created_at"])
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO social_relationships
+                        (platform, actor_account_id, target_account_key, target_username,
+                         relationship_type, source, confidence, first_seen_at, last_seen_at, metadata_json)
+                        VALUES (?, ?, ?, ?, 'replied_by_me', 'social_jobs', 'observed', ?, ?, ?)
+                        """,
+                        (
+                            plat,
+                            actor,
+                            target_key,
+                            author,
+                            created_at,
+                            created_at,
+                            json.dumps({"job_type": "reply"}),
+                        ),
+                    )
+        except Exception:
+            pass
+
+        conn.execute("PRAGMA user_version = 3")
 
     # ==========================================
     # 계정 메타데이터 관리 (소셜 계정)
@@ -653,6 +829,34 @@ class SocialStore:
         with self._connect() as conn:
             rows = conn.execute(query, params).fetchall()
             return [self._parse_job_row(r) for r in rows]
+
+    def get_reply_for_target(
+        self,
+        platform: str,
+        target_id: str,
+    ) -> Optional[Dict[str, Any]]:
+        """특정 댓글(target_id)에 대해 발행되었거나 처리된 답글 정보 조회"""
+        clean_target = str(target_id or "").strip()
+        if not clean_target:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT j.*, i.content as reply_content, i.platform_post_id as reply_post_id, i.platform_post_url as reply_post_url
+                FROM social_jobs j
+                LEFT JOIN social_job_items i ON j.job_id = i.job_id AND i.item_index = 0
+                WHERE j.platform = ? AND j.job_type = 'reply' AND j.target_id = ?
+                ORDER BY j.created_at DESC LIMIT 1
+                """,
+                (platform, clean_target),
+            ).fetchone()
+            if not row:
+                return None
+            res = self._parse_job_row(row)
+            res["reply_content"] = row["reply_content"] or ""
+            res["reply_post_id"] = row["reply_post_id"] or ""
+            res["reply_post_url"] = row["reply_post_url"] or ""
+            return res
 
     def transition_job_status(
         self,
@@ -1367,3 +1571,183 @@ class SocialStore:
         except Exception:
             data["result_payload"] = {}
         return data
+
+    # ==========================================
+    # 소셜 관계 및 제외 신호 관리 (v3 신설)
+    # ==========================================
+    def upsert_relationship(
+        self,
+        platform: str,
+        actor_account_id: str,
+        target_account_key: str,
+        relationship_type: str,
+        source: str,
+        target_user_id: Optional[str] = None,
+        target_username: Optional[str] = None,
+        confidence: str = "observed",
+        metadata: Optional[Dict[str, Any]] = None,
+        expires_at: Optional[int] = None,
+        now_ts: Optional[int] = None,
+    ) -> int:
+        norm_key = normalize_account_key(target_account_key)
+        if not norm_key:
+            raise ValueError("target_account_key는 비어있을 수 없습니다.")
+        now = int(now_ts or time.time())
+        meta_json = json.dumps(metadata or {}, ensure_ascii=False)
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO social_relationships
+                (platform, actor_account_id, target_account_key, target_user_id, target_username,
+                 relationship_type, source, confidence, first_seen_at, last_seen_at, expires_at, metadata_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(platform, actor_account_id, target_account_key, relationship_type, source)
+                DO UPDATE SET
+                    last_seen_at = excluded.last_seen_at,
+                    expires_at = COALESCE(excluded.expires_at, social_relationships.expires_at),
+                    metadata_json = excluded.metadata_json,
+                    target_user_id = COALESCE(excluded.target_user_id, social_relationships.target_user_id),
+                    target_username = COALESCE(excluded.target_username, social_relationships.target_username),
+                    confidence = excluded.confidence
+                """,
+                (
+                    platform.lower(),
+                    actor_account_id,
+                    norm_key,
+                    target_user_id,
+                    target_username,
+                    relationship_type,
+                    source,
+                    confidence,
+                    now,
+                    now,
+                    expires_at,
+                    meta_json,
+                ),
+            )
+            return cur.lastrowid or 0
+
+    def list_relationships(
+        self,
+        platform: str,
+        actor_account_id: Optional[str] = None,
+        target_account_key: Optional[str] = None,
+        relationship_type: Optional[str] = None,
+        active_only: bool = True,
+        now_ts: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        now = int(now_ts or time.time())
+        query = "SELECT * FROM social_relationships WHERE platform = ?"
+        params: List[Any] = [platform.lower()]
+        if actor_account_id:
+            query += " AND actor_account_id = ?"
+            params.append(actor_account_id)
+        if target_account_key:
+            query += " AND target_account_key = ?"
+            params.append(normalize_account_key(target_account_key))
+        if relationship_type:
+            query += " AND relationship_type = ?"
+            params.append(relationship_type)
+        if active_only:
+            query += " AND (expires_at IS NULL OR expires_at > ?)"
+            params.append(now)
+        query += " ORDER BY last_seen_at DESC"
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+            results = []
+            for r in rows:
+                item = dict(r)
+                try:
+                    item["metadata"] = json.loads(item.get("metadata_json") or "{}")
+                except Exception:
+                    item["metadata"] = {}
+                results.append(item)
+            return results
+
+    def get_relationship_evidence(
+        self,
+        platform: str,
+        actor_account_id: str,
+        target_account_key: str,
+        now_ts: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        return self.list_relationships(
+            platform=platform,
+            actor_account_id=actor_account_id,
+            target_account_key=target_account_key,
+            active_only=True,
+            now_ts=now_ts,
+        )
+
+    def has_existing_relationship(
+        self,
+        platform: str,
+        actor_account_id: str,
+        target_account_key: str,
+        now_ts: Optional[int] = None,
+    ) -> Tuple[bool, Optional[str], Optional[int]]:
+        evidence = self.get_relationship_evidence(
+            platform=platform,
+            actor_account_id=actor_account_id,
+            target_account_key=target_account_key,
+            now_ts=now_ts,
+        )
+        if not evidence:
+            return False, None, None
+
+        type_to_item = {item["relationship_type"]: item for item in evidence}
+        for prio in RELATIONSHIP_PRIORITY_ORDER:
+            if prio in type_to_item:
+                item = type_to_item[prio]
+                return True, prio, item.get("last_seen_at")
+
+        first = evidence[0]
+        return True, first["relationship_type"], first.get("last_seen_at")
+
+    def expire_relationships(self, now_ts: Optional[int] = None) -> int:
+        now = int(now_ts or time.time())
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM social_relationships WHERE expires_at IS NOT NULL AND expires_at <= ?",
+                (now,),
+            )
+            return cur.rowcount
+
+    def suppress_account(
+        self,
+        platform: str,
+        actor_account_id: str,
+        target_account_key: str,
+        reason: str = "",
+        target_username: Optional[str] = None,
+        now_ts: Optional[int] = None,
+    ) -> int:
+        return self.upsert_relationship(
+            platform=platform,
+            actor_account_id=actor_account_id,
+            target_account_key=target_account_key,
+            relationship_type="suppressed",
+            source="manual",
+            target_username=target_username,
+            confidence="confirmed",
+            metadata={"reason": reason},
+            expires_at=None,
+            now_ts=now_ts,
+        )
+
+    def unsuppress_account(
+        self,
+        platform: str,
+        actor_account_id: str,
+        target_account_key: str,
+    ) -> bool:
+        norm_key = normalize_account_key(target_account_key)
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                DELETE FROM social_relationships
+                WHERE platform = ? AND actor_account_id = ? AND target_account_key = ? AND relationship_type = 'suppressed'
+                """,
+                (platform.lower(), actor_account_id, norm_key),
+            )
+            return cur.rowcount > 0

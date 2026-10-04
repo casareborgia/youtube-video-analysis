@@ -44,8 +44,11 @@ import content_service
 import publish_service
 import reply_service
 import scheduler_service
+from api.autonomous_routes import router as autonomous_router
+from services.scheduler_cron import global_scheduler
 
 app = FastAPI(title="TubeInsight AI — 유튜브 영상 완전 분석 & 8초 비디오 AI 기획 스튜디오")
+app.include_router(autonomous_router)
 
 # ==========================================
 # 제로트러스트 보안 헤더 미들웨어
@@ -219,19 +222,26 @@ async def select_llm_backend(req: LLMSelectRequest):
 
 @app.get("/api/llm/models")
 async def get_llm_models():
-    """LM Studio & Ollama에 설치된 전체 모델 목록 반환"""
+    """Gemini(클라우드), LM Studio & Ollama(로컬) 전체 모델 목록 반환"""
     probes = llm_client.probe_all()
     current_model = llm_client.get_selected_model()
     all_models = []
-    for backend_key, info in probes.items():
-        backend_label = "LM Studio" if backend_key == "lmstudio" else "Ollama"
+    ordered_backends = [
+        ("gemini", "Google Gemini (클라우드)"),
+        ("lmstudio", "LM Studio"),
+        ("ollama", "Ollama"),
+    ]
+    for backend_key, backend_label in ordered_backends:
+        info = probes.get(backend_key)
+        if not info:
+            continue
         for m in info.get("models", []):
             all_models.append({
                 "id": m,
                 "name": m,
                 "backend": backend_key,
                 "backend_label": backend_label,
-                "online": info["online"],
+                "online": info.get("online", False),
             })
     return {
         "status": "success",
@@ -1653,7 +1663,9 @@ class UpdateDraftItemRequest(BaseModel):
 
 class GenerateReplyRequest(BaseModel):
     platform: str
-    original_post: str
+    original_post: Optional[str] = None
+    comment_text: Optional[str] = None
+    author_name: Optional[str] = None
     post_context: Optional[str] = None
     tone: str = "friendly"
     audience: Optional[str] = None
@@ -1722,14 +1734,27 @@ async def update_draft_item_api(job_id: str, item_index: int, req: UpdateDraftIt
 async def generate_reply_api(req: GenerateReplyRequest):
     """원문, 맥락, 선택 톤 기반 AI 댓글·답글 초안 생성"""
     try:
+        orig = req.original_post or req.comment_text or ""
+        if not orig.strip():
+            raise ValueError("원문 또는 댓글 내용(original_post / comment_text)을 입력해주세요.")
+
+        context = req.post_context
+        if req.author_name and not context:
+            context = f"작성자: {req.author_name}"
+
         res = content_service.generate_reply_draft(
             platform=req.platform,
-            original_post=req.original_post,
-            post_context=req.post_context,
+            original_post=orig,
+            post_context=context,
             tone=req.tone,
             audience=req.audience,
         )
-        return {"status": "success", "reply": res}
+        reply_str = res.get("reply", "") if isinstance(res, dict) else str(res)
+        return {
+            "status": "success",
+            "reply": res,
+            "reply_draft": reply_str,
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -1842,12 +1867,20 @@ async def trigger_scheduler_tick_api():
 async def startup_scheduler():
     scheduler = scheduler_service.get_scheduler()
     scheduler.start(interval_seconds=5.0)
+    try:
+        global_scheduler.start()
+    except Exception as e:
+        print(f"[app] 자율 오퍼레이터 스케줄러 시작 실패: {e}")
 
 
 @app.on_event("shutdown")
 async def shutdown_scheduler():
     scheduler = scheduler_service.get_scheduler()
     scheduler.stop(timeout=2.0)
+    try:
+        global_scheduler.shutdown()
+    except Exception as e:
+        print(f"[app] 자율 오퍼레이터 스케줄러 종료 경고: {e}")
 
 
 # ==========================================
@@ -1868,12 +1901,31 @@ class BatchRepliesRequest(BaseModel):
     dry_run: Optional[bool] = None
 
 
+@app.get("/api/social/comments/{platform}")
+async def get_social_comments_api(platform: str, post_id: Optional[str] = None):
+    """내 계정에 연계된 최근 전체 댓글/답글 목록 조회 (post_id 지정 시 해당 글만 조회)"""
+    try:
+        service = reply_service.ReplyService()
+        if post_id and post_id.strip() and post_id.strip().lower() != "all":
+            res = service.fetch_post_replies(platform=platform, post_id=post_id.strip())
+        else:
+            res = service.fetch_account_replies(platform=platform)
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"댓글 조회 실패: {e}")
+
+
 @app.get("/api/social/comments/{platform}/{post_id}")
 async def get_post_comments_api(platform: str, post_id: str):
     """대상 게시물의 최근 댓글/답글 목록 조회 (권한 검증 포함)"""
     try:
         service = reply_service.ReplyService()
-        res = service.fetch_post_replies(platform=platform, post_id=post_id)
+        if not post_id or post_id.strip().lower() == "all":
+            res = service.fetch_account_replies(platform=platform)
+        else:
+            res = service.fetch_post_replies(platform=platform, post_id=post_id)
         return res
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -1925,6 +1977,70 @@ async def execute_batch_replies_api(req: BatchRepliesRequest):
         return {"status": "success", "result": res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"배치 답글 실행 실패: {e}")
+
+
+class SingleReplyPublishRequest(BaseModel):
+    platform: str
+    target_comment_id: str
+    reply_text: str
+    dry_run: Optional[bool] = False
+    actor_account_id: Optional[str] = ""
+
+
+class BatchReplyItem(BaseModel):
+    comment_id: str
+    reply_text: str
+
+
+class DirectBatchPublishRequest(BaseModel):
+    platform: str
+    items: List[BatchReplyItem]
+    dry_run: Optional[bool] = False
+
+
+@app.post("/api/social/replies/publish-single")
+async def publish_single_reply_api(req: SingleReplyPublishRequest):
+    """단일 댓글에 대해 즉시 답글을 발행"""
+    try:
+        service = reply_service.ReplyService()
+        res = service.publish_single_reply(
+            platform=req.platform,
+            target_comment_id=req.target_comment_id,
+            reply_text=req.reply_text,
+            dry_run=bool(req.dry_run),
+            actor_account_id=req.actor_account_id or "",
+        )
+        return {"status": "success", "result": res}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"답글 발행 실패: {e}")
+
+
+@app.post("/api/social/replies/batch-publish")
+async def publish_batch_replies_api(req: DirectBatchPublishRequest):
+    """선택된 여러 답글을 즉시 일괄 발행"""
+    try:
+        service = reply_service.ReplyService()
+        results = []
+        for item in req.items:
+            try:
+                res = service.publish_single_reply(
+                    platform=req.platform,
+                    target_comment_id=item.comment_id,
+                    reply_text=item.reply_text,
+                    dry_run=bool(req.dry_run),
+                )
+                results.append(res)
+            except Exception as e:
+                results.append({
+                    "status": "error",
+                    "target_comment_id": item.comment_id,
+                    "error": str(e),
+                })
+        return {"status": "success", "results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"배치 답글 발행 실패: {e}")
 
 
 
@@ -2000,6 +2116,218 @@ async def run_engagement_automation(req: EngagementRunRequest):
 @app.get("/api/engagement/history")
 async def get_engagement_history(limit: int = Query(100, ge=1, le=500)):
     return {"status": "success", "data": engagement_automation.EngagementStore().history(limit)}
+
+
+@app.get("/api/engagement/discover")
+async def discover_engagement_targets_api(
+    platform: str = Query("threads"),
+    topic: str = Query("스하리"),
+    limit: int = Query(10, ge=1, le=30),
+    exclude_existing_relationships: bool = Query(True),
+    actor_account_id: Optional[str] = Query(None),
+):
+    """현재 스레드/X에서 활동 중인 불특정 다수의 활성 타겟 자동 발굴 (신규 발굴 모드 지원)"""
+    try:
+        from services.engagement_discovery import EngagementDiscoveryService
+        service = EngagementDiscoveryService()
+        result = service.discover_targets(
+            platform=platform,
+            topic=topic,
+            limit=limit,
+            exclude_existing_relationships=exclude_existing_relationships,
+            actor_account_id=actor_account_id or "",
+        )
+        return {
+            "status": "success",
+            "platform": result["platform"],
+            "topic": result["topic"],
+            "count": result["count"],
+            "targets": result["targets"],
+            "summary": result["summary"],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"타겟 발굴 실패: {e}")
+
+
+class AutoEngagementRunRequest(BaseModel):
+    platform: str = "threads"
+    topic: Optional[str] = "스하리"
+    targets: Optional[List[Dict[str, Any]]] = None
+    actions: List[str] = ["like", "repost", "follow"]
+    dry_run: bool = True
+    confirm_live: bool = False
+    use_web_fallback: bool = False
+    limit: int = 10
+    exclude_existing_relationships: bool = True
+    actor_account_id: Optional[str] = ""
+
+
+@app.post("/api/engagement/auto-run")
+async def auto_run_engagement_api(req: AutoEngagementRunRequest):
+    """불특정 다수 타겟을 자동 발굴하여 안전 지연과 함께 일괄 스하리 실행 (실행 직전 재검증 포함)"""
+    if not req.dry_run and not req.confirm_live:
+        raise HTTPException(status_code=400, detail="실제 실행에는 confirm_live=true 승인이 필요합니다.")
+
+    try:
+        from services.engagement_discovery import EngagementDiscoveryService
+        from services.social_relationship_service import SocialRelationshipService
+
+        disc_service = EngagementDiscoveryService()
+        rel_service = SocialRelationshipService()
+
+        plat = req.platform.strip().lower()
+        actor = (req.actor_account_id or "").strip()
+
+        target_dicts = req.targets
+        if not target_dicts:
+            disc_res = disc_service.discover_targets(
+                platform=plat,
+                topic=req.topic or "스하리",
+                limit=req.limit,
+                exclude_existing_relationships=req.exclude_existing_relationships,
+                actor_account_id=actor,
+            )
+            target_dicts = disc_res.get("targets", [])
+
+        if not target_dicts:
+            return {
+                "status": "success",
+                "message": "발굴된 타겟이 없습니다.",
+                "processed": 0,
+                "skipped": 0,
+                "results": [],
+            }
+
+        # 실행 직전 서버단 재검증 (지시서 8.4)
+        valid_targets: List[engagement_automation.EngagementTarget] = []
+        skipped_results: List[Dict[str, Any]] = []
+
+        for t in target_dicts:
+            raw_uname = t.get("username") or t.get("account_id") or ""
+            post_id = t.get("post_id", "").strip()
+
+            if req.exclude_existing_relationships:
+                eval_res = rel_service.evaluate_target(
+                    platform=plat,
+                    actor_account_id=actor,
+                    target_username=raw_uname,
+                    target_user_id=t.get("account_id") or "",
+                    target_post_id=post_id,
+                )
+                if eval_res.excluded:
+                    skipped_results.append({
+                        "target": t,
+                        "status": "skipped_existing_relationship",
+                        "reason": eval_res.reason or "engaged_before",
+                        "detail": f"기존 관계 계정으로 감지되어 실행 직전 자동 제외됨 ({eval_res.reason})",
+                    })
+                    continue
+
+            valid_targets.append(
+                engagement_automation.EngagementTarget(
+                    platform=plat,
+                    post_id=post_id,
+                    account_id=t.get("account_id", "").strip() or raw_uname.strip(),
+                    post_url=(t.get("post_url") or "").strip(),
+                    profile_url=(t.get("profile_url") or "").strip(),
+                    label=(raw_uname or t.get("discovered_via") or "").strip(),
+                )
+            )
+
+        # 만약 검증 후 모든 타겟이 제외된 경우 외부 호출 없이 즉시 반환
+        if not valid_targets:
+            return {
+                "status": "success",
+                "message": "모든 대상이 기존 관계(팔로워/상호작용자)로 확인되어 안전하게 건너뛰었습니다.",
+                "processed": 0,
+                "skipped": len(skipped_results),
+                "skipped_details": skipped_results,
+                "result": {"summary": {"total_targets": len(target_dicts), "executed": 0, "skipped": len(skipped_results)}},
+            }
+
+        service = engagement_automation.get_service()
+        service.policy.delay_seconds = 3.0
+
+        loop = asyncio.get_event_loop()
+        res = await loop.run_in_executor(
+            None,
+            lambda: service.execute(
+                targets=valid_targets,
+                actions=req.actions,
+                dry_run=req.dry_run,
+                use_web_fallback=req.use_web_fallback,
+                actor_account_id=actor,
+            ),
+        )
+
+        if skipped_results:
+            res["skipped_existing_relationships"] = skipped_results
+            res["skipped_count"] = res.get("skipped_count", 0) + len(skipped_results)
+
+        return {"status": "success", "result": res}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"자동 스하리 실행 실패: {exc}")
+
+
+@app.get("/api/engagement/relationships/status")
+async def get_engagement_relationships_status_api(
+    platform: str = Query("threads"),
+    actor_account_id: Optional[str] = Query(None),
+):
+    """소셜 관계 캐시 및 상호작용자 통계 조회"""
+    try:
+        from services.social_relationship_service import SocialRelationshipService
+        svc = SocialRelationshipService()
+        status = svc.get_status(platform=platform, actor_account_id=actor_account_id or "")
+        return {"status": "success", "data": status}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"관계 통계 조회 실패: {e}")
+
+
+class RelationshipSuppressRequest(BaseModel):
+    platform: str = "threads"
+    actor_account_id: str = ""
+    target_account_key: str
+    reason: Optional[str] = ""
+    target_username: Optional[str] = None
+
+
+@app.post("/api/engagement/relationships/suppress")
+async def suppress_relationship_account_api(req: RelationshipSuppressRequest):
+    """특정 계정을 스하리 탐색/실행에서 영구 제외(차단/블랙리스트) 등록"""
+    try:
+        from services.social_relationship_service import SocialRelationshipService
+        svc = SocialRelationshipService()
+        svc.suppress_account(
+            platform=req.platform,
+            actor_account_id=req.actor_account_id,
+            target_account_key=req.target_account_key,
+            reason=req.reason or "",
+            target_username=req.target_username,
+        )
+        return {"status": "success", "message": f"{req.target_account_key} 계정이 제외 목록에 등록되었습니다."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"제외 등록 실패: {e}")
+
+
+@app.delete("/api/engagement/relationships/suppress/{account_key}")
+async def unsuppress_relationship_account_api(
+    account_key: str,
+    platform: str = Query("threads"),
+    actor_account_id: str = Query(""),
+):
+    """특정 계정의 수동 제외 해제"""
+    try:
+        from services.social_relationship_service import SocialRelationshipService
+        svc = SocialRelationshipService()
+        res = svc.unsuppress_account(
+            platform=platform,
+            actor_account_id=actor_account_id,
+            target_account_key=account_key,
+        )
+        return {"status": "success", "unsuppressed": res}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"제외 해제 실패: {e}")
 
 
 @app.get("/api/social/history")

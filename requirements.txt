@@ -47,3 +47,8 @@ imageio-ffmpeg>=0.6.0
 
 # Threads/X 웹 UI 폴백 (공식 API가 제공하지 않는 Threads 좋아요·팔로우)
 playwright>=1.50.0
+
+# Autonomous Social Operator (자율 소셜 오퍼레이터 파이프라인)
+feedparser>=6.0.11
+apscheduler>=3.10.4,<4.0.0
+

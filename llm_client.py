@@ -23,7 +23,7 @@ from pathlib import Path
 
 LMSTUDIO_URL = "http://127.0.0.1:1234"
 OLLAMA_URL = "http://127.0.0.1:11434"
-DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
+DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -110,7 +110,7 @@ def get_selected_model() -> str | None:
 
 def set_selected_model(model: str | None) -> str | None:
     """사용자가 선택한 특정 모델을 저장합니다 (재시작 후에도 유지)."""
-    global _selected_model
+    global _selected_model, _preference
     _selected_model = model
     try:
         data = {}
@@ -122,6 +122,9 @@ def set_selected_model(model: str | None) -> str | None:
                 data = {}
         if model:
             data["selected_model"] = model
+            if "gemini" in model.lower():
+                data["llm_backend"] = "gemini"
+                _preference = "gemini"
         else:
             data.pop("selected_model", None)
         with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
@@ -166,11 +169,12 @@ def detect_backend(force: str = None):
             import producer
             key = producer.gemini_key()
             if key:
+                active_model = _selected_model if (_selected_model and "gemini" in _selected_model.lower()) else DEFAULT_GEMINI_MODEL
                 return {
                     "name": "Google Gemini",
                     "backend_type": "gemini",
                     "base": "https://generativelanguage.googleapis.com",
-                    "model": DEFAULT_GEMINI_MODEL,
+                    "model": active_model,
                     "port": 443,
                 }
         except Exception:
@@ -232,14 +236,16 @@ def probe_all():
             "lmstudio": {"online": bool, "model": str, "models": list},
             "ollama": {"online": bool, "model": str, "models": list}}
     """
-    gem = {"online": False, "model": None, "models": [DEFAULT_GEMINI_MODEL, "gemini-2.5-flash", "gemini-1.5-pro"]}
+    gemini_models = ["gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.1-pro-preview"]
+    active_gem = _selected_model if (_selected_model and "gemini" in _selected_model.lower()) else DEFAULT_GEMINI_MODEL
+    gem = {"online": False, "model": None, "models": gemini_models}
     try:
         import producer
         if producer.gemini_key():
             gem = {
                 "online": True,
-                "model": DEFAULT_GEMINI_MODEL,
-                "models": [DEFAULT_GEMINI_MODEL, "gemini-2.5-flash", "gemini-1.5-pro"],
+                "model": active_gem,
+                "models": gemini_models,
             }
     except Exception:
         pass

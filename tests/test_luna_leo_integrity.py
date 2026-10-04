@@ -47,8 +47,14 @@ class LunaLeoIntegrityTests(unittest.TestCase):
         self.assertGreaterEqual(len(trend_scout.LUNA_MOODS), 10)
 
     def test_luna_and_leo_api_routes_registered(self):
-        """app.py에 루나와 레오의 필수 API 엔드포인트가 모두 등록되어 있는지 검증"""
-        routes = [route.path for route in app.routes]
+        routes = []
+        for route in app.routes:
+            if hasattr(route, "path"):
+                routes.append(route.path)
+            elif hasattr(route, "routes"):
+                for sub in getattr(route, "routes", []):
+                    if hasattr(sub, "path"):
+                        routes.append(sub.path)
         
         # 루나 엔드포인트 목록
         required_luna_routes = [

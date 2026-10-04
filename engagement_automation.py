@@ -505,6 +505,7 @@ class EngagementAutomationService:
         actions: Optional[List[str]] = None,
         dry_run: bool = True,
         use_web_fallback: bool = False,
+        actor_account_id: str = "",
     ) -> Dict[str, Any]:
         actions = list(SUPPORTED_ACTIONS) if actions is None else actions
         if not targets:
@@ -590,6 +591,19 @@ class EngagementAutomationService:
                     item.update(status=status, response=response)
                     self.store.record(target, action, status, False, response)
                     has_success = True
+                    if hasattr(self.store, "social_store"):
+                        try:
+                            from services.social_relationship_service import SocialRelationshipService
+                            rel_svc = SocialRelationshipService(store=self.store.social_store)
+                            rel_svc.record_engagement_success(
+                                platform=target.platform,
+                                actor_account_id=actor_account_id or "default",
+                                action=action,
+                                target_username=target.account_id,
+                                target_post_id=target.post_id,
+                            )
+                        except Exception:
+                            pass
                     if job_id and hasattr(self.store, "social_store"):
                         self.store.social_store.add_job_item(
                             job_id=job_id,

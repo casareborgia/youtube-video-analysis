@@ -62,6 +62,15 @@ class TestSocialUIAPIIntegration(unittest.TestCase):
         self.assertIn("btnConnectX", resp.text)
         self.assertIn("envXTokenInput", resp.text)
 
+        # 🤖 Phase 4 자율 오퍼레이터 대시보드 UI 요소 검증
+        self.assertIn("socialTabAutonomous", resp.text)
+        self.assertIn("autonomousRoutinesContainer", resp.text)
+        self.assertIn("sourcesListContainer", resp.text)
+        self.assertIn("outboxJobsContainer", resp.text)
+        self.assertIn("modalScheduleEdit", resp.text)
+        self.assertIn("modalAddSource", resp.text)
+        self.assertIn("btnRefreshAutonomous", resp.text)
+
     def test_x_settings_and_status(self):
         # 1. status 조회
         resp = self.client.get("/api/x/status")
