@@ -3720,6 +3720,14 @@ document.addEventListener('DOMContentLoaded', () => {
       skipped_duplicate: '중복 건너뜀', web_required: '웹 방식 필요',
       blocked_quota: '일일 한도 초과', failed: '실패'
     };
+    const skippedItems = data.skipped_details || data.skipped_existing_relationships || [];
+    const skipRows = skippedItems.map(s => {
+      const targetLabel = s.target?.label || s.target?.account_id || '대상 계정';
+      return `<div style="padding: 5px 0; color: #fca5a5; border-bottom: 1px solid var(--border-color);">
+        🛡️ <strong>${escapeHtml(targetLabel)}</strong> — 기존 관계 감지로 자동 건너뜀 (${escapeHtml(s.detail || s.reason || '기존 상호작용/팔로워')})
+      </div>`;
+    }).join('');
+
     const rows = (data.results || []).map(item => {
       const detail = item.detail ? ` · ${escapeHtml(String(item.detail))}` : '';
       return `<div style="padding: 5px 0; border-bottom: 1px solid var(--border-color);">
@@ -3727,7 +3735,7 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>`;
     }).join('');
     engagementResultBox.style.display = 'block';
-    engagementResultBox.innerHTML = `<div style="background: rgba(15,23,42,0.65); border: 1px solid var(--border-color); border-radius: 7px; padding: 9px 12px; font-size: 0.8rem;">${rows || '결과가 없습니다.'}</div>`;
+    engagementResultBox.innerHTML = `<div style="background: rgba(15,23,42,0.65); border: 1px solid var(--border-color); border-radius: 7px; padding: 9px 12px; font-size: 0.8rem;">${skipRows}${rows || (skipRows ? '' : '결과가 없습니다.')}</div>`;
   }
 
   async function runEngagement(dryRun) {
@@ -3767,7 +3775,8 @@ document.addEventListener('DOMContentLoaded', () => {
           actions,
           dry_run: dryRun,
           use_web_fallback: useWeb,
-          confirm_live: !dryRun
+          confirm_live: !dryRun,
+          exclude_existing_relationships: true
         })
       });
       const data = await response.json();
@@ -5155,6 +5164,61 @@ document.addEventListener('DOMContentLoaded', () => {
     chkExcludeExisting.onchange = () => {
       engExistingNotice.style.display = chkExcludeExisting.checked ? 'none' : 'block';
     };
+  }
+
+  // 1단계: 기존 맞팔/팔로워 수동 등록 모달
+  const btnOpenBatchModal = document.getElementById('btnOpenBatchFollowersModal');
+  const batchFollowersModal = document.getElementById('batchFollowersModal');
+  const btnCloseBatchModal = document.getElementById('btnCloseBatchFollowersModal');
+  const btnCancelBatchModal = document.getElementById('btnCancelBatchFollowersModal');
+  const btnSubmitBatchFollowers = document.getElementById('btnSubmitBatchFollowers');
+  const txtBatchFollowers = document.getElementById('txtBatchFollowerUsernames');
+
+  if (btnOpenBatchModal && batchFollowersModal) {
+    btnOpenBatchModal.onclick = () => {
+      if (txtBatchFollowers) txtBatchFollowers.value = '';
+      batchFollowersModal.style.display = 'flex';
+    };
+    const closeModal = () => { batchFollowersModal.style.display = 'none'; };
+    if (btnCloseBatchModal) btnCloseBatchModal.onclick = closeModal;
+    if (btnCancelBatchModal) btnCancelBatchModal.onclick = closeModal;
+
+    if (btnSubmitBatchFollowers) {
+      btnSubmitBatchFollowers.onclick = async () => {
+        const rawText = txtBatchFollowers?.value || '';
+        const lines = rawText.split(/[\n,]+/).map(s => s.trim().replace(/^@/, '')).filter(Boolean);
+        if (!lines.length) {
+          showAlert('등록할 사용자명을 1개 이상 입력해주세요.', 'warning');
+          return;
+        }
+
+        const platform = document.getElementById('tabEngPlatform')?.value || 'threads';
+        btnSubmitBatchFollowers.disabled = true;
+        try {
+          const res = await fetch('/api/engagement/relationships/batch-register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              platform: platform,
+              usernames: lines,
+              expires_in_days: null
+            })
+          });
+          const data = await res.json();
+          if (res.ok && data.status === 'success') {
+            showAlert(`총 ${data.registered_count}명의 팔로워가 영구 제외 목록에 등록되었습니다!`, 'success');
+            closeModal();
+            if (btnDiscoverTargets) btnDiscoverTargets.click();
+          } else {
+            showAlert('등록 실패: ' + (data.detail || '오류 발생'), 'error');
+          }
+        } catch (e) {
+          showAlert('통신 오류: ' + e.message, 'error');
+        } finally {
+          btnSubmitBatchFollowers.disabled = false;
+        }
+      };
+    }
   }
 
   // 1단계: 실시간 활성 스레더 자동 탐색

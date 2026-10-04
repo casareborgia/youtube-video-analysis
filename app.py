@@ -1468,6 +1468,8 @@ class EngagementRunRequest(BaseModel):
     dry_run: bool = True
     use_web_fallback: bool = False
     confirm_live: bool = False
+    exclude_existing_relationships: bool = True
+    actor_account_id: Optional[str] = ""
 
 @app.get("/api/threads/status")
 async def get_threads_status():
@@ -2095,18 +2097,63 @@ async def run_engagement_automation(req: EngagementRunRequest):
         )
         for t in req.targets
     ]
+
+    skipped_results: List[Dict[str, Any]] = []
+    actor = (req.actor_account_id or "").strip()
+    if req.exclude_existing_relationships and targets:
+        from services.social_relationship_service import SocialRelationshipService
+        rel_service = SocialRelationshipService()
+        plat = targets[0].platform if targets else "threads"
+        if not actor:
+            actor = rel_service.resolve_actor_identities(platform=plat, actor_account_id="")["primary_actor"]
+
+        valid_targets = []
+        for t in targets:
+            eval_res = rel_service.evaluate_target(
+                platform=t.platform,
+                actor_account_id=actor,
+                target_username=t.account_id if not t.account_id.isdigit() else (t.label or ""),
+                target_user_id=t.account_id if t.account_id.isdigit() else "",
+                target_post_id=t.post_id,
+            )
+            if eval_res.excluded:
+                skipped_results.append({
+                    "target": {"account_id": t.account_id, "post_id": t.post_id, "label": t.label},
+                    "status": "skipped_existing_relationship",
+                    "reason": eval_res.reason or "engaged_before",
+                    "detail": f"기존 관계 계정으로 감지되어 실행 직전 자동 제외됨 ({eval_res.reason})",
+                })
+                continue
+            valid_targets.append(t)
+        targets = valid_targets
+
+        if not targets:
+            return {
+                "status": "success",
+                "message": "모든 대상이 기존 관계(팔로워/상호작용자)로 확인되어 안전하게 건너뛰었습니다.",
+                "processed": 0,
+                "skipped": len(skipped_results),
+                "skipped_details": skipped_results,
+                "summary": {"total_targets": len(req.targets), "executed": 0, "skipped": len(skipped_results)},
+            }
+
     try:
         loop = asyncio.get_event_loop()
         service = engagement_automation.get_service()
-        return await loop.run_in_executor(
+        res = await loop.run_in_executor(
             None,
             lambda: service.execute(
                 targets=targets,
                 actions=req.actions,
                 dry_run=req.dry_run,
                 use_web_fallback=req.use_web_fallback,
+                actor_account_id=actor,
             ),
         )
+        if skipped_results:
+            res["skipped_existing_relationships"] = skipped_results
+            res["skipped_count"] = res.get("skipped_count", 0) + len(skipped_results)
+        return res
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
@@ -2177,6 +2224,8 @@ async def auto_run_engagement_api(req: AutoEngagementRunRequest):
 
         plat = req.platform.strip().lower()
         actor = (req.actor_account_id or "").strip()
+        resolved_actor = rel_service.resolve_actor_identities(platform=plat, actor_account_id=actor)
+        effective_actor = resolved_actor["primary_actor"]
 
         target_dicts = req.targets
         if not target_dicts:
@@ -2185,7 +2234,7 @@ async def auto_run_engagement_api(req: AutoEngagementRunRequest):
                 topic=req.topic or "스하리",
                 limit=req.limit,
                 exclude_existing_relationships=req.exclude_existing_relationships,
-                actor_account_id=actor,
+                actor_account_id=effective_actor,
             )
             target_dicts = disc_res.get("targets", [])
 
@@ -2209,7 +2258,7 @@ async def auto_run_engagement_api(req: AutoEngagementRunRequest):
             if req.exclude_existing_relationships:
                 eval_res = rel_service.evaluate_target(
                     platform=plat,
-                    actor_account_id=actor,
+                    actor_account_id=effective_actor,
                     target_username=raw_uname,
                     target_user_id=t.get("account_id") or "",
                     target_post_id=post_id,
@@ -2256,7 +2305,7 @@ async def auto_run_engagement_api(req: AutoEngagementRunRequest):
                 actions=req.actions,
                 dry_run=req.dry_run,
                 use_web_fallback=req.use_web_fallback,
-                actor_account_id=actor,
+                actor_account_id=effective_actor,
             ),
         )
 
@@ -2282,6 +2331,36 @@ async def get_engagement_relationships_status_api(
         return {"status": "success", "data": status}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"관계 통계 조회 실패: {e}")
+
+
+class BatchFollowersRegisterRequest(BaseModel):
+    platform: str = "threads"
+    actor_account_id: Optional[str] = ""
+    usernames: List[str]
+    expires_in_days: Optional[int] = None
+
+
+@app.post("/api/engagement/relationships/batch-register")
+async def batch_register_known_followers_api(req: BatchFollowersRegisterRequest):
+    """기존 팔로워/맞팔 사용자명을 일괄 등록하여 스하리 탐색/실행에서 영구 제외"""
+    try:
+        from services.social_relationship_service import SocialRelationshipService
+        svc = SocialRelationshipService()
+        actor = (req.actor_account_id or "").strip()
+
+        count = svc.batch_register_known_followers(
+            platform=req.platform,
+            actor_account_id=actor,
+            usernames=req.usernames,
+            expires_in_days=req.expires_in_days,
+        )
+        return {
+            "status": "success",
+            "registered_count": count,
+            "message": f"총 {count}명의 기존 팔로워가 성공적으로 등록되어 영구 제외 목록에 반영되었습니다.",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"팔로워 일괄 등록 실패: {e}")
 
 
 class RelationshipSuppressRequest(BaseModel):

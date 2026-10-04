@@ -1630,7 +1630,7 @@ class SocialStore:
     def list_relationships(
         self,
         platform: str,
-        actor_account_id: Optional[str] = None,
+        actor_account_id: Optional[Any] = None,
         target_account_key: Optional[str] = None,
         relationship_type: Optional[str] = None,
         active_only: bool = True,
@@ -1639,9 +1639,18 @@ class SocialStore:
         now = int(now_ts or time.time())
         query = "SELECT * FROM social_relationships WHERE platform = ?"
         params: List[Any] = [platform.lower()]
+
         if actor_account_id:
-            query += " AND actor_account_id = ?"
-            params.append(actor_account_id)
+            if isinstance(actor_account_id, (list, set, tuple)):
+                clean_actors = [str(a).strip() for a in actor_account_id if str(a).strip()]
+                if clean_actors:
+                    placeholders = ",".join("?" for _ in clean_actors)
+                    query += f" AND actor_account_id IN ({placeholders})"
+                    params.extend(clean_actors)
+            else:
+                query += " AND actor_account_id = ?"
+                params.append(str(actor_account_id).strip())
+
         if target_account_key:
             query += " AND target_account_key = ?"
             params.append(normalize_account_key(target_account_key))
@@ -1667,7 +1676,7 @@ class SocialStore:
     def get_relationship_evidence(
         self,
         platform: str,
-        actor_account_id: str,
+        actor_account_id: Any,
         target_account_key: str,
         now_ts: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
@@ -1682,7 +1691,7 @@ class SocialStore:
     def has_existing_relationship(
         self,
         platform: str,
-        actor_account_id: str,
+        actor_account_id: Any,
         target_account_key: str,
         now_ts: Optional[int] = None,
     ) -> Tuple[bool, Optional[str], Optional[int]]:

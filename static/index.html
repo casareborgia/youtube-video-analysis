@@ -1834,19 +1834,26 @@
                 </div>
 
                 <!-- 신규 발굴 모드 (기존 관계 자동 제외 옵션) -->
-                <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);">
-                  <div style="display: flex; align-items: center; gap: 8px;">
-                    <input type="checkbox" id="chkExcludeExistingRelationships" checked style="accent-color: #6366f1; width: 16px; height: 16px; cursor: pointer;">
-                    <label for="chkExcludeExistingRelationships" style="font-size: 0.82rem; font-weight: 600; color: #fff; cursor: pointer; margin: 0;">
-                      <i class="fa-solid fa-user-plus" style="color: #6366f1;"></i> 기존 팔로워 및 기존 상호작용 유저 제외 (신규 발굴 모드)
-                    </label>
+                <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+                  <div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <input type="checkbox" id="chkExcludeExistingRelationships" checked style="accent-color: #6366f1; width: 16px; height: 16px; cursor: pointer;">
+                      <label for="chkExcludeExistingRelationships" style="font-size: 0.82rem; font-weight: 600; color: #fff; cursor: pointer; margin: 0;">
+                        <i class="fa-solid fa-user-plus" style="color: #6366f1;"></i> 기존 팔로워 및 기존 상호작용 유저 제외 (신규 발굴 모드)
+                      </label>
+                    </div>
+                    <div style="font-size: 0.74rem; color: var(--text-secondary); margin: 4px 0 0 24px;">
+                      💡 확인 가능한 팔로워·댓글·답글·스하리 이력을 기준으로 제외합니다.
+                    </div>
                   </div>
-                  <div style="font-size: 0.74rem; color: var(--text-secondary); margin: 4px 0 0 24px;">
-                    💡 확인 가능한 팔로워·댓글·답글·스하리 이력을 기준으로 제외합니다.
+                  <div>
+                    <button id="btnOpenBatchFollowersModal" class="btn btn-outline btn-xs" style="border-color: rgba(99,102,241,0.4); color: #818cf8;">
+                      <i class="fa-solid fa-user-check"></i> 기존 맞팔/팔로워 수동 등록
+                    </button>
                   </div>
-                  <div id="engExistingNotice" style="display: none; margin: 8px 0 0 24px; padding: 6px 10px; border-radius: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #f87171; font-size: 0.75rem;">
-                    ⚠️ 신규 발굴 모드가 비활성화되었습니다. 기존 맞팔 또는 과거 상호작용 계정이 후보에 포함될 수 있습니다.
-                  </div>
+                </div>
+                <div id="engExistingNotice" style="display: none; margin: 8px 0 0 24px; padding: 6px 10px; border-radius: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #f87171; font-size: 0.75rem;">
+                  ⚠️ 신규 발굴 모드가 비활성화되었습니다. 기존 맞팔 또는 과거 상호작용 계정이 후보에 포함될 수 있습니다.
                 </div>
               </div>
 
@@ -2428,6 +2435,40 @@
 
         <div class="modal-footer" style="padding-top: 12px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">
           <button type="button" id="btnCancelPlaylistManagerModal" class="btn btn-sm btn-outline">닫기</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 👥 기존 맞팔/팔로워 수동 일괄 등록 모달 -->
+    <div id="batchFollowersModal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="max-width: 520px; display: flex; flex-direction: column;">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid var(--border-color);">
+          <div>
+            <h3 style="margin: 0; font-size: 1.1rem; color: #818cf8;">
+              <i class="fa-solid fa-user-check"></i> 기존 맞팔 / 팔로워 수동 등록
+            </h3>
+            <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 4px;">
+              스레드 앱에서 확인한 실제 팔로워/맞팔 아이디를 등록하면 스하리 탐색 큐에서 100% 자동 제외됩니다.
+            </div>
+          </div>
+          <button type="button" id="btnCloseBatchFollowersModal" class="btn-close">&times;</button>
+        </div>
+
+        <div style="padding: 16px 0;">
+          <label style="font-size: 0.8rem; font-weight: 600; color: #fff; margin-bottom: 6px; display: block;">
+            등록할 사용자명 (@아이디 목록, 쉼표 또는 줄바꿈으로 구분)
+          </label>
+          <textarea id="txtBatchFollowerUsernames" class="form-control" rows="6" placeholder="@user1, @user2&#10;@friend3&#10;user4" style="font-size: 0.84rem; font-family: monospace;"></textarea>
+          <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 6px;">
+            💡 @ 기호는 자동으로 정리되며, 대소문자 구분 없이 영구 제외 목록에 저장됩니다.
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding-top: 12px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 8px;">
+          <button type="button" id="btnCancelBatchFollowersModal" class="btn btn-sm btn-outline">취소</button>
+          <button type="button" id="btnSubmitBatchFollowers" class="btn btn-sm btn-primary" style="background: #6366f1; border-color: #6366f1;">
+            <i class="fa-solid fa-check"></i> 팔로워 목록 등록 및 즉시 제외
+          </button>
         </div>
       </div>
     </div>

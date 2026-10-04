@@ -43,6 +43,75 @@ class SocialRelationshipService:
         """계정 식별자 정규화 (@ 제거, 공백 제거, 소문자화)."""
         return normalize_account_key(raw_key)
 
+    def resolve_actor_identities(
+        self,
+        platform: str,
+        actor_account_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """플랫폼 설정 및 인증 상태로부터 본인 식별자 풀 및 안정적 기본 actor를 도출.
+
+        Returns:
+            {
+                "primary_actor": str,            # 저장 시 사용할 가장 안정적인 계정 ID (user_id 우선, username 보조, 'me' 폴백)
+                "actor_identity_pool": Set[str], # DB 조회 시 사용할 모든 식별자 집합 (user_id, username, 정규화키, 'me')
+                "self_usernames": Set[str],      # 정규화된 본인 사용자명 집합
+                "self_user_ids": Set[str],       # 본인 고유 계정 ID 집합
+            }
+        """
+        norm_platform = (platform or "threads").strip().lower()
+        self_usernames: Set[str] = set()
+        self_user_ids: Set[str] = set()
+
+        if norm_platform == "threads":
+            try:
+                import threads_client
+                conf = threads_client.load_config()
+                cfg_uname = (conf.get("username") or "").strip()
+                cfg_uid = (conf.get("user_id") or "").strip()
+                if cfg_uname:
+                    self_usernames.add(self.normalize_key(cfg_uname))
+                if cfg_uid:
+                    self_user_ids.add(cfg_uid)
+            except Exception as exc:
+                logger.debug("Threads 설정 로드 실패 (무시 가능): %s", exc)
+        elif norm_platform == "x":
+            try:
+                import x_client
+                conf = x_client.load_config()
+                cfg_uname = (conf.get("username") or "").strip()
+                cfg_uid = (conf.get("user_id") or "").strip()
+                if cfg_uname:
+                    self_usernames.add(self.normalize_key(cfg_uname))
+                if cfg_uid:
+                    self_user_ids.add(cfg_uid)
+            except Exception as exc:
+                logger.debug("X 설정 로드 실패 (무시 가능): %s", exc)
+
+        explicit_actor = (actor_account_id or "").strip()
+        if explicit_actor:
+            self_user_ids.add(explicit_actor)
+            self_usernames.add(self.normalize_key(explicit_actor))
+
+        # 1순위: 명시적 actor, 2순위: user_id, 3순위: username, 4순위: "me"
+        primary_actor = (
+            explicit_actor
+            or next((uid for uid in self_user_ids if uid and uid != "me"), None)
+            or next((uname for uname in self_usernames if uname and uname != "me"), None)
+            or "me"
+        )
+
+        actor_identity_pool: Set[str] = set(self_user_ids) | set(self_usernames) | {"me"}
+        if primary_actor:
+            actor_identity_pool.add(primary_actor)
+            actor_identity_pool.add(self.normalize_key(primary_actor))
+
+        return {
+            "primary_actor": primary_actor,
+            "actor_identity_pool": actor_identity_pool,
+            "self_usernames": self_usernames,
+            "self_user_ids": self_user_ids,
+        }
+
     def evaluate_target(
         self,
         platform: str,
@@ -61,9 +130,12 @@ class SocialRelationshipService:
         norm_target_user = self.normalize_key(target_username)
         norm_target_id = (target_user_id or "").strip()
 
+        # 플랫폼 설정 기반 본인 식별자 및 조회 풀 도출
+        resolved = self.resolve_actor_identities(platform=norm_platform, actor_account_id=norm_actor)
+
         # 1. 실행 계정 본인 여부 판정 (우선순위 1: self_account)
-        self_names = {self.normalize_key(u) for u in (self_usernames or set()) if u}
-        self_ids = {(i or "").strip() for i in (self_user_ids or set()) if i}
+        self_names = set(resolved["self_usernames"]) | {self.normalize_key(u) for u in (self_usernames or set()) if u}
+        self_ids = set(resolved["self_user_ids"]) | {(i or "").strip() for i in (self_user_ids or set()) if i}
         if norm_actor:
             self_names.add(self.normalize_key(norm_actor))
             self_ids.add(norm_actor)
@@ -88,7 +160,6 @@ class SocialRelationshipService:
             candidate_keys.append(self.normalize_key(target_post_id))
 
         if not candidate_keys:
-            # 식별자가 아예 없는 경우는 안전을 위해 통과시키지 않거나 알 수 없음 처리
             return RelationshipEvaluationResult(
                 excluded=False,
                 reason=None,
@@ -96,12 +167,18 @@ class SocialRelationshipService:
                 last_seen_at=None,
             )
 
-        # 3. 저장소에서 관계 증거 수집
+        # 3. 저장소에서 관계 증거 수집 (식별자 다중 풀 활용: user_id, username, me 모두 매칭)
+        actor_identity_pool = set(resolved["actor_identity_pool"]) | set(self_ids) | set(self_names)
+        if norm_actor:
+            actor_identity_pool.add(norm_actor)
+            actor_identity_pool.add(self.normalize_key(norm_actor))
+        actor_identity_pool.add("me")
+
         all_evidence: List[Dict[str, Any]] = []
         for key in candidate_keys:
             ev_list = self.store.get_relationship_evidence(
                 platform=norm_platform,
-                actor_account_id=norm_actor,
+                actor_account_id=actor_identity_pool,
                 target_account_key=key,
                 now_ts=now,
             )
@@ -250,7 +327,7 @@ class SocialRelationshipService:
         if not norm_user:
             return 0
         now = int(now_ts or time.time())
-        expires_at = now + (expires_in_days * 86400) if expires_in_days > 0 else None
+        expires_at = (now + (expires_in_days * 86400)) if (expires_in_days is not None and expires_in_days > 0) else None
         return self.store.upsert_relationship(
             platform=platform.lower(),
             actor_account_id=actor_account_id,
@@ -263,6 +340,42 @@ class SocialRelationshipService:
             expires_at=expires_at,
             now_ts=now,
         )
+
+    def batch_register_known_followers(
+        self,
+        platform: str,
+        actor_account_id: Optional[str],
+        usernames: List[str],
+        expires_in_days: Optional[int] = None,
+        now_ts: Optional[int] = None,
+    ) -> int:
+        """사용자가 직접 입력/가져온 기존 팔로워/맞팔 유저명들을 일괄 등록하여 영구 제외 (기본 expires_at=None)."""
+        resolved = self.resolve_actor_identities(platform=platform, actor_account_id=actor_account_id)
+        effective_actor = resolved["primary_actor"]
+
+        count = 0
+        now = int(now_ts or time.time())
+        expires_at = (now + (expires_in_days * 86400)) if (expires_in_days is not None and expires_in_days > 0) else None
+
+        seen_keys: Set[str] = set()
+        for u in usernames:
+            norm_u = self.normalize_key(u)
+            if norm_u and norm_u not in seen_keys:
+                seen_keys.add(norm_u)
+                self.store.upsert_relationship(
+                    platform=platform.lower(),
+                    actor_account_id=effective_actor,
+                    target_account_key=norm_u,
+                    relationship_type="known_follower",
+                    source="manual_import",
+                    target_user_id=None,
+                    target_username=u.strip().lstrip("@"),
+                    confidence="confirmed",
+                    expires_at=expires_at,
+                    now_ts=now,
+                )
+                count += 1
+        return count
 
     def suppress_account(
         self,

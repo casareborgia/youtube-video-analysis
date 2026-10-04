@@ -146,30 +146,11 @@ class EngagementDiscoveryService:
         safe_limit = max(1, min(int(limit), 30))
         now = int(now_ts or time.time())
 
-        # 1. 실행 계정 본인 정보 식별
-        actor = (actor_account_id or "").strip()
-        self_names: Set[str] = set()
-        self_ids: Set[str] = set()
-
-        if plat == "threads":
-            conf = threads_client.load_config()
-            cfg_uname = conf.get("username", "")
-            cfg_uid = conf.get("user_id", "")
-            if cfg_uname:
-                self_names.add(SocialRelationshipService.normalize_key(cfg_uname))
-            if cfg_uid:
-                self_ids.add(cfg_uid)
-        elif plat == "x":
-            x_st = x_client.get_status(store=self.store)
-            cfg_uname = x_st.get("username", "")
-            if cfg_uname:
-                self_names.add(SocialRelationshipService.normalize_key(cfg_uname))
-
-        if actor:
-            self_names.add(SocialRelationshipService.normalize_key(actor))
-            self_ids.add(actor)
-        else:
-            actor = next(iter(self_names), "me")
+        # 1. 실행 계정 본인 정보 식별 (공통 식별자 리졸버 활용)
+        actor_res = self.relationship_service.resolve_actor_identities(platform=plat, actor_account_id=actor_account_id)
+        self_names = actor_res["self_usernames"]
+        self_ids = actor_res["self_user_ids"]
+        actor = actor_res["primary_actor"]
 
         # 2. 모든 후보 원천에서 넉넉하게 후보 수집
         raw_candidates: List[Dict[str, Any]] = []
