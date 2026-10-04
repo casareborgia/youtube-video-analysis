@@ -101,6 +101,27 @@ def save_config(updates: dict):
     if current.get("app_secret"):
         os.environ["THREADS_APP_SECRET"] = current["app_secret"]
 
+    # SocialStore 동기화
+    if current.get("user_id"):
+        try:
+            import social_store
+            store = social_store.SocialStore()
+            if current.get("access_token"):
+                store.upsert_account(
+                    platform="threads",
+                    account_id=str(current["user_id"]),
+                    username=current.get("username", ""),
+                    display_name=current.get("name", ""),
+                    credential_ref="data/threads_config.json",
+                    status="connected",
+                    scopes=["threads_basic", "threads_content_publish", "threads_read_replies"],
+                    token_expires_at=int(current.get("token_expires_at", 0)),
+                )
+            else:
+                store.delete_account("threads", str(current["user_id"]))
+        except Exception:
+            pass
+
 
 def get_status() -> dict:
     """현재 Threads 계정 연동 상태 및 프로필 정보 조회"""
@@ -391,3 +412,20 @@ def disconnect():
         "token_expires_at": 0
     })
     return {"status": "success", "message": "Threads 계정 연결이 해제되었습니다."}
+
+
+def repost_post(post_id: str, access_token: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Threads Graph API v1.0 POST /{post_id}/repost 를 통한 리포스트 발행.
+    """
+    clean_post_id = str(post_id or "").strip()
+    if not clean_post_id:
+        raise ValueError("post_id는 필수입니다.")
+
+    conf = load_config()
+    token = (access_token or conf.get("access_token") or "").strip()
+    if not token:
+        raise RuntimeError("Threads access_token이 설정되지 않았습니다. 로그인이 필요합니다.")
+
+    url = f"{THREADS_API_BASE}/{urllib.parse.quote(clean_post_id)}/repost"
+    return _http_request(url, method="POST", params={"access_token": token})

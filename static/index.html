@@ -48,14 +48,17 @@
         <button id="navTabMusic" class="nav-tab">
           <i class="fa-solid fa-compact-disc" style="color: #c084fc;"></i> 6. 레오 ✕ 루나 음악 스튜디오
         </button>
+        <button id="navTabSocial" class="nav-tab">
+          <i class="fa-brands fa-threads" style="color: #38bdf8;"></i> 7. Threads ✕ X 통합 자동화
+        </button>
       </nav>
 
       <!-- LLM 상태 배지 & 헤더 액션 -->
       <div class="header-actions">
-        <!-- LLM 백엔드 상태 배지 (클릭 시 LM Studio / Ollama / Auto 전환) -->
-        <div id="llmStatusBadge" class="llm-status-pill" title="클릭하여 백엔드(Auto / LM Studio / Ollama) 전환">
+        <!-- LLM 백엔드 상태 배지 (Gemini / 로컬 AI 전환) -->
+        <div id="llmStatusBadge" class="llm-status-pill" title="클릭하여 AI 모델(Gemini / 로컬 AI) 선택 및 전환">
           <span class="status-dot online"></span>
-          <span id="llmBackendName">로컬 AI 확인 중...</span>
+          <span id="llmBackendName">AI 엔진 확인 중...</span>
           <span id="llmModelBadge" class="llm-model-sub"></span>
         </div>
 
@@ -1078,6 +1081,32 @@
                 </div>
                 <div id="threadsPublishResultBox" style="display: none; margin-bottom: 12px;"></div>
 
+                <details style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.35); border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;">
+                  <summary style="cursor: pointer; color: #c7d2fe; font-size: 0.9rem; font-weight: 700;">
+                    <i class="fa-solid fa-repeat"></i> Threads/X 스하리 자동화
+                  </summary>
+                  <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 12px;">
+                    <select id="engagementPlatform" class="form-control" aria-label="플랫폼">
+                      <option value="threads">Threads</option>
+                      <option value="x">X</option>
+                    </select>
+                    <input id="engagementAccountId" class="form-control" placeholder="대상 계정 ID" autocomplete="off">
+                    <input id="engagementPostId" class="form-control" placeholder="대상 게시물 ID" autocomplete="off">
+                    <input id="engagementProfileUrl" class="form-control" placeholder="프로필 URL (웹 방식 필수)" autocomplete="off">
+                    <input id="engagementPostUrl" class="form-control" placeholder="게시물 URL (웹 방식 필수)" autocomplete="off" style="grid-column: 1 / -1;">
+                  </div>
+                  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 10px; color: var(--text-secondary); font-size: 0.8rem;">
+                    <label><input id="engagementActionFollow" type="checkbox" checked> 팔로우</label>
+                    <label><input id="engagementActionLike" type="checkbox" checked> 좋아요</label>
+                    <label><input id="engagementActionRepost" type="checkbox" checked> 리포스트</label>
+                    <label title="Threads 팔로우·좋아요에는 웹 방식이 필요합니다."><input id="engagementUseWeb" type="checkbox"> 전용 브라우저 사용</label>
+                    <span style="flex: 1;"></span>
+                    <button id="btnPreviewEngagement" type="button" class="btn btn-sm btn-outline"><i class="fa-solid fa-flask"></i> 드라이런</button>
+                    <button id="btnRunEngagement" type="button" class="btn btn-sm btn-primary"><i class="fa-solid fa-play"></i> 실제 실행</button>
+                  </div>
+                  <div id="engagementResultBox" style="display: none; margin-top: 10px;"></div>
+                </details>
+
                 <div id="threadsPostList" style="display: flex; flex-direction: column; gap: 10px;">
                   <div class="empty-state-box" style="padding: 30px;">
                     <i class="fa-brands fa-threads fa-2x"></i>
@@ -1446,7 +1475,704 @@
           </div>
         </div>
       </div>
+
+      <!-- 뷰 7: Threads ✕ X 통합 자동화 대시보드 -->
+      <div id="viewSocial" class="view-panel" style="display: none;">
+        <!-- 상단 헤더 & 계정/스케줄러 상태 요약 바 -->
+        <section class="card" style="margin-bottom: 20px; background: linear-gradient(135deg, rgba(15,23,42,0.8) 0%, rgba(30,41,59,0.8) 100%); border: 1px solid rgba(56,189,248,0.25);">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; margin-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(56,189,248,0.15); display: flex; align-items: center; justify-content: center; font-size: 22px; color: #38bdf8;">
+                <i class="fa-brands fa-threads"></i>
+              </div>
+              <div>
+                <h2 style="margin: 0; font-size: 1.25rem; font-weight: 700; color: #fff;">Threads ✕ X 소셜 통합 자동화 스튜디오</h2>
+                <span class="sub-text" style="color: var(--text-secondary); font-size: 0.8rem;">
+                  Meta Threads & X(트위터) 공식 API 및 로컬 예약 실행기를 통한 바이럴 타래 발행, 댓글·답글 자동화, 스하리(참여) 통합 관제
+                </span>
+              </div>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+              <button id="btnRefreshSocialDashboard" class="btn btn-sm btn-outline" title="전체 계정 상태 및 이력 새로고침">
+                <i class="fa-solid fa-arrows-rotate"></i> 새로고침
+              </button>
+            </div>
+          </div>
+
+          <!-- 상태 카드 3열 그리드 -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">
+            <!-- Threads 계정 상태 카드 -->
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <i class="fa-brands fa-threads" style="font-size: 1.1rem; color: #fff;"></i>
+                  <strong style="font-size: 0.88rem; color: #fff;">Threads 계정</strong>
+                </div>
+                <span id="dashThreadsBadge" class="badge badge-subtle">확인 중...</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px; margin-top: 6px;">
+                <div id="dashThreadsAvatar" style="width: 34px; height: 34px; border-radius: 50%; background: #334155; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #94a3b8; overflow: hidden;">
+                  <i class="fa-solid fa-user"></i>
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                  <div id="dashThreadsUsername" style="font-size: 0.85rem; font-weight: 600; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">미연결</div>
+                  <div id="dashThreadsExpiry" style="font-size: 0.72rem; color: var(--text-secondary);">토큰 정보 없음</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- X (Twitter) 계정 상태 카드 -->
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <i class="fa-brands fa-x-twitter" style="font-size: 1.1rem; color: #fff;"></i>
+                  <strong style="font-size: 0.88rem; color: #fff;">X (Twitter) 계정</strong>
+                </div>
+                <span id="dashXBadge" class="badge badge-subtle">확인 중...</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px; margin-top: 6px;">
+                <div id="dashXAvatar" style="width: 34px; height: 34px; border-radius: 50%; background: #334155; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #94a3b8; overflow: hidden;">
+                  <i class="fa-solid fa-user"></i>
+                </div>
+                <div style="flex: 1; min-width: 0;">
+                  <div id="dashXUsername" style="font-size: 0.85rem; font-weight: 600; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">미연결</div>
+                  <div id="dashXScopes" style="font-size: 0.72rem; color: var(--text-secondary);">OAuth 2.0 PKCE 필요</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 로컬 스케줄러 상태 카드 -->
+            <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <i class="fa-solid fa-clock-rotate-left" style="font-size: 1.1rem; color: #38bdf8;"></i>
+                  <strong style="font-size: 0.88rem; color: #fff;">로컬 스케줄러</strong>
+                </div>
+                <span id="dashSchedulerBadge" class="badge badge-subtle">확인 중...</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; margin-top: 6px;">
+                <span id="dashSchedulerWorker" style="color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">worker: -</span>
+                <button id="btnManualSchedulerTick" class="btn btn-xs btn-outline" style="border-color: #38bdf8; color: #38bdf8;">
+                  <i class="fa-solid fa-play"></i> 1회 실행
+                </button>
+              </div>
+              <div id="dashSchedulerStats" style="font-size: 0.72rem; color: var(--text-secondary); margin-top: 4px;">
+                실행: 0 | 성공: 0 | 재시도: 0
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 8대 기능 서브탭 네비게이션 (자율 오퍼레이터 포함) -->
+        <div class="modal-tabs" style="margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; display: flex; flex-wrap: wrap; gap: 6px;">
+          <button class="tab-btn active" data-social-tab="socialTabAutonomous" style="border: 1px solid rgba(56,189,248,0.4);"><i class="fa-solid fa-robot" style="color: #38bdf8;"></i> 🤖 자율 오퍼레이터 (어사이드 4대 루틴)</button>
+          <button class="tab-btn" data-social-tab="socialTabDrafts"><i class="fa-solid fa-pen-to-square"></i> 1. 초안 & 생성</button>
+          <button class="tab-btn" data-social-tab="socialTabPublish"><i class="fa-solid fa-paper-plane"></i> 2. 게시물 발행</button>
+          <button class="tab-btn" data-social-tab="socialTabReplies"><i class="fa-solid fa-comments"></i> 3. 댓글·답글 자동화</button>
+          <button class="tab-btn" data-social-tab="socialTabEngagement"><i class="fa-solid fa-repeat"></i> 4. 스하리(참여)</button>
+          <button class="tab-btn" data-social-tab="socialTabQueue"><i class="fa-solid fa-calendar-check"></i> 5. 예약 대기열</button>
+          <button class="tab-btn" data-social-tab="socialTabHistory"><i class="fa-solid fa-list-ul"></i> 6. 통합 실행 이력</button>
+          <button class="tab-btn" data-social-tab="socialTabAccounts"><i class="fa-solid fa-key"></i> 7. 계정 연결 관리</button>
+        </div>
+
+        <!-- 서브탭 콘텐츠 영역 -->
+        <div id="socialTabContent">
+          <!-- 0. 🤖 자율 소셜 오퍼레이터 관제 탭 -->
+          <div id="socialTabAutonomous" class="social-tab-pane active">
+            <!-- 파일럿 상태 요약 & 헤더 바 -->
+            <div class="card" style="padding: 16px; margin-bottom: 16px; background: rgba(15,23,42,0.6); border: 1px solid rgba(56,189,248,0.25);">
+              <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+                <div>
+                  <h3 style="margin: 0 0 4px 0; font-size: 1.05rem; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-robot" style="color: #38bdf8;"></i>
+                    <span>어사이드 자율 소셜 오퍼레이터 관제 센터</span>
+                    <span id="autoPilotBadge" class="badge badge-success" style="font-size: 0.75rem;">OPERATIONAL</span>
+                  </h3>
+                  <div style="font-size: 0.8rem; color: var(--text-secondary);">
+                    어사이드(Aside) 4대 루틴(AI동향, 마음지기 홍보, 연구논문, 댓글 센티넬)을 데이터 기반으로 완전 자율화하고 2-Step 체인(본문+첫답글)으로 자동 발행합니다.
+                  </div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <button id="btnRefreshAutonomous" class="btn btn-sm btn-outline">
+                    <i class="fa-solid fa-arrows-rotate"></i> 상태 동기화
+                  </button>
+                  <button id="btnTriggerAllAutonomous" class="btn btn-sm btn-primary" style="background: #0284c7; border-color: #0284c7;">
+                    <i class="fa-solid fa-bolt"></i> 활성 루틴 일괄 점검
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 4대 루틴 카드 그리드 -->
+            <div style="margin-bottom: 24px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h4 style="margin: 0; font-size: 0.95rem; font-weight: 600; color: #f1f5f9;">
+                  <i class="fa-solid fa-sliders" style="color: #38bdf8; margin-right: 6px;"></i>4대 핵심 운영 루틴
+                </h4>
+                <span style="font-size: 0.78rem; color: var(--text-secondary);">게시 주기, 출처, 발행 모드를 자유롭게 변경할 수 있습니다.</span>
+              </div>
+              <div id="autonomousRoutinesContainer" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px;">
+                <!-- JS에서 카드 동적 렌더링 -->
+              </div>
+            </div>
+
+            <!-- 출처 관리 및 8대 앵글 2열 레이아웃 -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 16px; margin-bottom: 24px;">
+              <!-- 출처 관리자 카드 -->
+              <div class="card" style="padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                  <h4 style="margin: 0; font-size: 0.92rem; font-weight: 600;">
+                    <i class="fa-solid fa-rss" style="color: #f59e0b; margin-right: 6px;"></i>자료 수집 출처 관리 (Sources)
+                  </h4>
+                  <button id="btnOpenAddSourceModal" class="btn btn-xs btn-outline" style="color: #38bdf8; border-color: #38bdf8;">
+                    <i class="fa-solid fa-plus"></i> 새 출처 추가
+                  </button>
+                </div>
+                <div id="sourcesListContainer" style="display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto;">
+                  <!-- JS 동적 렌더링 -->
+                </div>
+              </div>
+
+              <!-- 마음지기 8대 프로모션 앵글 순환 뷰어 카드 -->
+              <div class="card" style="padding: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                  <h4 style="margin: 0; font-size: 0.92rem; font-weight: 600;">
+                    <i class="fa-solid fa-heart-pulse" style="color: #ec4899; margin-right: 6px;"></i>마음지기 8대 순환 앵글 (Angle Wheel)
+                  </h4>
+                  <span class="badge badge-subtle" style="font-size: 0.72rem;">자동 순환</span>
+                </div>
+                <div id="maumAnglesListContainer" style="display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto;">
+                  <!-- JS 동적 렌더링 -->
+                </div>
+              </div>
+            </div>
+
+            <!-- 체인 발행 Outbox 큐 및 검토 탭 -->
+            <div class="card" style="padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                <div>
+                  <h4 style="margin: 0 0 2px 0; font-size: 0.95rem; font-weight: 600;">
+                    <i class="fa-solid fa-paper-plane" style="color: #10b981; margin-right: 6px;"></i>2-Step 체인 발행 Outbox (본문 + 첫 답글)
+                  </h4>
+                  <span style="font-size: 0.78rem; color: var(--text-secondary);">
+                    어사이드 제로-페널티 원칙(본문 외부링크 0개 + 첫 답글 출처 연결)으로 생성된 초안을 검토 및 승인합니다.
+                  </span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <select id="autoOutboxStatusFilter" class="form-control" style="width: auto; font-size: 0.8rem; padding: 4px 8px;">
+                    <option value="">전체 상태</option>
+                    <option value="PENDING">검토 대기 (PENDING)</option>
+                    <option value="SUCCEEDED">발행 완료 (SUCCEEDED)</option>
+                    <option value="FAILED">실패 (FAILED)</option>
+                  </select>
+                  <button id="btnRefreshOutbox" class="btn btn-sm btn-outline">
+                    <i class="fa-solid fa-arrows-rotate"></i> 새로고침
+                  </button>
+                </div>
+              </div>
+              <div id="outboxJobsContainer" style="display: flex; flex-direction: column; gap: 12px;">
+                <!-- JS 동적 렌더링 -->
+              </div>
+            </div>
+          </div>
+
+          <!-- 1. 초안 작성 & 편집 탭 -->
+          <div id="socialTabDrafts" class="social-tab-pane" style="display: none;">
+            <div class="card" style="padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                <h3 style="margin: 0; font-size: 1rem;"><i class="fa-solid fa-pen-nib"></i> 소셜 콘텐츠 초안 편집 및 타래 구성</h3>
+                <div style="display: flex; gap: 8px;">
+                  <button id="btnImportFromMarketing" class="btn btn-sm btn-outline"><i class="fa-solid fa-file-import"></i> 마케팅 생성물 불러오기</button>
+                  <button id="btnAddDraftThreadItem" class="btn btn-sm btn-outline"><i class="fa-solid fa-plus"></i> 타래 추가</button>
+                </div>
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 12px;">
+                <div>
+                  <label style="font-size: 0.78rem; color: var(--text-secondary);">발행 대상 플랫폼</label>
+                  <select id="socialDraftPlatform" class="form-control">
+                    <option value="threads" selected>Meta Threads (최대 500자)</option>
+                    <option value="x">X / Twitter (기본 280자)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size: 0.78rem; color: var(--text-secondary);">발행 모드</label>
+                  <select id="socialDraftMode" class="form-control">
+                    <option value="thread" selected>연속 타래 (Thread 2~7개)</option>
+                    <option value="single">단일 게시물 (Single Post)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- 초안 항목 컨테이너 -->
+              <div id="socialDraftItemsContainer" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px;">
+                <!-- 동적 타래 항목 삽입 영역 -->
+              </div>
+
+              <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 12px;">
+                <span id="socialDraftSummaryBadge" style="font-size: 0.8rem; color: var(--text-secondary);">총 0개 항목</span>
+                <button id="btnSaveAsPublishDraft" class="btn btn-primary">
+                  <i class="fa-solid fa-floppy-disk"></i> 발행 초안으로 등록하기
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. 게시물 발행 탭 -->
+          <div id="socialTabPublish" class="social-tab-pane" style="display: none;">
+            <div class="card" style="padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 style="margin: 0; font-size: 1rem;"><i class="fa-solid fa-paper-plane"></i> 승인된 초안 즉시/예약 발행</h3>
+                <button id="btnRefreshPublishDrafts" class="btn btn-sm btn-outline"><i class="fa-solid fa-arrows-rotate"></i> 초안 새로고침</button>
+              </div>
+
+              <div id="socialPublishDraftList" style="display: flex; flex-direction: column; gap: 12px;">
+                <div class="empty-state-box" style="padding: 24px;">
+                  <p>등록된 발행 초안이 없습니다. 1번 탭에서 초안을 작성하여 등록하세요.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 3. 댓글·답글 자동화 탭 -->
+          <div id="socialTabReplies" class="social-tab-pane" style="display: none;">
+            <div class="card" style="padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <h3 style="margin: 0; font-size: 1rem;"><i class="fa-solid fa-comments"></i> 내 계정 전체 댓글·답글 조회 및 AI 답글 생성</h3>
+                <span style="font-size: 0.75rem; background: rgba(56,189,248,0.15); color: #38bdf8; padding: 2px 8px; border-radius: 12px; font-weight: 600;">
+                  <i class="fa-solid fa-bolt"></i> 계정 전체 피드 연계
+                </span>
+              </div>
+              <div style="font-size: 0.78rem; color: #94a3b8; margin-bottom: 12px;">
+                <i class="fa-solid fa-circle-info" style="color: #38bdf8;"></i> 게시물 ID를 비워두면 내 계정(@seungjun603 / @SeungjoonLee14)에 연계된 최근 전체 댓글·멘션을 자동으로 모아서 조회합니다.
+              </div>
+              <div style="display: grid; grid-template-columns: 140px 1fr auto; gap: 8px; margin-bottom: 14px;">
+                <select id="replyFetchPlatform" class="form-control">
+                  <option value="threads">Threads</option>
+                  <option value="x">X</option>
+                </select>
+                <input id="replyFetchPostId" class="form-control" placeholder="게시물 ID (선택: 비워두면 내 계정 전체 댓글·답글 자동 조회)">
+                <button id="btnFetchPostComments" class="btn btn-primary"><i class="fa-solid fa-comments"></i> 댓글 조회</button>
+              </div>
+
+              <!-- 댓글 목록 및 답글 생성 영역 -->
+              <div id="replyCommentsContainer" style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 14px;">
+                <div class="empty-state-box" style="padding: 24px;">
+                  <p>[댓글 조회]를 클릭하면 내 계정에 달린 최근 댓글 목록을 가져옵니다.</p>
+                </div>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 12px;">
+                <span id="replySelectedCount" style="font-size: 0.8rem; color: var(--text-secondary);">선택된 승인 답글: 0개</span>
+                <button id="btnExecuteBatchReplies" class="btn btn-primary" disabled>
+                  <i class="fa-solid fa-paper-plane"></i> 선택 승인된 답글 일괄 실행
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 4. 스하리(참여) 탭 -->
+          <div id="socialTabEngagement" class="social-tab-pane" style="display: none;">
+            <div class="card" style="padding: 18px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                <div>
+                  <h3 style="margin: 0; font-size: 1.05rem;"><i class="fa-solid fa-repeat" style="color: #6366f1;"></i> 불특정 다수 실시간 피드 탐색형 스하리 센터</h3>
+                  <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+                    대상 계정을 일일이 찝지 않고, 실시간 피드에서 활동 중인 불특정 다수의 활성 스레더들을 자동 발굴하여 안전하게 스하리를 수행합니다.
+                  </div>
+                </div>
+                <span class="badge" style="background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); padding: 4px 10px;">
+                  <i class="fa-solid fa-shield-halved"></i> 섀도우밴 방지 인간 모사 딜레이
+                </span>
+              </div>
+
+              <!-- 일일 안전 한도 게이지 바 -->
+              <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; font-size: 0.8rem; align-items: center;">
+                <div><span style="color: var(--text-secondary);">일일 전체 한도:</span> <strong style="color: #38bdf8;">최대 30회</strong></div>
+                <div><span style="color: var(--text-secondary);">좋아요:</span> <strong>최대 25회</strong></div>
+                <div><span style="color: var(--text-secondary);">리포스트:</span> <strong>최대 10회</strong></div>
+                <div><span style="color: var(--text-secondary);">팔로우:</span> <strong>최대 10회</strong></div>
+                <div style="margin-left: auto; color: #34d399; font-size: 0.76rem;"><i class="fa-solid fa-circle-check"></i> 쿨다운: 3~5초 자동 지연</div>
+              </div>
+
+              <!-- 1단계: 실시간 피드 탐색 컨트롤 -->
+              <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="font-weight: 600; font-size: 0.88rem; margin-bottom: 10px; color: #fff;">
+                  <i class="fa-solid fa-compass" style="color: #38bdf8;"></i> 1단계: 실시간 활성 스레더 자동 탐색
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: flex-end;">
+                  <div>
+                    <label style="font-size: 0.78rem; color: var(--text-secondary);">플랫폼</label>
+                    <select id="tabEngPlatform" class="form-control">
+                      <option value="threads" selected>Meta Threads</option>
+                      <option value="x">X (트위터)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style="font-size: 0.78rem; color: var(--text-secondary);">탐색 관심 주제 / 키워드</label>
+                    <select id="tabEngTopic" class="form-control">
+                      <option value="스하리" selected>스하리 / 맞팔 소통 스트림</option>
+                      <option value="AI">AI / 기술 / 개발자</option>
+                      <option value="일상">일상 / 직장인 / 힐링</option>
+                      <option value="스타트업">스타트업 / 비즈니스</option>
+                      <option value="전체">전체 최신 활성 피드</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style="font-size: 0.78rem; color: var(--text-secondary);">발굴 인원수</label>
+                    <select id="tabEngLimit" class="form-control">
+                      <option value="5">5명 (빠른 소통)</option>
+                      <option value="10" selected>10명 (권장 표준)</option>
+                      <option value="15">15명 (적극 소통)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <button id="btnDiscoverTargets" class="btn btn-primary btn-block">
+                      <i class="fa-solid fa-magnifying-glass"></i> 실시간 스레더 탐색 🔍
+                    </button>
+                  </div>
+                </div>
+
+                <!-- 신규 발굴 모드 (기존 관계 자동 제외 옵션) -->
+                <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06);">
+                  <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="chkExcludeExistingRelationships" checked style="accent-color: #6366f1; width: 16px; height: 16px; cursor: pointer;">
+                    <label for="chkExcludeExistingRelationships" style="font-size: 0.82rem; font-weight: 600; color: #fff; cursor: pointer; margin: 0;">
+                      <i class="fa-solid fa-user-plus" style="color: #6366f1;"></i> 기존 팔로워 및 기존 상호작용 유저 제외 (신규 발굴 모드)
+                    </label>
+                  </div>
+                  <div style="font-size: 0.74rem; color: var(--text-secondary); margin: 4px 0 0 24px;">
+                    💡 확인 가능한 팔로워·댓글·답글·스하리 이력을 기준으로 제외합니다.
+                  </div>
+                  <div id="engExistingNotice" style="display: none; margin: 8px 0 0 24px; padding: 6px 10px; border-radius: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #f87171; font-size: 0.75rem;">
+                    ⚠️ 신규 발굴 모드가 비활성화되었습니다. 기존 맞팔 또는 과거 상호작용 계정이 후보에 포함될 수 있습니다.
+                  </div>
+                </div>
+              </div>
+
+              <!-- 2단계: 발굴된 불특정 다수 타겟 큐 목록 -->
+              <div id="engDiscoveredSection" style="margin-bottom: 16px;">
+                <!-- 제외 통계 요약 바 -->
+                <div id="engDiscoverySummaryBar" style="display: none; margin-bottom: 10px; padding: 8px 14px; border-radius: 8px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.25); font-size: 0.8rem; color: var(--text-primary); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                  <span id="engSummaryText"></span>
+                  <span id="engSummaryBadges" style="display: flex; gap: 6px; flex-wrap: wrap;"></span>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <strong style="font-size: 0.88rem; color: #fff;">
+                    <i class="fa-solid fa-users" style="color: #10b981;"></i> 2단계: 발굴된 불특정 다수 타겟 대기열 (<span id="engTargetCount">0</span>명)
+                  </strong>
+                  <div style="display: flex; gap: 8px; font-size: 0.78rem;">
+                    <button id="btnSelectAllTargets" class="btn btn-xs btn-outline">전체 선택</button>
+                    <button id="btnDeselectAllTargets" class="btn btn-xs btn-outline">전체 해제</button>
+                  </div>
+                </div>
+
+                <div id="engTargetsContainer" style="display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto; padding-right: 4px;">
+                  <div class="empty-state-box" style="padding: 24px;">
+                    <i class="fa-solid fa-satellite-dish" style="font-size: 2rem; color: var(--text-secondary); margin-bottom: 8px; display: block;"></i>
+                    <p style="margin: 0; color: var(--text-secondary);">[실시간 스레더 탐색] 버튼을 누르면 현재 접속 중인 활성 스레더들이 자동으로 발굴됩니다.</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3단계: 일괄 스하리 실행 컨트롤 바 -->
+              <div style="background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.2); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
+                  <div style="display: flex; align-items: center; gap: 16px; font-size: 0.85rem; flex-wrap: wrap;">
+                    <strong style="color: #fff;"><i class="fa-solid fa-bolt" style="color: #fbbf24;"></i> 스하리 액션:</strong>
+                    <label style="cursor: pointer;"><input id="tabEngActionLike" type="checkbox" checked> ❤️ 좋아요(하트)</label>
+                    <label style="cursor: pointer;"><input id="tabEngActionRepost" type="checkbox" checked> 🔁 리포스트</label>
+                    <label style="cursor: pointer;"><input id="tabEngActionFollow" type="checkbox" checked> 👤 팔로우</label>
+                    <label style="cursor: pointer; color: var(--text-secondary);" title="Threads 팔로우·좋아요 등 공식 API 미지원 기능에 필요">
+                      <input id="tabEngUseWeb" type="checkbox"> 🌐 전용 브라우저 웹 모드
+                    </label>
+                  </div>
+                </div>
+
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                  <button id="btnTabEngDryRun" class="btn btn-outline" style="flex: 1; min-width: 140px;">
+                    <i class="fa-solid fa-flask"></i> 🧪 모의 시뮬레이션 (검증)
+                  </button>
+                  <button id="btnTabEngLive" class="btn btn-primary" style="flex: 2; min-width: 200px; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
+                    <i class="fa-solid fa-paper-plane"></i> ⚡ 선택 대상 일괄 스하리 실행 (안전 딜레이)
+                  </button>
+                </div>
+              </div>
+
+              <!-- 실행 결과 피드백 영역 -->
+              <div id="tabEngResultBox" style="display: none; margin-bottom: 16px;"></div>
+
+              <!-- 접이식 수동 직접 입력 (고급 설정) -->
+              <details style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px;">
+                <summary style="font-size: 0.8rem; color: var(--text-secondary); cursor: pointer; user-select: none;">
+                  <i class="fa-solid fa-sliders"></i> 특정 대상 수동 직접 입력 (고급 수동 모드)
+                </summary>
+                <div style="margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                  <div>
+                    <label style="font-size: 0.74rem; color: var(--text-secondary);">대상 계정 ID</label>
+                    <input id="tabEngAccountId" class="form-control" placeholder="예: user_123">
+                  </div>
+                  <div>
+                    <label style="font-size: 0.74rem; color: var(--text-secondary);">대상 게시물 ID</label>
+                    <input id="tabEngPostId" class="form-control" placeholder="예: 2105629134760370403">
+                  </div>
+                  <div>
+                    <label style="font-size: 0.74rem; color: var(--text-secondary);">프로필 URL</label>
+                    <input id="tabEngProfileUrl" class="form-control" placeholder="https://x.com/username">
+                  </div>
+                  <div>
+                    <label style="font-size: 0.74rem; color: var(--text-secondary);">게시물 URL</label>
+                    <input id="tabEngPostUrl" class="form-control" placeholder="https://x.com/status/...">
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <!-- 5. 예약 대기열 탭 -->
+          <div id="socialTabQueue" class="social-tab-pane" style="display: none;">
+            <div class="card" style="padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+                <h3 style="margin: 0; font-size: 1rem;"><i class="fa-solid fa-calendar-check"></i> 예약 및 실행 대기열 관리</h3>
+                <button id="btnRefreshQueue" class="btn btn-sm btn-outline"><i class="fa-solid fa-arrows-rotate"></i> 새로고침</button>
+              </div>
+
+              <div id="socialQueueContainer" style="overflow-x: auto;">
+                <table class="table" style="width: 100%; font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>작업 ID</th>
+                      <th>플랫폼</th>
+                      <th>유형</th>
+                      <th>예정 시각</th>
+                      <th>상태</th>
+                      <th>재시도</th>
+                      <th>작업 제어</th>
+                    </tr>
+                  </thead>
+                  <tbody id="socialQueueTableBody">
+                    <tr><td colspan="7" style="text-align: center; padding: 20px;">대기 중인 예약 작업이 없습니다.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 6. 통합 실행 이력 탭 -->
+          <div id="socialTabHistory" class="social-tab-pane" style="display: none;">
+            <div class="card" style="padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                <h3 style="margin: 0; font-size: 1rem;"><i class="fa-solid fa-list-ul"></i> 소셜 자동화 통합 실행 이력</h3>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <select id="socialHistoryStatusFilter" class="form-control" style="width: auto; font-size: 0.8rem; padding: 4px 8px;">
+                    <option value="">전체 상태</option>
+                    <option value="succeeded">성공 (succeeded)</option>
+                    <option value="partially_failed">부분 실패 (partially_failed)</option>
+                    <option value="failed">실패 (failed)</option>
+                    <option value="cancelled">취소됨 (cancelled)</option>
+                  </select>
+                  <select id="socialHistoryPlatformFilter" class="form-control" style="width: auto; font-size: 0.8rem; padding: 4px 8px;">
+                    <option value="">전체 플랫폼</option>
+                    <option value="threads">Threads</option>
+                    <option value="x">X</option>
+                  </select>
+                  <button id="btnRefreshSocialHistory" class="btn btn-sm btn-outline"><i class="fa-solid fa-arrows-rotate"></i> 새로고침</button>
+                </div>
+              </div>
+
+              <div id="socialHistoryContainer" style="overflow-x: auto;">
+                <table class="table" style="width: 100%; font-size: 0.82rem;">
+                  <thead>
+                    <tr>
+                      <th>시각</th>
+                      <th>작업 ID</th>
+                      <th>플랫폼</th>
+                      <th>유형</th>
+                      <th>상태</th>
+                      <th>결과 / 오류</th>
+                      <th>상세</th>
+                    </tr>
+                  </thead>
+                  <tbody id="socialHistoryTableBody">
+                    <tr><td colspan="7" style="text-align: center; padding: 20px;">실행 이력을 불러오는 중...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 7. 계정 연결 관리 탭 -->
+          <div id="socialTabAccounts" class="social-tab-pane" style="display: none;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px;">
+              <!-- Threads 계정 연결 설정 -->
+              <div class="card" style="padding: 16px;">
+                <h4 style="margin: 0 0 10px 0; color: #fff;"><i class="fa-brands fa-threads"></i> Meta Threads 계정 설정</h4>
+                <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;">
+                  Meta for Developers에서 발급한 User Access Token을 등록합니다.
+                </div>
+                <div style="margin-bottom: 10px;">
+                  <label style="font-size: 0.75rem; color: var(--text-secondary);">User Access Token</label>
+                  <input type="password" id="tabThreadsTokenInput" class="form-control" placeholder="THQW..." style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                </div>
+                <div style="margin-bottom: 12px;">
+                  <label style="font-size: 0.75rem; color: var(--text-secondary);">User ID (선택)</label>
+                  <input type="text" id="tabThreadsUserIdInput" class="form-control" placeholder="Threads User ID" style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button id="btnSaveTabThreadsToken" class="btn btn-primary btn-sm"><i class="fa-solid fa-floppy-disk"></i> 토큰 저장</button>
+                  <button id="btnDisconnectTabThreads" class="btn btn-outline btn-sm" style="color: #f43f5e; border-color: #f43f5e;">연결 해제</button>
+                </div>
+              </div>
+
+              <!-- X 계정 연결 설정 -->
+              <div class="card" style="padding: 16px;">
+                <h4 style="margin: 0 0 10px 0; color: #fff;"><i class="fa-brands fa-x-twitter"></i> X (Twitter) 계정 설정</h4>
+                <div style="font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 12px;">
+                  X Developer Portal OAuth 2.0 PKCE 인증 또는 Access Token을 설정합니다.
+                </div>
+                <div style="margin-bottom: 10px;">
+                  <label style="font-size: 0.75rem; color: var(--text-secondary);">User Access Token (OAuth 2.0)</label>
+                  <input type="password" id="tabXTokenInput" class="form-control" placeholder="X OAuth 2.0 Bearer Token..." style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                </div>
+                <div style="margin-bottom: 12px;">
+                  <label style="font-size: 0.75rem; color: var(--text-secondary);">User ID (선택)</label>
+                  <input type="text" id="tabXUserIdInput" class="form-control" placeholder="X Numeric User ID" style="font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button id="btnSaveTabXToken" class="btn btn-primary btn-sm"><i class="fa-solid fa-floppy-disk"></i> 토큰 저장</button>
+                  <button id="btnDisconnectTabX" class="btn btn-outline btn-sm" style="color: #f43f5e; border-color: #f43f5e;">연결 해제</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </main>
+
+    <!-- 🕒 루틴 스케줄 편집 모달 (modalScheduleEdit) -->
+    <div id="modalScheduleEdit" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="max-width: 520px;">
+        <div class="modal-header">
+          <h3 style="color: #38bdf8; margin: 0;"><i class="fa-solid fa-clock"></i> <span id="modalScheduleRoutineName">루틴 스케줄 편집</span></h3>
+          <button class="modal-close" id="btnCloseScheduleModal"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body" style="padding: 16px 0;">
+          <input type="hidden" id="modalScheduleRoutineCode">
+          <div style="margin-bottom: 14px;">
+            <label style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 6px;">발행 시각 (HH:mm)</label>
+            <div id="modalScheduleTimesContainer" style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px;">
+              <!-- 시간 입력 행들이 동적으로 추가됨 -->
+            </div>
+            <button id="btnAddScheduleTimeRow" class="btn btn-xs btn-outline" style="color: #38bdf8; border-color: #38bdf8;">
+              <i class="fa-solid fa-plus"></i> 시각 추가
+            </button>
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <label style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 6px;">실행 요일</label>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;" id="modalScheduleDaysContainer">
+              <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 4px;"><input type="checkbox" value="MON" checked> 월</label>
+              <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 4px;"><input type="checkbox" value="TUE" checked> 화</label>
+              <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 4px;"><input type="checkbox" value="WED" checked> 수</label>
+              <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 4px;"><input type="checkbox" value="THU" checked> 목</label>
+              <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 4px;"><input type="checkbox" value="FRI" checked> 금</label>
+              <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 4px;"><input type="checkbox" value="SAT"> 토</label>
+              <label style="font-size: 0.8rem; display: flex; align-items: center; gap: 4px;"><input type="checkbox" value="SUN"> 일</label>
+            </div>
+          </div>
+
+          <div style="margin-bottom: 14px;">
+            <label style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 6px;">일일 최대 발행 건수</label>
+            <input type="number" id="modalScheduleMaxPosts" class="form-control" min="1" max="10" value="3" style="width: 100px;">
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+          <button id="btnCancelScheduleModal" class="btn btn-outline">취소</button>
+          <button id="btnSaveScheduleModal" class="btn btn-primary" style="background: #0284c7; border-color: #0284c7;">
+            <i class="fa-solid fa-save"></i> 스케줄 저장
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🌐 자료 출처 추가 및 SSRF 검증 모달 (modalAddSource) -->
+    <div id="modalAddSource" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="max-width: 520px;">
+        <div class="modal-header">
+          <h3 style="color: #38bdf8; margin: 0;"><i class="fa-solid fa-plus-circle"></i> 새 자료 출처(Source) 등록</h3>
+          <button class="modal-close" id="btnCloseAddSourceModal"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body" style="padding: 16px 0;">
+          <div style="margin-bottom: 12px;">
+            <label style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 4px;">연결할 루틴</label>
+            <select id="modalSourceRoutineSelect" class="form-control">
+              <!-- JS에서 옵션 렌더링 -->
+            </select>
+          </div>
+          <div style="margin-bottom: 12px;">
+            <label style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 4px;">출처 이름</label>
+            <input type="text" id="modalSourceName" class="form-control" placeholder="예: GeekNews 최신 트렌드">
+          </div>
+          <div style="margin-bottom: 12px;">
+            <label style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 4px;">출처 유형</label>
+            <select id="modalSourceKind" class="form-control">
+              <option value="RSS_ATOM">RSS / Atom 피드</option>
+              <option value="JSON_API">JSON API</option>
+              <option value="ARXIV">arXiv 논문</option>
+              <option value="HUGGINGFACE_PAPERS">Hugging Face Daily Papers</option>
+              <option value="SITE_ADAPTER">웹페이지 어댑터</option>
+            </select>
+          </div>
+          <div style="margin-bottom: 12px;">
+            <label style="font-size: 0.85rem; font-weight: 600; display: block; margin-bottom: 4px;">URL 주소</label>
+            <div style="display: flex; gap: 6px;">
+              <input type="url" id="modalSourceUrl" class="form-control" placeholder="https://news.hada.io/rss/news">
+              <button id="btnTestSourceUrl" class="btn btn-sm btn-outline" style="white-space: nowrap; border-color: #38bdf8; color: #38bdf8;">
+                <i class="fa-solid fa-shield-check"></i> 검증 테스트
+              </button>
+            </div>
+            <div id="sourceTestResultBox" style="margin-top: 8px; display: none; padding: 10px; border-radius: 6px; font-size: 0.78rem;"></div>
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+          <button id="btnCancelAddSourceModal" class="btn btn-outline">취소</button>
+          <button id="btnSaveAddSourceModal" class="btn btn-primary" style="background: #0284c7; border-color: #0284c7;">
+            <i class="fa-solid fa-check"></i> 출처 등록
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 🛡️ 실제 실행 승인 확인 대화상자 모달 (socialConfirmModal) -->
+    <div id="socialConfirmModal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="max-width: 480px;">
+        <div class="modal-header">
+          <h3 style="color: #38bdf8; margin: 0;"><i class="fa-solid fa-triangle-exclamation"></i> 실제 소셜 실행 승인 확인</h3>
+          <button class="modal-close" id="btnCloseSocialConfirmModal"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="modal-body" style="padding: 16px 0;">
+          <p style="font-size: 0.9rem; line-height: 1.6; margin-bottom: 14px;">
+            다음 소셜 작업을 외부 플랫폼에 <strong>실제 실행</strong>합니다. 실행하시겠습니까?
+          </p>
+          <div style="background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px 14px; font-size: 0.85rem; line-height: 1.7;">
+            <div><span style="color: var(--text-secondary);">대상 플랫폼:</span> <strong id="confirmModalPlatform" style="color: #fff;">-</strong></div>
+            <div><span style="color: var(--text-secondary);">작업 종류:</span> <strong id="confirmModalJobType" style="color: #38bdf8;">-</strong></div>
+            <div><span style="color: var(--text-secondary);">실행 대상 수:</span> <strong id="confirmModalItemCount" style="color: #34d399;">-</strong></div>
+            <div><span style="color: var(--text-secondary);">실행 모드:</span> <strong style="color: #f43f5e;">실제 라이브 실행 (Live)</strong></div>
+          </div>
+          <div style="margin-top: 12px; font-size: 0.78rem; color: #fbbf24;">
+            <i class="fa-solid fa-shield-halved"></i> 안전 정책에 따라 이미 완료된 작업은 취소되지 않으며, 일일 한도 내에서만 실행됩니다.
+          </div>
+        </div>
+        <div class="modal-footer" style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 12px;">
+          <button id="btnCancelSocialConfirm" class="btn btn-outline">취소</button>
+          <button id="btnProceedSocialConfirm" class="btn btn-primary" style="background: #e11d48; border-color: #e11d48;">
+            <i class="fa-solid fa-check"></i> 승인하고 실행하기
+          </button>
+        </div>
+      </div>
+    </div>
 
     <!-- 내 목소리 등록 모달창 (Voice Clone Modal) -->
     <div id="voiceCloneModal" class="modal-overlay" style="display: none;">
@@ -1609,7 +2335,44 @@
             </div>
           </div>
 
-          <!-- 4. 시스템 엔진 및 렌더러 상태 -->
+          <!-- 4. X (Twitter) API & OAuth 2.0 PKCE 설정 -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <div>
+                <strong style="font-size: 0.95rem; color: #fff;"><i class="fa-brands fa-x-twitter" style="color: #fff;"></i> X (Twitter) API & OAuth 2.0 PKCE 연동</strong>
+                <div style="font-size: 0.75rem; color: var(--text-secondary);">트윗/타래 발행, 답글 및 스하리(좋아요/리포스트/팔로우) 자동화</div>
+              </div>
+              <span id="envXBadge" class="badge badge-subtle">확인 중...</span>
+            </div>
+
+            <div style="display: flex; gap: 8px; align-items: center; margin-top: 10px; margin-bottom: 10px; background: rgba(0,0,0,0.25); padding: 10px; border-radius: 6px;">
+              <div style="flex: 1; font-size: 0.78rem;">
+                <span style="color: #38bdf8; font-weight: bold;">⚡ 공식 OAuth 2.0 PKCE 원클릭 연결</span>
+                <div style="font-size: 0.72rem; color: var(--text-secondary);">X Developer Portal 앱 권한으로 안전하게 로그인 및 토큰 발급</div>
+              </div>
+              <button type="button" id="btnConnectX" class="btn btn-sm btn-primary" style="white-space: nowrap;">
+                <i class="fa-brands fa-x-twitter"></i> X 계정 연결하기
+              </button>
+            </div>
+
+            <div style="margin-top: 10px;">
+              <label style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; display: block;">
+                <strong>또는 X User Access Token 직접 입력</strong> (수동 등록)
+              </label>
+              <div style="display: flex; gap: 8px;">
+                <input type="password" id="envXTokenInput" class="form-control" placeholder="X OAuth 2.0 User Access Token" style="flex: 1; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                <input type="text" id="envXUserIdInput" class="form-control" placeholder="User ID (선택)" style="width: 140px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem;">
+                <button type="button" id="btnSaveXToken" class="btn btn-sm" style="background: #000; border: 1px solid #fff; color: #fff;"><i class="fa-solid fa-floppy-disk"></i> 저장</button>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 0.75rem;">
+              <span id="envXAccountInfo" style="color: #38bdf8;">연결된 계정 없음</span>
+              <button type="button" id="btnDisconnectX" class="btn btn-xs btn-outline" style="color: #f43f5e;">연결 해제</button>
+            </div>
+          </div>
+
+          <!-- 5. 시스템 엔진 및 렌더러 상태 -->
           <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px;">
             <strong style="font-size: 0.9rem; color: #fff;"><i class="fa-solid fa-server"></i> 로컬 AI & 미디어 렌더러 엔진</strong>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; font-size: 0.8rem;">

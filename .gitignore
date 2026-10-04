@@ -106,6 +106,8 @@ token.pickle
 token.json
 data/threads_config.json
 threads_config.json
+data/x_config.json
+x_config.json
 
 # Legacy Archive
 .archive/
@@ -114,3 +116,9 @@ threads_config.json
 
 # 생성된 다운로드 zip 산출물
 data/zips/
+data/social_browser_profile/
+data/social_engagement.db*
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
