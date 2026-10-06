@@ -2535,6 +2535,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const lunaTrackStory = document.getElementById('lunaTrackStory');
   const lunaAudioPlayer = document.getElementById('lunaAudioPlayer');
 
+  // 사운드 엔지니어 베가 (마스터링) 패널 요소
+  const vegaPanel = document.getElementById('vegaPanel');
+  const vegaStatusBadge = document.getElementById('vegaStatusBadge');
+  const vegaMetrics = document.getElementById('vegaMetrics');
+  const vegaReasoning = document.getElementById('vegaReasoning');
+  const vegaStaleNotice = document.getElementById('vegaStaleNotice');
+  const vegaPromptInput = document.getElementById('vegaPromptInput');
+  const btnVegaAbRaw = document.getElementById('btnVegaAbRaw');
+  const btnVegaAbMaster = document.getElementById('btnVegaAbMaster');
+  const btnVegaRemaster = document.getElementById('btnVegaRemaster');
+  let vegaAbMode = 'master'; // 'raw' | 'master'
+
   // 가사 & 보컬 뷰어 요소
   const lunaLyricsBox = document.getElementById('lunaLyricsBox');
   const lunaLyricsToggle = document.getElementById('lunaLyricsToggle');
@@ -2743,7 +2755,7 @@ document.addEventListener('DOMContentLoaded', () => {
       btnRunLunaGen.querySelector('.spinner').style.display = 'inline-block';
       if (lunaStatusBadge) {
         lunaStatusBadge.className = 'badge badge-accent';
-        lunaStatusBadge.textContent = 'Gemini 기획 & Lyria 완곡 작곡 중...';
+        lunaStatusBadge.textContent = 'Gemini 기획 & Lyria 작곡 & 베가 마스터링 중...';
       }
 
       try {
@@ -2794,6 +2806,135 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ── 사운드 엔지니어 베가: 마스터링 결과 패널 / A-B 비교 / 재마스터 ─────────────
+  function fmtDb(v, unit) {
+    if (v === undefined || v === null || !isFinite(v)) return '—';
+    return `${Number(v).toFixed(1)} ${unit}`;
+  }
+
+  function renderVegaPanel(track) {
+    if (!vegaPanel) return;
+    const m = track && track.mastering;
+    if (!m) { vegaPanel.style.display = 'none'; return; }
+    vegaPanel.style.display = 'block';
+
+    const hasMaster = m.status === 'done' && Boolean(track.audio_raw_url);
+    if (vegaAbGroupVisible()) {
+      btnVegaAbRaw.style.display = hasMaster ? 'inline-block' : 'none';
+      btnVegaAbMaster.style.display = hasMaster ? 'inline-block' : 'none';
+    }
+    updateVegaAbButtons();
+
+    if (vegaStatusBadge) {
+      if (m.status === 'done') {
+        const src = m.decision_source === 'llm' ? 'AI 결정' : '장르 프리셋';
+        vegaStatusBadge.className = 'badge badge-success';
+        vegaStatusBadge.textContent = `마스터링 완료 · ${src}`;
+      } else if (m.status === 'skipped') {
+        vegaStatusBadge.className = 'badge badge-subtle';
+        vegaStatusBadge.textContent = '건너뜀 (의존성 미설치)';
+      } else {
+        vegaStatusBadge.className = 'badge badge-subtle';
+        vegaStatusBadge.textContent = '실패 · 원본 사용';
+      }
+    }
+
+    if (vegaMetrics) {
+      if (m.status === 'done' && m.before && m.after) {
+        const b = m.before, a = m.after;
+        vegaMetrics.innerHTML =
+          `<span style="color:#67e8f9;">음량</span> ${fmtDb(b.integrated_lufs, 'LUFS')} → <strong style="color:#fff;">${fmtDb(a.integrated_lufs, 'LUFS')}</strong> (목표 ${fmtDb(m.target_lufs, 'LUFS')}) &nbsp;·&nbsp; ` +
+          `<span style="color:#67e8f9;">트루피크</span> ${fmtDb(b.true_peak_dbtp, 'dBTP')} → <strong style="color:#fff;">${fmtDb(a.true_peak_dbtp, 'dBTP')}</strong> &nbsp;·&nbsp; ` +
+          `<span style="color:#67e8f9;">다이내믹</span> ${fmtDb(b.crest_factor_db, 'dB')} → ${fmtDb(a.crest_factor_db, 'dB')} &nbsp;·&nbsp; ` +
+          `<span style="color:#67e8f9;">스테레오 폭</span> ${Number(b.stereo_width || 0).toFixed(2)} → ${Number(a.stereo_width || 0).toFixed(2)}` +
+          (m.elapsed_seconds ? ` <span style="color:var(--text-muted);">(${m.elapsed_seconds}s)</span>` : '');
+      } else {
+        vegaMetrics.textContent = m.reason || m.note || '';
+      }
+    }
+    if (vegaReasoning) {
+      const note = m.note ? ` (${m.note})` : '';
+      vegaReasoning.textContent = m.status === 'done' ? `“${m.reasoning || ''}”${note}` : '';
+    }
+    if (vegaStaleNotice) vegaStaleNotice.style.display = track.video_stale ? 'block' : 'none';
+    if (vegaPromptInput && m.prompt) vegaPromptInput.value = m.prompt;
+  }
+
+  function vegaAbGroupVisible() { return Boolean(btnVegaAbRaw && btnVegaAbMaster); }
+
+  function updateVegaAbButtons() {
+    if (!vegaAbGroupVisible()) return;
+    const on = 'rgba(34,211,238,0.25)';
+    btnVegaAbRaw.style.background = vegaAbMode === 'raw' ? on : '';
+    btnVegaAbMaster.style.background = vegaAbMode === 'master' ? on : '';
+  }
+
+  function switchVegaAb(mode) {
+    if (!currentLunaTrack || !lunaAudioPlayer) return;
+    const url = mode === 'raw' ? currentLunaTrack.audio_raw_url : currentLunaTrack.audio_url;
+    if (!url) return;
+    const wasPlaying = !lunaAudioPlayer.paused;
+    const pos = lunaAudioPlayer.currentTime || 0;
+    vegaAbMode = mode;
+    lunaAudioPlayer.src = url;
+    lunaAudioPlayer.load();
+    lunaAudioPlayer.addEventListener('loadedmetadata', () => {
+      try { lunaAudioPlayer.currentTime = Math.min(pos, lunaAudioPlayer.duration || pos); } catch (_) {}
+      if (wasPlaying) lunaAudioPlayer.play().catch(() => {});
+    }, { once: true });
+    updateVegaAbButtons();
+  }
+
+  if (btnVegaAbRaw) btnVegaAbRaw.addEventListener('click', () => switchVegaAb('raw'));
+  if (btnVegaAbMaster) btnVegaAbMaster.addEventListener('click', () => switchVegaAb('master'));
+
+  if (btnVegaRemaster) {
+    btnVegaRemaster.addEventListener('click', async () => {
+      if (!currentLunaTrack || !currentLunaTrack.track_id) {
+        showAlert('먼저 트랙을 선택하거나 생성해주세요.', 'error');
+        return;
+      }
+      btnVegaRemaster.disabled = true;
+      btnVegaRemaster.querySelector('.btn-text').style.display = 'none';
+      btnVegaRemaster.querySelector('.spinner').style.display = 'inline-block';
+      if (lunaStatusBadge) {
+        lunaStatusBadge.className = 'badge badge-accent';
+        lunaStatusBadge.textContent = '베가 마스터링 중...';
+      }
+      try {
+        const res = await fetch('/api/luna/master', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            track_id: currentLunaTrack.track_id,
+            prompt: vegaPromptInput ? vegaPromptInput.value.trim() : '',
+            use_llm: true
+          })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || '마스터링 실패');
+        }
+        const updated = await res.json();
+        currentLunaTrack = updated;
+        renderLunaTrackView(updated);
+        loadLunaHistory();
+        const m = updated.mastering || {};
+        if (m.status === 'done') {
+          showAlert(`🎚️ 베가 마스터링 완료: ${fmtDb(m.after && m.after.integrated_lufs, 'LUFS')} / ${fmtDb(m.after && m.after.true_peak_dbtp, 'dBTP')}`, 'success');
+        } else {
+          showAlert(`⚠️ 베가 마스터링을 적용하지 못했습니다: ${m.reason || '알 수 없는 오류'}`, 'warning');
+        }
+      } catch (err) {
+        showAlert('베가 마스터링 오류: ' + err.message, 'error');
+      } finally {
+        btnVegaRemaster.disabled = false;
+        btnVegaRemaster.querySelector('.btn-text').style.display = 'inline-block';
+        btnVegaRemaster.querySelector('.spinner').style.display = 'none';
+      }
+    });
+  }
+
   function renderLunaTrackView(track) {
     if (!track) return;
     if (lunaEmptyState) lunaEmptyState.style.display = 'none';
@@ -2826,6 +2967,8 @@ document.addEventListener('DOMContentLoaded', () => {
       lunaAudioPlayer.src = track.audio_url || '';
       lunaAudioPlayer.load();
     }
+    vegaAbMode = 'master';
+    renderVegaPanel(track);
 
     // 감성 가사(Lyrics) 뷰어 렌더링
     if (lunaLyricsBox) {
