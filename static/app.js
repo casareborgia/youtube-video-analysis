@@ -2884,7 +2884,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function switchVegaAb(mode) {
     if (!currentLunaTrack || !lunaAudioPlayer) return;
-    const url = mode === 'raw' ? currentLunaTrack.audio_raw_url : currentLunaTrack.audio_url;
+    const url = mode === 'raw'
+      ? currentLunaTrack.audio_raw_url
+      : (currentLunaTrack.audio_preview_url || currentLunaTrack.audio_url);
     if (!url) return;
     const wasPlaying = !lunaAudioPlayer.paused;
     const pos = lunaAudioPlayer.currentTime || 0;
@@ -2977,7 +2979,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (lunaTrackTitle) lunaTrackTitle.textContent = track.title || 'Untitled Track';
     if (lunaTrackStory) lunaTrackStory.textContent = track.story || '';
     if (lunaAudioPlayer) {
-      lunaAudioPlayer.src = track.audio_url || '';
+      lunaAudioPlayer.src = track.audio_preview_url || track.audio_url || '';
       lunaAudioPlayer.load();
     }
     vegaAbMode = 'master';
