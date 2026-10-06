@@ -1550,6 +1550,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  // 썸네일이 없거나 불러오지 못한 트렌드 카드용 대체 이미지.
+  // CSP(img-src 'self' data: ...)가 허용하는 내장 SVG 를 쓴다. 외부 이미지로 대체하면 CSP 에 막혀
+  // onerror 가 같은 주소를 다시 넣으며 무한 반복되므로, onerror 는 한 번만 동작하게 한다.
+  const TREND_THUMB_PLACEHOLDER = 'data:image/svg+xml,' + encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180">' +
+    '<rect width="320" height="180" fill="#1f2937"/>' +
+    '<circle cx="160" cy="90" r="30" fill="#374151"/>' +
+    '<path d="M150 75 L175 90 L150 105 Z" fill="#9ca3af"/>' +
+    '</svg>'
+  );
+
   function renderTrendItems(items) {
     if (!trendItemsGrid) return;
     if (!items || items.length === 0) {
@@ -1561,7 +1572,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <div class="trend-item-card">
         <span class="trend-rank-badge">#${item.rank}</span>
         <div class="trend-thumb-wrap">
-          <img src="${item.thumbnail || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400'}" alt="thumb" loading="lazy" onerror="this.src='https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=400'">
+          <img src="${escapeHtml(item.thumbnail || TREND_THUMB_PLACEHOLDER)}" alt="" loading="lazy" onerror="this.onerror=null; this.src='${TREND_THUMB_PLACEHOLDER}'">
         </div>
         <h4 class="trend-card-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</h4>
         <div class="trend-card-meta">
