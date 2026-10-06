@@ -31,6 +31,8 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 SETTINGS_FILE = DATA_DIR / "settings.json"
 
 _cache = {"ts": 0.0, "backend": None}
+# 마지막 call_llm() 에서 실제로 응답한 백엔드·모델 (Gemini 실패 → 로컬 폴백까지 반영)
+_last_call = {"backend": None, "model": None, "ts": 0.0}
 _selected_model: str | None = None
 
 
@@ -285,6 +287,15 @@ def get_active_backend(force=None):
     return detect_backend(force=force)
 
 
+def last_call_info() -> dict:
+    """가장 최근 call_llm() 이 실제로 사용한 백엔드와 모델을 돌려준다. 호출 실패 시 backend/model 은 None."""
+    return dict(_last_call)
+
+
+def _record_last_call(backend_type, model):
+    _last_call.update({"backend": backend_type, "model": model, "ts": time.time()})
+
+
 def call_gemini(
     messages: list,
     model: str = DEFAULT_GEMINI_MODEL,
@@ -352,18 +363,21 @@ def call_llm(
     사용 가능한 LLM(Google Gemini 또는 로컬 LM Studio/Ollama)으로 메시지를 전송합니다.
     """
     backend = detect_backend()
+    _record_last_call(None, None)
 
     # 1. Gemini 클라우드 백엔드 처리
     if backend and backend.get("backend_type") == "gemini":
         model_name = _selected_model or backend.get("model") or DEFAULT_GEMINI_MODEL
         try:
-            return call_gemini(
+            result = call_gemini(
                 messages,
                 model=model_name,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 json_mode=json_mode,
             )
+            _record_last_call("gemini", model_name)
+            return result
         except Exception as ge:
             print(f"[LLM Client] Gemini 호출 실패 -> 로컬 AI fallback 시도: {ge}")
             # 로컬 백엔드가 있으면 대체
@@ -471,6 +485,7 @@ def call_llm(
             "content": "이전 답변이 토큰 길이 제한으로 중간에 끊겼습니다. 바로 직전에 끊긴 부분부터 자연스럽게 이어서 계속 작성해주세요.",
         })
 
+    _record_last_call(backend["backend_type"], active_model)
     return full_content.strip()
 
 

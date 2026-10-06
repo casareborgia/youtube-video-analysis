@@ -48,11 +48,12 @@ mixmaster-ai 의 `analyze → decide → process → write` 4단계 구조를 �
 | 함수 | 역할 | 비고 |
 |---|---|---|
 | `is_available()` / `availability_report()` | 의존성 설치 여부, 설치 안내 | pedalboard · pyloudnorm · soundfile · scipy |
-| `load_audio(path)` | 음원 → `(channels, samples)` float32 | soundfile 우선, 실패 시 ffmpeg 디코딩. 모노는 스테레오로 복제 |
+| `load_audio(path)` | 음원 → `(channels, samples)` float32 | soundfile 우선, 실패 시 ffmpeg 디코딩. 모노는 스테레오로 복제. **샘플레이트는 원본 유지**(리샘플링 없음) |
 | `analyze(audio, sr)` | 측정값 13종 (아래 3.3) | librosa 없이 numpy/scipy/pyloudnorm 만 사용 |
 | `decide(analysis, genre, mood, prompt, use_llm, genre_spec)` | `MasteringDecisions` 결정 | 반환 `(decisions, source, note)`; `source` = `"llm"` 또는 `"preset"` |
+| `decide_with_meta(...)` | `decide()` + LLM 호출 메타 | 네 번째 값 `{backend, model, attempted}` — 실제로 응답한 모델 |
 | `process(audio, sr, decisions)` | DSP 체인 적용 | 반환 `(float32 결과, 처리 로그)` |
-| `write_audio(audio, sr, path, bit_depth)` | 24bit WAV 저장 | |
+| `write_audio(audio, sr, path, bit_depth)` | 24bit WAV 저장 | 입력과 같은 샘플레이트로 저장 (Lyria 는 44.1kHz) |
 | `master_track(track_data, prompt, use_llm, luna_dir, genre_spec, progress_cb)` | 위 전체를 묶어 루나 `track_data` 를 갱신 | **예외를 밖으로 던지지 않는다** |
 | `preset_for_genre(genre)` / `describe_presets()` | 장르별 프리셋 | 10개 장르 + `default` |
 
@@ -72,6 +73,7 @@ corrective_eq → compressor → tonal_eq → saturator → M/S stereo_image
 - **새츄레이터는 `tanh(drive)` 로 정규화**해 질감만 더하고 음량은 바꾸지 않는다. `mix=0` 또는 `drive=0` 이면 입력을 그대로 돌려준다.
 - **M/S 이미저**는 `mono_low_hz` 이하 사이드 성분을 제거해 저음을 모노로 만든 뒤 `width` 를 곱한다.
 - 오디오 배열은 항상 `(channels, samples)`, 입출력 float32, 내부 연산 float64, pedalboard 호출 전 `[-1, 1]` 클립.
+- **리샘플링하지 않는다.** 원본 샘플레이트(Lyria 44.1kHz)로 처리·저장한다. 유튜브는 44.1kHz 를 그대로 받으며, 변환은 음질 손실만 남긴다.
 - 피크가 `SILENCE_FLOOR(1e-6)` 미만이면 무음으로 보고 DSP 를 건너뛴다.
 - 샘플레이트는 하드코딩하지 않고 항상 인자로 넘긴다.
 
@@ -124,6 +126,7 @@ corrective_eq → compressor → tonal_eq → saturator → M/S stereo_image
 - `llm_client.call_llm_json()` 을 통해 Gemini 또는 로컬 LLM(LM Studio/Ollama)을 호출한다. 프로젝트 공통 경로이며 Anthropic API 를 직접 쓰지 않는다.
 - 온도 0.2, 시스템 프롬프트에 체인 순서와 판단 규칙(3.3 우측 열)을 명시한다.
 - 응답이 JSON 이 아니거나 스키마 범위를 벗어나면 **프리셋으로 전체 대체**하고 `mastering.note` 에 사유를 적는다. 일부만 가져오지 않는다.
+- **결정한 모델을 기록한다.** `llm_client.last_call_info()` 는 마지막 `call_llm()` 에서 *실제로 응답한* 백엔드·모델을 돌려준다(Gemini 실패 → 로컬 폴백도 반영, 호출 실패 시 None). 베가는 이 값을 `mastering.decision_backend` / `decision_model` 에 남긴다. LLM 응답이 범위 검증에서 떨어져 프리셋을 썼다면 `decision_model` 은 None 이고 호출했던 모델은 `llm_attempted` 에 남는다.
 - 무음 입력이면 LLM 을 호출하지 않는다.
 
 ### 3.7 데이터 모델 — `track_data` 추가 필드
@@ -137,15 +140,18 @@ corrective_eq → compressor → tonal_eq → saturator → M/S stereo_image
   "video_stale":    true,                                       // 재마스터 후 기존 영상이 구버전이면 true, 재렌더 시 제거
   "mastering": {
     "status": "done" | "failed" | "skipped",
-    "agent": "베가 (Vega)", "engine_version": "1.0.0",
+    "agent": "베가 (Vega)", "engine_version": "1.1.0",
     "decision_source": "llm" | "preset",
+    "decision_backend": "gemini" | "lmstudio" | "ollama" | null,   // decision_source == "llm" 일 때만
+    "decision_model": "gemini-3.8-flash" | null,                    // 실제로 결정을 내린 모델
+    "llm_attempted": {"backend": ..., "model": ..., "attempted": true} | null,  // LLM 을 불렀지만 프리셋으로 대체된 경우
     "note": "폴백 사유 등",
     "prompt": "사용자 지시",
     "genre": "lofi", "target_lufs": -14.0, "ceiling_dbtp": -1.0,
     "before": { ...analyze() 결과 }, "after": { ...analyze() 결과 },
     "decisions": { ...MasteringDecisions }, "reasoning": "LLM/프리셋 사유",
     "process_log": { "loudness_gain_db": -1.8, "true_peak_trim_db": ..., "post_limiter_trim_db": ... },
-    "output_file": "...", "sample_rate": 48000, "bit_depth": 24,
+    "output_file": "...", "sample_rate": 44100, "bit_depth": 24,   // sample_rate 는 원본 그대로
     "elapsed_seconds": 2.3, "processed_at": 1759760000.0
     // status != done 이면: "reason", (skipped 시) "install_hint"
   }
@@ -164,7 +170,8 @@ corrective_eq → compressor → tonal_eq → saturator → M/S stereo_image
 
 ### 3.9 프론트엔드 (6단계 루나 탭)
 
-- 오디오 플레이어 아래 **베가 패널**(`#vegaPanel`): 상태 배지(완료·AI 결정/프리셋, 건너뜀, 실패), 전후 측정값(LUFS·트루피크·크레스트·스테레오 폭), 결정 사유, 재렌더 필요 경고.
+- 오디오 플레이어 아래 **베가 패널**(`#vegaPanel`): 상태 배지(완료·`AI 결정 · <모델명>`/장르 프리셋, 건너뜀, 실패), 전후 측정값(LUFS·트루피크·크레스트·스테레오 폭), 결정 사유, 재렌더 필요 경고.
+- 보관함 목록(`/api/luna/history`)도 `mastering`, `audio_raw_url`, `video_stale` 을 내려주므로, 보관함에서 곡을 골라도 패널이 보인다.
 - **A/B 버튼**: `A · 원본` / `B · 마스터` — 재생 위치를 유지한 채 `audio_raw_url` ↔ `audio_url` 전환.
 - **재마스터**: 프롬프트 입력 후 `POST /api/luna/master` 호출, 결과로 뷰 갱신.
 - `mastering` 필드가 없는 과거 트랙은 패널을 숨긴다.
@@ -179,6 +186,22 @@ corrective_eq → compressor → tonal_eq → saturator → M/S stereo_image
 - 오케스트레이션: 원본 보존·`audio_file` 교체, 재마스터 시 원본에서 재시작(열화 누적 없음), 음원 없음 → `failed` 유지, LLM 실패 중에도 `done`
 - 비활성 경로: 의존성 없을 때 `skipped` 와 설치 안내
 - API: `/api/vega/status`, 없는 트랙 404, 생성 요청 필드
+
+### 3.11 실제 음원 검증 결과 (2026-10-07)
+
+Lyria 3.5 로 생성한 lofi 곡 *Blue Hour Reverie* (180초, 44.1kHz) 를 베가와 **독립된 ffmpeg EBU R128 측정기**로 검증했다.
+
+| 항목 | 원본 | 마스터 | 렌더 영상(AAC 192k) |
+|---|---|---|---|
+| 통합 음량 | -11.6 LUFS | -14.0 LUFS | -14.0 LUFS |
+| 트루피크 | +0.3 dBFS | -2.0 dBFS | -2.3 dBFS |
+| 풀스케일 클리핑 샘플 | 62 | 0 | — |
+| LRA | 11.9 LU | 8.2 LU | 8.1 LU |
+
+- 널 테스트: 음량만 맞춘 원본 대비 잔차 -10.3 dB (게인만 바꿨다면 -60 dB 이하) → 실제 DSP 처리 확인
+- 대역 변화(음량 매칭 후): <30Hz -3.3 dB (HPF), 10–16kHz +1.8 dB (shelf +1 + 새츄 배음). 250Hz -0.8 dB 컷은 새츄레이션 배음에 묻혀 측정되지 않음
+- 시간 정렬 오차 0 샘플, NaN 0, 길이 동일
+- 재마스터 지시 "저음을 더 단단하고 풍성하게, 고역은 부드럽게" → LLM 이 120Hz +2.2 / 8.5kHz -2.5 로 결정, 실측 서브 +1.6 dB · 고역 -1.6 dB, 음량은 -14.0 유지, 원본에서 재시작 확인
 
 ## 4. 참고 레포 분석 요약과 적용 판단
 

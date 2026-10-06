@@ -100,6 +100,46 @@ class VegaDecideTests(unittest.TestCase):
         self.assertEqual(d.target_lufs, -13.0)
         self.assertEqual(d.reasoning, "테스트 사유")
 
+    def test_decide_with_meta_reports_model_that_actually_answered(self):
+        good = json.loads(vega_engine.preset_for_genre("lofi").model_dump_json())
+        with mock.patch.object(vega_engine.llm_client, "call_llm_json", return_value=(good, "raw")), \
+             mock.patch.object(vega_engine.llm_client, "last_call_info",
+                               return_value={"backend": "ollama", "model": "gemma4:latest", "ts": 1.0}):
+            d, src, note, meta = vega_engine.decide_with_meta({"is_silent": False}, "lofi", use_llm=True)
+        self.assertEqual(src, "llm")
+        self.assertEqual(meta["backend"], "ollama")
+        self.assertEqual(meta["model"], "gemma4:latest")
+        self.assertTrue(meta["attempted"])
+
+    def test_decide_with_meta_without_llm_has_no_model(self):
+        d, src, note, meta = vega_engine.decide_with_meta({"is_silent": False}, "lofi", use_llm=False)
+        self.assertEqual(src, "preset")
+        self.assertFalse(meta["attempted"])
+        self.assertIsNone(meta["model"])
+
+
+class LlmClientLastCallTests(unittest.TestCase):
+    """llm_client.last_call_info() 는 Gemini 실패 후 로컬로 넘어가도 실제 응답한 모델을 가리켜야 한다."""
+
+    def test_records_gemini_model_on_success(self):
+        import llm_client
+        with mock.patch.object(llm_client, "detect_backend",
+                               return_value={"backend_type": "gemini", "model": "gemini-x", "name": "Google Gemini"}), \
+             mock.patch.object(llm_client, "call_gemini", return_value="{}"), \
+             mock.patch.object(llm_client, "_selected_model", None):
+            llm_client.call_llm([{"role": "user", "content": "hi"}])
+        info = llm_client.last_call_info()
+        self.assertEqual(info["backend"], "gemini")
+        self.assertEqual(info["model"], "gemini-x")
+
+    def test_failed_call_clears_previous_record(self):
+        import llm_client
+        llm_client._record_last_call("gemini", "old-model")
+        with mock.patch.object(llm_client, "detect_backend", return_value=None):
+            with self.assertRaises(RuntimeError):
+                llm_client.call_llm([{"role": "user", "content": "hi"}])
+        self.assertIsNone(llm_client.last_call_info()["model"])
+
     def test_silent_input_keeps_preset_without_llm(self):
         with mock.patch.object(vega_engine.llm_client, "call_llm_json", side_effect=AssertionError("must not be called")):
             d, src, note = vega_engine.decide({"is_silent": True}, "lofi", use_llm=True)
@@ -213,6 +253,42 @@ class VegaMasterTrackTests(unittest.TestCase):
         out = vega_engine.master_track(bad, use_llm=False, luna_dir=self.tmp)
         self.assertEqual(out["mastering"]["status"], "failed")
         self.assertEqual(out["audio_file"], bad["audio_file"])
+
+    def test_master_keeps_source_sample_rate(self):
+        # Lyria 출력은 44.1kHz. 베가는 리샘플링하지 않고 원본 샘플레이트로 저장해야 한다.
+        sr44 = 44100
+        src = os.path.join(self.tmp, self.track_id, "audio_441.wav")
+        vega_engine.write_audio(_synthetic_stereo(seconds=4.0, sr=sr44), sr44, src, 16)
+        track = dict(self.track, audio_file=src)
+        out = vega_engine.master_track(track, use_llm=False, luna_dir=self.tmp)
+        self.assertEqual(out["mastering"]["status"], "done", out["mastering"])
+        self.assertEqual(out["mastering"]["sample_rate"], sr44)
+        import soundfile as sf
+        self.assertEqual(sf.info(out["audio_file"]).samplerate, sr44)
+
+    def test_master_records_decision_model(self):
+        good = json.loads(vega_engine.preset_for_genre("lofi").model_dump_json())
+        with mock.patch.object(vega_engine.llm_client, "call_llm_json", return_value=(good, "raw")), \
+             mock.patch.object(vega_engine.llm_client, "last_call_info",
+                               return_value={"backend": "gemini", "model": "gemini-3.8-flash", "ts": 1.0}):
+            out = vega_engine.master_track(dict(self.track), use_llm=True, luna_dir=self.tmp)
+        m = out["mastering"]
+        self.assertEqual(m["decision_source"], "llm")
+        self.assertEqual(m["decision_backend"], "gemini")
+        self.assertEqual(m["decision_model"], "gemini-3.8-flash")
+        self.assertIsNone(m["llm_attempted"])
+
+    def test_master_records_attempted_model_when_llm_value_rejected(self):
+        bad = json.loads(vega_engine.preset_for_genre("lofi").model_dump_json())
+        bad["compressor"]["ratio"] = 99
+        with mock.patch.object(vega_engine.llm_client, "call_llm_json", return_value=(bad, "raw")), \
+             mock.patch.object(vega_engine.llm_client, "last_call_info",
+                               return_value={"backend": "gemini", "model": "gemini-3.8-flash", "ts": 1.0}):
+            out = vega_engine.master_track(dict(self.track), use_llm=True, luna_dir=self.tmp)
+        m = out["mastering"]
+        self.assertEqual(m["decision_source"], "preset")
+        self.assertIsNone(m["decision_model"])
+        self.assertEqual(m["llm_attempted"]["model"], "gemini-3.8-flash")
 
     def test_llm_failure_during_master_still_succeeds_with_preset(self):
         with mock.patch.object(vega_engine.llm_client, "call_llm_json", side_effect=RuntimeError("offline")):

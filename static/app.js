@@ -2827,7 +2827,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (vegaStatusBadge) {
       if (m.status === 'done') {
-        const src = m.decision_source === 'llm' ? 'AI 결정' : '장르 프리셋';
+        const src = m.decision_source === 'llm'
+          ? `AI 결정${m.decision_model ? ' · ' + m.decision_model : ''}`
+          : '장르 프리셋';
         vegaStatusBadge.className = 'badge badge-success';
         vegaStatusBadge.textContent = `마스터링 완료 · ${src}`;
       } else if (m.status === 'skipped') {

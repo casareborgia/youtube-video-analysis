@@ -8,7 +8,7 @@
 파이프라인 (mixmaster-ai 의 analyze → decide → process → write 구조를 참고해 재구현):
 
     load_audio()  →  analyze()  →  decide()  →  process()  →  write_audio()
-       ffmpeg/sf      측정 13종     LLM/프리셋      DSP 체인        24bit WAV
+       ffmpeg/sf      측정 13종     LLM/프리셋      DSP 체인     24bit WAV (원본 샘플레이트)
 
 설계 원칙
 - 외부 LLM 결정이 실패하면 장르별 프리셋으로 자동 대체한다 (점진적 저하).
@@ -49,9 +49,8 @@ except Exception as _e:  # pragma: no cover - 환경 의존
     _IMPORT_ERROR = str(_e)
 
 AGENT_NAME = "베가 (Vega)"
-ENGINE_VERSION = "1.0.0"
-MASTER_SAMPLE_RATE = 48000          # 유튜브 권장 오디오 샘플레이트
-MASTER_BIT_DEPTH = 24
+ENGINE_VERSION = "1.1.0"
+MASTER_BIT_DEPTH = 24               # 샘플레이트는 원본 그대로 유지한다 (Lyria 출력은 44.1kHz, 변환하면 음질만 손해)
 SILENCE_FLOOR = 1e-6                # 이 이하 피크면 무음으로 간주하고 처리 생략
 MASTERED_FILENAME = "audio_mastered.wav"
 RAW_FILENAME_PREFIX = "audio_raw"
@@ -280,8 +279,9 @@ def describe_presets() -> list[dict]:
 # 3. 오디오 입출력
 # ══════════════════════════════════════════════════════════════════════════
 
-def _ffmpeg_decode(src: str, dst_wav: str, sample_rate: int = MASTER_SAMPLE_RATE):
-    cmd = ["ffmpeg", "-y", "-i", src, "-vn", "-ac", "2", "-ar", str(sample_rate), "-c:a", "pcm_f32le", dst_wav]
+def _ffmpeg_decode(src: str, dst_wav: str):
+    """soundfile 이 못 읽는 포맷을 float WAV 로 디코딩한다. 샘플레이트는 원본 그대로 둔다 (-ar 미지정)."""
+    cmd = ["ffmpeg", "-y", "-i", src, "-vn", "-ac", "2", "-c:a", "pcm_f32le", dst_wav]
     res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if res.returncode != 0 or not os.path.exists(dst_wav):
         raise RuntimeError(f"ffmpeg 디코딩 실패: {res.stderr.decode(errors='ignore')[-300:]}")
@@ -468,34 +468,59 @@ def _llm_messages(analysis: dict, genre: str, mood: str, prompt: str,
     return [{"role": "system", "content": _SYSTEM_PROMPT}, {"role": "user", "content": user}]
 
 
+def _llm_call_meta() -> dict:
+    """llm_client 가 방금 실제로 쓴 백엔드·모델. (Gemini 실패 → 로컬 폴백도 반영된다)"""
+    try:
+        info = llm_client.last_call_info() or {}
+    except Exception:
+        info = {}
+    return {"backend": info.get("backend"), "model": info.get("model")}
+
+
+def decide_with_meta(analysis: dict, genre: str = "default", mood: str = "", prompt: str = "",
+                     use_llm: bool = True, genre_spec: Optional[dict] = None
+                     ) -> Tuple[MasteringDecisions, str, str, dict]:
+    """
+    decide() 와 같지만 네 번째 값으로 LLM 호출 메타를 함께 돌려준다.
+      meta = {"backend": "gemini"|"lmstudio"|"ollama"|None, "model": str|None, "attempted": bool}
+      LLM 응답이 범위 검증에서 떨어져 프리셋을 썼어도, 호출한 모델은 meta 에 남는다.
+    """
+    preset = preset_for_genre(genre)
+    no_call = {"backend": None, "model": None, "attempted": False}
+    if analysis.get("is_silent"):
+        return preset, "preset", "무음 입력 — 프리셋 유지", no_call
+    if not use_llm:
+        return preset, "preset", "프리셋 전용 모드", no_call
+
+    meta = {"backend": None, "model": None, "attempted": True}
+    try:
+        parsed, raw = llm_client.call_llm_json(
+            _llm_messages(analysis, genre, mood, prompt, preset, genre_spec),
+            max_tokens=2048, temperature=0.2,
+        )
+        meta.update(_llm_call_meta())
+        if not isinstance(parsed, dict):
+            raise ValueError("LLM 응답에서 JSON 객체를 찾지 못함")
+        decisions = MasteringDecisions.model_validate(parsed)
+        if not decisions.reasoning:
+            decisions.reasoning = "LLM 결정 (사유 미제공)"
+        return decisions, "llm", "", meta
+    except ValidationError as e:
+        return preset, "preset", f"LLM 값이 허용 범위를 벗어나 프리셋으로 대체: {str(e)[:160]}", meta
+    except Exception as e:
+        return preset, "preset", f"LLM 호출 실패로 프리셋으로 대체: {str(e)[:160]}", meta
+
+
 def decide(analysis: dict, genre: str = "default", mood: str = "", prompt: str = "",
            use_llm: bool = True, genre_spec: Optional[dict] = None) -> Tuple[MasteringDecisions, str, str]:
     """
     반환: (decisions, source, note)
       source = "llm" | "preset"
       note   = 폴백 사유 등 사람이 읽을 메모
+    모델명까지 필요하면 decide_with_meta() 를 쓴다.
     """
-    preset = preset_for_genre(genre)
-    if analysis.get("is_silent"):
-        return preset, "preset", "무음 입력 — 프리셋 유지"
-    if not use_llm:
-        return preset, "preset", "프리셋 전용 모드"
-
-    try:
-        parsed, raw = llm_client.call_llm_json(
-            _llm_messages(analysis, genre, mood, prompt, preset, genre_spec),
-            max_tokens=2048, temperature=0.2,
-        )
-        if not isinstance(parsed, dict):
-            raise ValueError("LLM 응답에서 JSON 객체를 찾지 못함")
-        decisions = MasteringDecisions.model_validate(parsed)
-        if not decisions.reasoning:
-            decisions.reasoning = "LLM 결정 (사유 미제공)"
-        return decisions, "llm", ""
-    except ValidationError as e:
-        return preset, "preset", f"LLM 값이 허용 범위를 벗어나 프리셋으로 대체: {str(e)[:160]}"
-    except Exception as e:
-        return preset, "preset", f"LLM 호출 실패로 프리셋으로 대체: {str(e)[:160]}"
+    decisions, source, note, _meta = decide_with_meta(analysis, genre, mood, prompt, use_llm, genre_spec)
+    return decisions, source, note
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -666,7 +691,8 @@ def master_track(track_data: dict, prompt: str = "", use_llm: bool = True,
         before = analyze(audio, sr)
 
         step(35, "장르·측정값 기반 마스터링 파라미터 결정 중...")
-        decisions, source_kind, note = decide(before, genre, mood, prompt, use_llm=use_llm, genre_spec=genre_spec)
+        decisions, source_kind, note, llm_meta = decide_with_meta(
+            before, genre, mood, prompt, use_llm=use_llm, genre_spec=genre_spec)
 
         step(55, f"DSP 체인 적용 중 (EQ → 컴프 → 새츄레이션 → 이미저 → {decisions.target_lufs:.0f} LUFS → 리미터)...")
         mastered, proc_log = process(audio, sr, decisions)
@@ -683,6 +709,10 @@ def master_track(track_data: dict, prompt: str = "", use_llm: bool = True,
             "agent": AGENT_NAME,
             "engine_version": ENGINE_VERSION,
             "decision_source": source_kind,
+            # 실제로 결정을 내린 모델. 프리셋을 썼으면 None, LLM 을 호출했다가 떨어졌으면 llm_attempted 에 남는다.
+            "decision_backend": llm_meta.get("backend") if source_kind == "llm" else None,
+            "decision_model": llm_meta.get("model") if source_kind == "llm" else None,
+            "llm_attempted": llm_meta if (llm_meta.get("attempted") and source_kind != "llm") else None,
             "note": note,
             "prompt": prompt or "",
             "genre": genre,
@@ -699,8 +729,9 @@ def master_track(track_data: dict, prompt: str = "", use_llm: bool = True,
             "elapsed_seconds": round(time.time() - started, 1),
             "processed_at": time.time(),
         }
+        who = llm_meta.get("model") if source_kind == "llm" else "장르 프리셋"
         step(100, f"마스터링 완료: {before['integrated_lufs']} → {after['integrated_lufs']} LUFS, "
-                  f"TP {after['true_peak_dbtp']} dBTP ({source_kind})")
+                  f"TP {after['true_peak_dbtp']} dBTP ({who})")
     except Exception as e:
         track_data["mastering"] = {
             "status": "failed", "agent": AGENT_NAME, "engine_version": ENGINE_VERSION,
