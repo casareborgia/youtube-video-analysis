@@ -1082,7 +1082,11 @@ def list_tracks():
                 "comment_posted": d.get("comment_posted", False),
                 "studio_comment_url": f"https://studio.youtube.com/video/{d.get('uploaded_video_id')}/comments" if d.get("uploaded_video_id") else "",
                 "trend_brief_applied": d.get("trend_brief_applied", False),
-                "trend_brief": d.get("trend_brief")
+                "trend_brief": d.get("trend_brief"),
+                # 사운드 엔지니어 베가 — 보관함에서 선택해도 마스터링 패널·A/B 비교가 보이도록 함께 내려준다
+                "mastering": d.get("mastering"),
+                "audio_raw_url": d.get("audio_raw_url"),
+                "video_stale": d.get("video_stale", False),
             })
         except Exception:
             continue

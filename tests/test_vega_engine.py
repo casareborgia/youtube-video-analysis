@@ -232,6 +232,34 @@ class VegaUnavailablePathTests(unittest.TestCase):
         self.assertIn("pip install", out["mastering"]["install_hint"])
 
 
+class LunaHistoryExposesMasteringTests(unittest.TestCase):
+    """보관함(/api/luna/history)에서 곡을 골라도 베가 패널이 뜨려면 목록에 마스터링 필드가 있어야 한다."""
+
+    def test_list_tracks_includes_mastering_fields(self):
+        import luna_engine
+        tmp = tempfile.mkdtemp(prefix="vega_hist_")
+        try:
+            tdir = os.path.join(tmp, "luna_hist_0001")
+            os.makedirs(tdir)
+            meta = {
+                "track_id": "luna_hist_0001", "title": "t", "genre": "lofi", "created_at": 1.0,
+                "audio_url": "/data/luna_music/luna_hist_0001/audio_mastered.wav",
+                "audio_raw_url": "/data/luna_music/luna_hist_0001/audio_raw.mp3",
+                "video_stale": True,
+                "mastering": {"status": "done", "decision_source": "preset"},
+            }
+            with open(os.path.join(tdir, "meta.json"), "w", encoding="utf-8") as f:
+                json.dump(meta, f)
+            with mock.patch.object(luna_engine, "LUNA_DIR", tmp):
+                rows = luna_engine.list_tracks()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["mastering"]["status"], "done")
+            self.assertEqual(rows[0]["audio_raw_url"], meta["audio_raw_url"])
+            self.assertTrue(rows[0]["video_stale"])
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class VegaApiTests(unittest.TestCase):
     def setUp(self):
         from fastapi.testclient import TestClient
