@@ -35,6 +35,7 @@ import marketing
 import producer
 import uploader
 import luna_engine
+import vega_engine
 import threads_client
 import capcut_builder
 import engagement_automation
@@ -1145,6 +1146,13 @@ class LunaTrackGenerateRequest(BaseModel):
     duration_seconds: Optional[int] = 180
     leo_brief: Optional[dict] = None
     vocal_mode: Optional[str] = "auto"
+    master_audio: Optional[bool] = True          # 베가 자동 마스터링 (기본 켜짐)
+    mastering_prompt: Optional[str] = ""         # 베가에게 전달할 마스터링 지시 (선택)
+
+class LunaMasterRequest(BaseModel):
+    track_id: str
+    prompt: Optional[str] = ""                   # 예: "저음을 더 단단하게, 스트리밍용 -14 LUFS"
+    use_llm: Optional[bool] = True               # False 면 장르 프리셋만 적용
 
 class LunaRenderVideoRequest(BaseModel):
     track_id: str
@@ -1211,7 +1219,12 @@ async def generate_luna_track(req: LunaTrackGenerateRequest):
             concept["leo_brief"] = req.leo_brief
         
         # 음원 생성 (Lyria 3 Pro / 오토 신스)
-        track_with_audio = luna_engine.generate_luna_audio(concept, duration_seconds=req.duration_seconds or 180)
+        track_with_audio = luna_engine.generate_luna_audio(
+            concept,
+            duration_seconds=req.duration_seconds or 180,
+            master_audio=(req.master_audio if req.master_audio is not None else True),
+            mastering_prompt=req.mastering_prompt or "",
+        )
         
         # 앨범 커버 생성 (나노바나나)
         full_track = luna_engine.generate_luna_cover(track_with_audio)
@@ -1224,6 +1237,38 @@ async def generate_luna_track(req: LunaTrackGenerateRequest):
         return full_track
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"루나 트랙 생성 실패: {e}")
+
+@app.get("/api/vega/status")
+async def vega_status():
+    """사운드 엔지니어 베가 가용성, 엔진 버전, 장르별 마스터링 프리셋 요약"""
+    report = vega_engine.availability_report()
+    report["auto_master_enabled"] = luna_engine._vega_auto_master_enabled()
+    report["presets"] = vega_engine.describe_presets()
+    return report
+
+@app.post("/api/luna/master")
+async def master_luna_track(req: LunaMasterRequest):
+    """
+    [베가] 기존 루나 트랙을 (재)마스터링한다.
+    원본(audio_raw.*)은 보존되며, 매 호출마다 원본에서 다시 처리하므로 여러 번 눌러도 열화가 누적되지 않는다.
+    """
+    track = luna_engine.load_track(req.track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
+    if not vega_engine.is_available():
+        raise HTTPException(status_code=503, detail="베가 의존성이 설치되지 않았습니다: " + vega_engine.availability_report()["install_hint"])
+    try:
+        updated = vega_engine.master_track(
+            track, prompt=req.prompt or "", use_llm=(req.use_llm if req.use_llm is not None else True),
+            luna_dir=luna_engine.LUNA_DIR, genre_spec=luna_engine.GENRE_SPECS.get(track.get("genre")),
+        )
+        # 마스터 결과가 바뀌었으므로 이전 렌더 영상은 더 이상 최신이 아니다 → 재렌더 유도
+        if updated.get("mastering", {}).get("status") == "done" and updated.get("video_url"):
+            updated["video_stale"] = True
+        luna_engine.save_track(updated)
+        return updated
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"베가 마스터링 실패: {e}")
 
 @app.post("/api/luna/render")
 async def render_luna_music_video(req: LunaRenderVideoRequest):

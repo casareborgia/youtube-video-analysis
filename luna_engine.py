@@ -14,6 +14,7 @@ import urllib.error
 import llm_client
 import producer
 import uploader
+import vega_engine
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -505,10 +506,11 @@ def _ensure_audio_duration(audio_path: str, target_seconds: int = 180) -> float:
 
 # ── 2. Lyria 3 완곡 음원 생성 ──────────────────────────────────────────
 
-def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None):
+def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None, master_audio=True, mastering_prompt=""):
     """
     Google GenAI SDK의 Lyria 3 Pro 모델을 호출하여 완곡 음원을 생성합니다.
     (API 환경이 부재하거나 할당량 제한 시, 고음질 로컬 앰비언트/음악 신디사이저 엔진으로 안전하게 자동 생성)
+    master_audio=True 이면 음원 길이 검증 뒤 사운드 엔지니어 베가(vega_engine)가 마스터링을 수행한다.
     """
     def step(pct, msg):
         if progress_cb:
@@ -570,8 +572,22 @@ def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None):
     if not lyria_success:
         track_data["fallback_reason"] = last_err
 
+    # 4. 사운드 엔지니어 베가 — 유튜브 규격(-14 LUFS / -1 dBTP) 마스터링. 실패해도 원본으로 계속 진행한다.
+    if master_audio and _vega_auto_master_enabled():
+        step(92, "사운드 엔지니어 베가 마스터링 시작...")
+        vega_engine.master_track(
+            track_data, prompt=mastering_prompt or "", use_llm=True,
+            luna_dir=LUNA_DIR, genre_spec=GENRE_SPECS.get(track_data.get("genre")),
+            progress_cb=progress_cb,
+        )
+
     step(100, f"에이전트 루나 완곡 음원 준비 완료! ({int(actual_duration)}초)")
     return track_data
+
+
+def _vega_auto_master_enabled() -> bool:
+    """VEGA_AUTO_MASTER=0 이면 자동 마스터링을 끈다 (기본 켜짐)."""
+    return (os.environ.get("VEGA_AUTO_MASTER", "1").strip().lower() not in ("0", "false", "off", "no"))
 
 
 # Lyria 음악 생성 모델 우선순위.
@@ -810,6 +826,7 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
 
     track_data["video_file"] = video_path
     track_data["video_url"] = f"/data/luna_music/{track_id}/video.mp4"
+    track_data.pop("video_stale", None)  # 최신 마스터로 다시 렌더했으므로 경고 해제
     track_data["rendered_at"] = time.time()
     save_track(track_data)
 
@@ -1065,7 +1082,11 @@ def list_tracks():
                 "comment_posted": d.get("comment_posted", False),
                 "studio_comment_url": f"https://studio.youtube.com/video/{d.get('uploaded_video_id')}/comments" if d.get("uploaded_video_id") else "",
                 "trend_brief_applied": d.get("trend_brief_applied", False),
-                "trend_brief": d.get("trend_brief")
+                "trend_brief": d.get("trend_brief"),
+                # 사운드 엔지니어 베가 — 보관함에서 선택해도 마스터링 패널·A/B 비교가 보이도록 함께 내려준다
+                "mastering": d.get("mastering"),
+                "audio_raw_url": d.get("audio_raw_url"),
+                "video_stale": d.get("video_stale", False),
             })
         except Exception:
             continue

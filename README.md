@@ -117,6 +117,7 @@
 - **감성 가사(Lyrics) & 보컬 모드 지원** — 시티팝, R&B, 어쿠스틱 포크 등 장르별 보컬 친화도에 따른 자동 가사 기획 및 보컬 멜로디 스타일 주입 (수면/명상은 순수 연주곡 유지)
 - **나노바나나(Imagen) 16:9 감성 앨범 아트** 생성 및 시네마틱 켄번즈 줌인 영상 렌더링
 - **레오 ✕ 루나 알고리즘 패키징** — 유튜브 CTR 극대화 제목, `[Lyrics / 가사]` 전문이 포함된 감성 SEO 설명란, 시청자 반응 유도용 고정 댓글 자동 등록
+- **사운드 엔지니어 베가(Vega) 자동 마스터링** — 작곡 직후 음원을 분석(LUFS·트루피크·대역 밸런스·스테레오 폭)하고 장르 프리셋을 출발점으로 LLM이 EQ·컴프레서·새츄레이션·M/S·리미터 수치를 정해 유튜브 규격(-14 LUFS / -1 dBTP)으로 다듬습니다. 원본은 `audio_raw.*` 로 보존되어 A/B 비교와 프롬프트 재마스터링이 가능하며, LLM 실패 시 프리셋으로, 의존성 미설치 시 원본 그대로 진행합니다 (`VEGA_AUTO_MASTER=0` 으로 끌 수 있음)
 
 ### 7. Threads ✕ X 통합 자동화
 
@@ -150,6 +151,8 @@ graph TD
     F --> G[제목·SEO·고정댓글·이미지 프롬프트]
 
     F --> H[Qwen3-TTS / edge-tts 음성]
+    LY[루나: Lyria 작곡] --> VG[베가: 분석·마스터링 -14 LUFS]
+    VG --> KB[켄번즈 렌더 → 유튜브]
     F --> S[(씬 기획서 저장소)]
     G --> S
     H --> S
@@ -327,7 +330,7 @@ FastAPI 라우트 **80개 이상**. 전체 스펙은 서버 실행 후 http://lo
 | 소셜 스하리 | `GET /api/social/capabilities` · `POST /api/social/engagement/run` |
 | 소셜 대기열/예약 | `GET /api/social/jobs` · `POST /api/social/jobs/{job_id}/schedule` · `POST /api/social/jobs/{job_id}/cancel` · `POST /api/social/jobs/{job_id}/retry` · `GET /api/social/scheduler/status` · `POST /api/social/scheduler/tick` |
 | 소셜 통합 이력 | `GET /api/social/history` |
-| 음악 | `POST /api/luna/generate` · `POST /api/luna/render` · `POST /api/luna/upload` |
+| 음악 | `POST /api/luna/generate` · `POST /api/luna/master` · `GET /api/vega/status` · `POST /api/luna/render` · `POST /api/luna/upload` |
 | LLM | `GET /api/llm/status` · `GET /api/llm/models` · `POST /api/llm/select-model` |
 
 ---
@@ -352,6 +355,7 @@ youtube-video-analysis/
 ├── threads_client.py       # Meta Threads API 연동
 ├── engagement_automation.py # Threads/X 팔로우·좋아요·리포스트 자동화
 ├── luna_engine.py          # AI 음악 생성 · 앨범아트 · 뮤직비디오
+├── vega_engine.py          # 사운드 엔지니어 베가 — 루나 음원 마스터링 (분석·LLM/프리셋 결정·DSP·24bit WAV)
 ├── analyze.py              # CLI 단독 분석 스크립트
 ├── run.sh                  # 원클릭 실행
 ├── data/                   # 수집 데이터 · 생성 산출물 (Git 제외)
@@ -391,6 +395,7 @@ youtube-video-analysis/
 - **`blog_length` 파라미터는 동작하지 않습니다.** 생성 엔진에 길이 조절 인자가 없습니다. 대신 `blog_platform`으로 문체를 조절하세요.
 - **`POST /api/analyze`의 `auto_generate_ai_report` 필드는 동작하지 않습니다.** 요청 스키마에 남아 있지만 참조하는 코드가 없습니다. 리포트는 `analyze.py`로 생성하세요.
 - **`google-genai` 없이도 앱은 뜨지만** 이미지·영상·음악 생성이 비활성화됩니다. `requirements.txt` 에 포함돼 있습니다.
+- **베가 마스터링은 lofi 실제 곡 1곡으로 검증했습니다.** ffmpeg EBU R128 독립 측정으로 -11.6 → -14.0 LUFS, 트루피크 +0.3 → -2.0 dBTP(렌더 영상도 -14.0 LUFS)를 확인했고 재마스터 지시도 반영됩니다. 다른 9개 장르는 합성 신호 테스트까지만 했습니다. 재마스터 후에는 영상이 구버전이 되므로 패널 경고를 보고 다시 렌더해야 합니다. 샘플레이트는 원본(Lyria 44.1kHz)을 유지합니다. `pedalboard` 미설치 시 마스터링만 건너뜁니다.
 - **컨셉 팩의 내부 이름은 아직 레드라인 기준입니다.** `generate_redline_image_prompts()`, `first_frame_redline` 등 함수·필드명이 그대로라, 인물 컨셉 결과도 `redline` 이 붙은 키에 담깁니다. 동작에는 영향이 없습니다.
 - **`info_breakdown` · `product_review` 팩은 프롬프트 구조까지만 확인했습니다.** 실제 이미지 생성으로 눈으로 검증한 것은 레드라인과 인물·서사 두 팩입니다.
 - **실제 유튜브 업로드는 미검증입니다.** 인자 불일치는 해소했고 다중 채널 연결은 동작하지만, 진짜 영상을 올려본 적은 없습니다.

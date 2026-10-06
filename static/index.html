@@ -1346,6 +1346,30 @@
                   <div style="margin-top: 10px;">
                     <audio id="lunaAudioPlayer" controls style="width: 100%; height: 36px;"></audio>
                   </div>
+
+                  <!-- 1-0. 사운드 엔지니어 베가 (Vega) 마스터링 패널 -->
+                  <div id="vegaPanel" style="display: none; margin-top: 10px; background: rgba(34, 211, 238, 0.06); border: 1px solid rgba(34, 211, 238, 0.3); border-radius: 8px; padding: 10px 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+                      <div style="font-size: 0.8rem; color: #67e8f9; font-weight: 700; display: flex; align-items: center; gap: 6px;">
+                        <i class="fa-solid fa-sliders"></i> 사운드 엔지니어 베가
+                        <span id="vegaStatusBadge" class="badge badge-subtle" style="font-size: 10px;"></span>
+                      </div>
+                      <div id="vegaAbGroup" style="display: flex; gap: 4px;">
+                        <button type="button" id="btnVegaAbRaw" class="btn btn-xs btn-outline" title="마스터링 전 원본 듣기">A · 원본</button>
+                        <button type="button" id="btnVegaAbMaster" class="btn btn-xs btn-outline" title="베가 마스터 결과 듣기">B · 마스터</button>
+                      </div>
+                    </div>
+                    <div id="vegaMetrics" style="font-size: 0.76rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.6;"></div>
+                    <div id="vegaReasoning" style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px; line-height: 1.45; font-style: italic;"></div>
+                    <div id="vegaStaleNotice" style="display: none; margin-top: 6px; font-size: 0.74rem; color: #fbbf24;"><i class="fa-solid fa-triangle-exclamation"></i> 마스터가 바뀌었습니다. 업로드 전에 [비디오 렌더링]을 다시 실행하세요.</div>
+                    <div style="display: flex; gap: 6px; margin-top: 8px;">
+                      <input type="text" id="vegaPromptInput" class="form-control" style="font-size: 0.78rem; padding: 5px 8px; flex: 1;" placeholder="재마스터링 지시 (예: 저음을 더 단단하게, 고역은 부드럽게, -14 LUFS)">
+                      <button type="button" id="btnVegaRemaster" class="btn btn-xs btn-outline" style="white-space: nowrap; border-color: rgba(34,211,238,0.5); color: #67e8f9;">
+                        <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 재마스터</span>
+                        <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 처리 중...</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
