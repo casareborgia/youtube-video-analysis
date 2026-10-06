@@ -137,15 +137,18 @@ corrective_eq → compressor → tonal_eq → saturator → M/S stereo_image
   "audio_url":      "/data/luna_music/<id>/audio_mastered.wav",
   "audio_raw_file": ".../luna_music/<id>/audio_raw.mp3",        // 원본 보존 (한 번만 복사)
   "audio_raw_url":  "/data/luna_music/<id>/audio_raw.mp3",
+  "audio_preview_file": ".../luna_music/<id>/audio_mastered_preview.mp3",  // 웹 미리듣기용 192k MP3 (1.2.0+)
+  "audio_preview_url":  "/data/luna_music/<id>/audio_mastered_preview.mp3", // 인코딩 실패 시 두 키 모두 없음 → UI 는 WAV 로 폴백
   "video_stale":    true,                                       // 재마스터 후 기존 영상이 구버전이면 true, 재렌더 시 제거
   "mastering": {
     "status": "done" | "failed" | "skipped",
-    "agent": "베가 (Vega)", "engine_version": "1.1.0",
+    "agent": "베가 (Vega)", "engine_version": "1.2.0",
     "decision_source": "llm" | "preset",
     "decision_backend": "gemini" | "lmstudio" | "ollama" | null,   // decision_source == "llm" 일 때만
     "decision_model": "gemini-3.8-flash" | null,                    // 실제로 결정을 내린 모델
     "llm_attempted": {"backend": ..., "model": ..., "attempted": true} | null,  // LLM 을 불렀지만 프리셋으로 대체된 경우
-    "note": "폴백 사유 등",
+    "note": "폴백 사유 등 (미리듣기 MP3 실패 사유도 여기에 덧붙는다)",
+    "preview_file": ".../audio_mastered_preview.mp3" | null,
     "prompt": "사용자 지시",
     "genre": "lofi", "target_lufs": -14.0, "ceiling_dbtp": -1.0,
     "before": { ...analyze() 결과 }, "after": { ...analyze() 결과 },
@@ -172,7 +175,8 @@ corrective_eq → compressor → tonal_eq → saturator → M/S stereo_image
 
 - 오디오 플레이어 아래 **베가 패널**(`#vegaPanel`): 상태 배지(완료·`AI 결정 · <모델명>`/장르 프리셋, 건너뜀, 실패), 전후 측정값(LUFS·트루피크·크레스트·스테레오 폭), 결정 사유, 재렌더 필요 경고.
 - 보관함 목록(`/api/luna/history`)도 `mastering`, `audio_raw_url`, `video_stale` 을 내려주므로, 보관함에서 곡을 골라도 패널이 보인다.
-- **A/B 버튼**: `A · 원본` / `B · 마스터` — 재생 위치를 유지한 채 `audio_raw_url` ↔ `audio_url` 전환.
+- **A/B 버튼**: `A · 원본` / `B · 마스터` — 재생 위치를 유지한 채 `audio_raw_url` ↔ `audio_preview_url`(없으면 `audio_url`) 전환. 원본·마스터 모두 MP3 라 로딩 속도가 같다.
+- 플레이어 기본 소스도 `audio_preview_url || audio_url`. 4단계 영상 제작의 배경음악 선택과 렌더·업로드는 계속 WAV(`audio_url`/`audio_file`)를 쓴다.
 - **재마스터**: 프롬프트 입력 후 `POST /api/luna/master` 호출, 결과로 뷰 갱신.
 - `mastering` 필드가 없는 과거 트랙은 패널을 숨긴다.
 
@@ -268,7 +272,7 @@ python -m uvicorn app:app --host 127.0.0.1 --port 8765
 # 8765 가 사용 중이면 다른 포트 사용. 6단계 [레오 ✕ 루나 음악 스튜디오] 탭에서 확인
 ```
 
-`GET /api/vega/status` 의 `available`, `engine_version`(현재 `1.1.0`), `auto_master_enabled` 로 상태를 확인할 수 있다.
+`GET /api/vega/status` 의 `available`, `engine_version`(현재 `1.2.0`), `auto_master_enabled` 로 상태를 확인할 수 있다.
 
 **④ 테스트와 기존 실패**
 
@@ -307,10 +311,12 @@ done
 - 외부 차트 라이브러리 없이 CSS/SVG 로 구현한다(CSP: `script-src 'self' cdnjs` 만 허용).
 - 범위: `static/index.html`, `static/app.js`, `static/style.css`. 백엔드 변경 없음.
 
-### 7.2 [P1] 마스터 결과 MP3 미리듣기 파일 — `feat/vega-preview-mp3`
-- 24bit WAV(3분 ≈ 52 MB)는 A/B 전환이 느릴 수 있다. `master_track` 끝에서 ffmpeg 로 `audio_mastered_preview.mp3`(192k)를 추가 생성하고 `audio_preview_url` 로 노출한다.
-- 렌더·업로드는 계속 WAV(`audio_file`)를 쓴다. 미리듣기만 MP3.
-- 테스트: 파일 생성 여부, WAV 가 여전히 `audio_file` 인지.
+### 7.2 [P1] 마스터 결과 MP3 미리듣기 파일 — `feat/vega-preview-mp3` ✅ 완료 (engine 1.2.0)
+- 24bit WAV(3분 ≈ 47 MB)는 A/B 전환이 느릴 수 있다. `master_track` 끝에서 ffmpeg(libmp3lame)로 `audio_mastered_preview.mp3`(192k)를 추가 생성하고 `audio_preview_url` 로 노출한다.
+- 렌더·업로드·측정은 계속 WAV(`audio_file`)를 쓴다. 미리듣기만 MP3.
+- 인코딩 실패 시 마스터링은 그대로 성공 처리하고, 이전 미리듣기 키·파일을 제거해 UI 가 WAV 로 폴백하게 한다. 사유는 `mastering.note` 에 남는다.
+- 실측 (Etched in Plaster, 180초): WAV 47.2 MB → MP3 4.3 MB, 음량 -14.0 → -14.2 LUFS, 피크 -2.7 → -2.9 dBFS, 전체 마스터링 8초.
+- 테스트: 생성·URL 노출·WAV 유지, 인코더 단독, 실패 시 폴백 3건.
 
 ### 7.3 [P2] 마스터링 프리셋 선택·토글 UI — `feat/vega-preset-selector`
 - 생성 폼에 "베가 자동 마스터링" 체크박스(`master_audio`)와 마스터링 지시 입력(`mastering_prompt`)을 추가한다. 기본 켜짐.

@@ -227,6 +227,49 @@ class VegaMasterTrackTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmp, ignore_errors=True)
 
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg 미설치")
+    def test_master_track_creates_preview_mp3_and_keeps_wav_audio_file(self):
+        """마스터링 시 audio_mastered_preview.mp3(192k)가 생성되고 audio_preview_url이 노출되며, audio_file은 여전히 WAV여야 한다."""
+        out = vega_engine.master_track(dict(self.track), use_llm=False, luna_dir=self.tmp)
+        # audio_file은 계속 24bit WAV 유지
+        self.assertTrue(out["audio_file"].endswith(vega_engine.MASTERED_FILENAME))
+        self.assertTrue(out["audio_file"].endswith(".wav"))
+        self.assertTrue(os.path.exists(out["audio_file"]))
+        # audio_preview_url 노출 및 MP3 파일 생성 확인
+        self.assertIn("audio_preview_url", out)
+        self.assertEqual(out["audio_preview_url"], f"/data/luna_music/{self.track_id}/{vega_engine.PREVIEW_FILENAME}")
+        preview_path = os.path.join(self.tmp, self.track_id, vega_engine.PREVIEW_FILENAME)
+        self.assertTrue(os.path.exists(preview_path))
+        self.assertGreater(os.path.getsize(preview_path), 0)
+
+    def test_preview_failure_drops_stale_preview_and_keeps_master_done(self):
+        """미리듣기 인코딩이 실패해도 마스터링은 성공해야 하고, 이전 마스터의 미리듣기 URL 이 남아 있으면 안 된다."""
+        stale = os.path.join(self.tmp, self.track_id, vega_engine.PREVIEW_FILENAME)
+        with open(stale, "wb") as f:
+            f.write(b"old preview")
+        track = dict(self.track,
+                     audio_preview_file=stale,
+                     audio_preview_url=f"/data/luna_music/{self.track_id}/{vega_engine.PREVIEW_FILENAME}")
+        with mock.patch.object(vega_engine, "encode_preview_mp3", side_effect=RuntimeError("lame missing")):
+            out = vega_engine.master_track(track, use_llm=False, luna_dir=self.tmp)
+        m = out["mastering"]
+        self.assertEqual(m["status"], "done")
+        self.assertNotIn("audio_preview_url", out)
+        self.assertNotIn("audio_preview_file", out)
+        self.assertFalse(os.path.exists(stale))
+        self.assertIn("미리듣기 MP3 생성 실패", m["note"])
+        self.assertTrue(out["audio_file"].endswith(".wav"))
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg 미설치")
+    def test_encode_preview_mp3_creates_valid_file(self):
+        wav_path = os.path.join(self.tmp, self.track_id, "test_input.wav")
+        mp3_path = os.path.join(self.tmp, self.track_id, "test_preview.mp3")
+        vega_engine.write_audio(_synthetic_stereo(seconds=2.0), SR, wav_path, 24)
+        result_path = vega_engine.encode_preview_mp3(wav_path, mp3_path, "192k")
+        self.assertEqual(result_path, mp3_path)
+        self.assertTrue(os.path.exists(mp3_path))
+        self.assertGreater(os.path.getsize(mp3_path), 0)
+
     def test_master_track_preserves_raw_and_switches_audio_file(self):
         out = vega_engine.master_track(dict(self.track), use_llm=False, luna_dir=self.tmp)
         m = out["mastering"]
@@ -320,6 +363,7 @@ class LunaHistoryExposesMasteringTests(unittest.TestCase):
             meta = {
                 "track_id": "luna_hist_0001", "title": "t", "genre": "lofi", "created_at": 1.0,
                 "audio_url": "/data/luna_music/luna_hist_0001/audio_mastered.wav",
+                "audio_preview_url": "/data/luna_music/luna_hist_0001/audio_mastered_preview.mp3",
                 "audio_raw_url": "/data/luna_music/luna_hist_0001/audio_raw.mp3",
                 "video_stale": True,
                 "mastering": {"status": "done", "decision_source": "preset"},
@@ -331,6 +375,7 @@ class LunaHistoryExposesMasteringTests(unittest.TestCase):
             self.assertEqual(len(rows), 1)
             self.assertEqual(rows[0]["mastering"]["status"], "done")
             self.assertEqual(rows[0]["audio_raw_url"], meta["audio_raw_url"])
+            self.assertEqual(rows[0]["audio_preview_url"], meta["audio_preview_url"])
             self.assertTrue(rows[0]["video_stale"])
         finally:
             shutil.rmtree(tmp, ignore_errors=True)

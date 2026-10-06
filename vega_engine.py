@@ -49,10 +49,12 @@ except Exception as _e:  # pragma: no cover - 환경 의존
     _IMPORT_ERROR = str(_e)
 
 AGENT_NAME = "베가 (Vega)"
-ENGINE_VERSION = "1.1.0"
+ENGINE_VERSION = "1.2.0"           # 1.2.0: 웹 미리듣기용 192k MP3 (audio_mastered_preview.mp3) 추가
 MASTER_BIT_DEPTH = 24               # 샘플레이트는 원본 그대로 유지한다 (Lyria 출력은 44.1kHz, 변환하면 음질만 손해)
 SILENCE_FLOOR = 1e-6                # 이 이하 피크면 무음으로 간주하고 처리 생략
 MASTERED_FILENAME = "audio_mastered.wav"
+PREVIEW_FILENAME = "audio_mastered_preview.mp3"
+PREVIEW_BITRATE = "192k"
 RAW_FILENAME_PREFIX = "audio_raw"
 
 
@@ -314,6 +316,16 @@ def write_audio(audio: np.ndarray, sample_rate: int, path: str, bit_depth: int =
     out = np.clip(audio, -1.0, 1.0).astype(np.float32)
     sf.write(path, out.T, sample_rate, subtype=subtype)
     return path
+
+
+def encode_preview_mp3(wav_path: str, mp3_path: str, bitrate: str = PREVIEW_BITRATE) -> str:
+    """24bit WAV 마스터 결과로부터 웹 미리듣기용 경량 MP3 (기본 192kbps)를 생성한다.
+    청취용일 뿐이며 렌더·업로드·측정의 기준은 항상 WAV 다 (MP3 는 인코딩 과정에서 피크가 ±0.3dB 정도 달라질 수 있다)."""
+    cmd = ["ffmpeg", "-y", "-i", wav_path, "-vn", "-c:a", "libmp3lame", "-b:a", bitrate, mp3_path]
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    if res.returncode != 0 or not os.path.exists(mp3_path):
+        raise RuntimeError(f"ffmpeg MP3 인코딩 실패: {res.stderr.decode(errors='ignore')[-300:]}")
+    return mp3_path
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -702,6 +714,25 @@ def master_track(track_data: dict, prompt: str = "", use_llm: bool = True,
         write_audio(mastered, sr, out_path, MASTER_BIT_DEPTH)
         after = analyze(mastered, sr)
 
+        # 미리듣기용 경량 MP3 (192k) — A/B 전환과 웹 로딩 속도용. 렌더·업로드는 계속 WAV(audio_file)를 쓴다.
+        # 인코딩에 실패하면 이전 마스터의 미리듣기가 남아 새 WAV 와 내용이 달라지므로, 키를 지워 WAV 로 폴백시킨다.
+        preview_path = os.path.join(track_dir, PREVIEW_FILENAME)
+        preview_note = ""
+        try:
+            encode_preview_mp3(out_path, preview_path, PREVIEW_BITRATE)
+            track_data["audio_preview_file"] = preview_path
+            track_data["audio_preview_url"] = _url_for(track_id, PREVIEW_FILENAME)
+        except Exception as _pe:
+            track_data.pop("audio_preview_file", None)
+            track_data.pop("audio_preview_url", None)
+            if os.path.exists(preview_path):
+                try:
+                    os.remove(preview_path)
+                except OSError:
+                    pass
+            preview_note = f"미리듣기 MP3 생성 실패(WAV 로 재생): {str(_pe)[:120]}"
+            print(f"[Vega] {preview_note}")
+
         track_data["audio_file"] = out_path
         track_data["audio_url"] = _url_for(track_id, MASTERED_FILENAME)
         track_data["mastering"] = {
@@ -713,7 +744,8 @@ def master_track(track_data: dict, prompt: str = "", use_llm: bool = True,
             "decision_backend": llm_meta.get("backend") if source_kind == "llm" else None,
             "decision_model": llm_meta.get("model") if source_kind == "llm" else None,
             "llm_attempted": llm_meta if (llm_meta.get("attempted") and source_kind != "llm") else None,
-            "note": note,
+            "note": " / ".join(x for x in (note, preview_note) if x),
+            "preview_file": track_data.get("audio_preview_file"),
             "prompt": prompt or "",
             "genre": genre,
             "target_lufs": decisions.target_lufs,

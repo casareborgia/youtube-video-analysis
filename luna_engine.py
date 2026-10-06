@@ -1086,6 +1086,7 @@ def list_tracks():
                 # 사운드 엔지니어 베가 — 보관함에서 선택해도 마스터링 패널·A/B 비교가 보이도록 함께 내려준다
                 "mastering": d.get("mastering"),
                 "audio_raw_url": d.get("audio_raw_url"),
+                "audio_preview_url": d.get("audio_preview_url"),
                 "video_stale": d.get("video_stale", False),
             })
         except Exception:
