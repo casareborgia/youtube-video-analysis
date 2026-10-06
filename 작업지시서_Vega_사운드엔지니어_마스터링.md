@@ -7,7 +7,7 @@
 | 작업명 | 에이전트 루나 음원 파이프라인에 사운드 엔지니어 베가(마스터링 에이전트) 추가 |
 | 프로젝트 | `유튜브 영상분석실습` (TubeInsight AI) |
 | 작성일 | 2026-10-06 |
-| 작업 브랜치 | `feat/vega-mastering-agent` |
+| 작업 브랜치 | `feat/vega-mastering-agent` (PR #4, `main` 에 머지) → 후속 과제는 `main` 에서 `feat/vega-*` |
 | 기준 구현 | `vega_engine.py`(신규), `luna_engine.py`, `app.py`, `static/index.html`, `static/app.js`, `tests/test_vega_engine.py`, `requirements.txt` |
 | 참고 레포 | [Tanzil-Ahmed/mixmaster-ai](https://github.com/Tanzil-Ahmed/mixmaster-ai) (구조 참고, 코드 미복사) · [Esgr0bar/MasterIA](https://github.com/Esgr0bar/MasterIA) (GPL-3.0, 아이디어만 참고) |
 | 최종 목표 | 루나가 만든 완곡 음원을 유튜브 업로드 규격(-14 LUFS / -1 dBTP)에 맞게 자동 마스터링하고, 원본·결과를 A/B 비교하며 프롬프트로 재마스터링할 수 있게 한다 |
@@ -233,7 +233,74 @@ Lyria 3.5 로 생성한 lofi 곡 *Blue Hour Reverie* (180초, 44.1kHz) 를 베�
 
 ## 7. 안티그래비티 후속 작업 (2단계 이후)
 
-아래 과제는 3장의 계약을 유지한 채 **각각 별도 브랜치**로 진행한다. 우선순위 순.
+아래 과제는 3장의 계약을 유지한 채 **각각 별도 브랜치**로 진행한다. 우선순위 순. 작업 전에 7.0 을 먼저 끝낸다.
+
+### 7.0 착수 전 준비 (필수)
+
+**① 기준 브랜치** — 베가 1단계는 PR #4 로 `main` 에 머지되어 있다. 항상 최신 `main` 에서 시작한다.
+
+```bash
+git checkout main
+git pull origin main
+git checkout -b feat/vega-preview-mp3      # 과제별 브랜치명은 7.1~7.5 참고
+```
+
+**② 실행 환경**
+
+| 항목 | 내용 |
+|---|---|
+| Python | 3.11 이상 (3.14 에서 검증) |
+| 의존성 | `pip install -r requirements.txt` — `pedalboard`, `pyloudnorm`, `soundfile`, `scipy` 포함 |
+| ffmpeg | `brew install ffmpeg` (디코딩·렌더링·독립 측정에 사용) |
+| Gemini 키 | `.env` 의 `GEMINI_API_KEY`. 없으면 베가는 장르 프리셋으로 동작하고, **단위 테스트는 키 없이 통과**한다 |
+
+설치 확인:
+
+```bash
+python -c "import vega_engine, json; print(json.dumps(vega_engine.availability_report(), ensure_ascii=False))"
+# "available": true 가 나와야 한다
+```
+
+**③ 서버 실행**
+
+```bash
+python -m uvicorn app:app --host 127.0.0.1 --port 8765
+# 8765 가 사용 중이면 다른 포트 사용. 6단계 [레오 ✕ 루나 음악 스튜디오] 탭에서 확인
+```
+
+`GET /api/vega/status` 의 `available`, `engine_version`(현재 `1.1.0`), `auto_master_enabled` 로 상태를 확인할 수 있다.
+
+**④ 테스트와 기존 실패**
+
+```bash
+python -m unittest tests.test_vega_engine tests.test_luna_leo_integrity   # 반드시 전부 통과
+python -m unittest discover -s tests -p 'test_*.py'                       # 전체 회귀
+```
+
+전체 실행 시 아래 **5건은 베가와 무관한 기존 실패**다. 원인 파악·수정은 이 작업 범위가 아니므로 건드리지 않는다. 이 5건 외에 새 실패가 생기면 그것은 회귀다.
+
+| 테스트 | 원인 |
+|---|---|
+| `test_gemini_model_selection` 2건 | Gemini 키가 있어야 통과 (환경 의존) |
+| `test_social_store` 3건 (`schema_initialization`, `v1_to_v2_migration`, `migration_from_preexisting_db`) | 테스트가 스키마 v2 를 기대하나 코드는 v3 (테스트 미갱신) |
+| (간헐) `test_account_replies` | 실제 Threads/X 인증 필요 |
+
+**⑤ 실제 음원 검증 방법** — DSP 를 바꾸는 과제(7.2, 7.4, 7.5)는 합성 신호 테스트에 더해 실제 곡으로도 확인한다. 베가 내부 측정이 아닌 **ffmpeg EBU R128 독립 측정**을 기준으로 삼는다.
+
+```bash
+D=data/luna_music/<track_id>
+for f in audio_raw.mp3 audio_mastered.wav; do
+  echo "== $f"
+  ffmpeg -hide_banner -nostats -i "$D/$f" -af ebur128=peak=true -f null - 2>&1 \
+    | grep -E "^\s+(I|LRA|Peak):"
+done
+```
+
+합격 기준: 통합 음량 `I` 가 `mastering.target_lufs` ±0.5 LU, 트루피크 `Peak` 가 `mastering.ceiling_dbtp` 이하. 렌더 후 `video.mp4` 에도 같은 명령(`-vn` 추가)을 돌려 영상 오디오가 같은 기준을 지키는지 본다.
+
+**⑥ 비용 주의** — 새 곡 생성은 Lyria(작곡)·Imagen(커버)·Gemini(기획) 크레딧을 쓴다. 검증은 **보관함의 기존 곡을 재마스터**(`POST /api/luna/master`, Gemini flash 1회)하는 방식을 우선하고, 새 곡 생성은 꼭 필요할 때만 한다. 렌더링은 ffmpeg 만 쓰므로 비용이 없다.
+
+**⑦ 데이터 보호** — `data/luna_music/` 는 `.gitignore` 대상이다. 커밋하지 않는다. 각 트랙의 `audio_raw.*` 는 재마스터의 원본이므로 삭제·덮어쓰기 금지.
 
 ### 7.1 [P1] 전후 스펙트럼 비교 그래프 — `feat/vega-spectrum-compare`
 - `mastering.before/after` 의 4대역 RMS(`rms_sub/low/mid/high_db`)와 LUFS·TP 를 베가 패널에 막대 그래프로 시각화한다.
@@ -264,7 +331,7 @@ Lyria 3.5 로 생성한 lofi 곡 *Blue Hour Reverie* (180초, 44.1kHz) 를 베�
 - `matchering` 은 GPL-3.0 이므로 프로젝트 라이선스(MIT) 와 충돌한다. 도입하려면 별도 프로세스 호출 방식과 라이선스 검토가 선행되어야 한다. 현재는 보류.
 
 ### 7.7 공통 작업 규칙
-1. 작업 전 `git status`, `git branch` 확인 후 `feat/vega-*` 브랜치 생성.
+1. 작업 전 `git status`, `git branch` 확인 후 **최신 `main` 에서** `feat/vega-*` 브랜치 생성 (7.0 ①).
 2. `vega_engine.py` 의 공개 함수 시그니처와 `track_data.mastering` 키는 **추가만 허용, 변경·삭제 금지**.
 3. 새 DSP 함수는 먼저 Pydantic 스키마(범위 포함)를 추가한 뒤 구현한다. 매직 넘버 금지.
 4. 테스트는 `unittest`, 합성 신호만 사용, LLM 은 mock. DSP 테스트는 shape·dtype·`|x| ≤ 1`·유한성 네 가지를 항상 단언한다.
