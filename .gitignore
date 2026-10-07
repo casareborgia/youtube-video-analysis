@@ -122,3 +122,4 @@ data/social_engagement.db*
 *.db-journal
 *.db-wal
 *.db-shm
+data/**/*.jsonl

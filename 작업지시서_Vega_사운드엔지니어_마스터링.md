@@ -161,6 +161,40 @@ corrective_eq → compressor → tonal_eq → saturator → M/S stereo_image
 }
 ```
 
+### 3.7a 피드백 이벤트 모델 — `vega_feedback.jsonl`
+
+A/B 청취 선택, 재마스터, 영상 렌더(채택) 이벤트를 append-only JSON Lines 로 저장한다 (`data/luna_music/vega_feedback.jsonl`). 오디오 파일 경로·토큰 등 민감 정보는 일체 기록하지 않는다.
+
+```json
+{
+  "ts": 1759760123.4,
+  "event": "remaster", // "remaster" | "render" | "preference"
+  "track_id": "luna_1791298763",
+  "genre": "Lo-Fi / Chillhop",   // 트랙에 저장된 표시명 그대로
+  "genre_key": "lofi",           // 프리셋 키 (vega_engine.resolve_genre_key) — 집계·조회는 이 키로 한다
+  "mood": "dawn",
+  "choice": "master", // preference 이벤트 전용 ("raw" | "master")
+  "prompt": "저음 보강",
+  "use_llm": true,
+  "decision_source": "llm",
+  "decision_model": "gemini-3.8-flash",
+  "target_lufs": -14.0,
+  "ceiling_dbtp": -1.0,
+  "decisions": {
+    "target_lufs": -14.0,
+    "compressor.threshold_db": -18.0,
+    "compressor.ratio": 2.0,
+    "saturator.drive_db": 3.0,
+    "saturator.mix": 0.35,
+    "stereo_image.width": 1.05,
+    "tonal_eq.low_shelf_gain_db": 1.5,
+    "tonal_eq.high_shelf_gain_db": -2.0
+  },
+  "before": { "integrated_lufs": -11.63, "true_peak_dbtp": 0.34 },
+  "after": { "integrated_lufs": -14.0, "true_peak_dbtp": -1.22 }
+}
+```
+
 ### 3.8 API
 
 | 메서드·경로 | 요청 | 응답 | 설명 |
@@ -168,6 +202,9 @@ corrective_eq → compressor → tonal_eq → saturator → M/S stereo_image
 | `GET /api/vega/status` | — | `{available, agent, engine_version, missing_reason, install_hint, auto_master_enabled, presets[]}` | 가용성·프리셋 요약 |
 | `POST /api/luna/master` | `{track_id, prompt?, use_llm?=true}` | 갱신된 `track_data` | 기존 트랙 (재)마스터링. 404 트랙 없음, 503 의존성 없음 |
 | `POST /api/luna/generate` | 기존 필드 + `master_audio?=true`, `mastering_prompt?` | 기존과 동일 | 생성 직후 자동 마스터링 |
+| `POST /api/vega/feedback` | `{track_id, choice:"raw"|"master"}` | `{status, event}` | A/B 청취 선호도 기록 (200, 400 잘못된 choice) |
+| `GET /api/vega/feedback/suggest` | query `genre` | `{status, genre, samples, window, suggestions[], note}` | 장르별 피드백 중앙값 기반 프리셋 보정 제안 |
+| `GET /api/vega/feedback` | query `genre?`, `limit?` | `List[dict]` | 저장된 피드백 목록 조회 (최근순) |
 
 환경변수 `VEGA_AUTO_MASTER=0` 이면 생성 시 자동 마스터링을 끈다(기본 켜짐).
 
@@ -330,10 +367,21 @@ done
 - `POST /api/luna/generate` 및 `POST /api/luna/master` 호출 바디 연동 완료.
 - `VegaUiAssetsTests` 단위 테스트에 새 요소 ID 검사 추가 및 전체 45개 테스트 통과 유지.
 
-### 7.4 [P2] 피드백 로그와 프리셋 자동 보정 — `feat/vega-feedback-loop`
-- MasterIA 의 "사용자 피드백 학습" 아이디어를 가볍게 적용한다. A/B 에서 사용자가 최종 선택한 쪽(원본/마스터)과 재마스터 프롬프트를 `data/luna_music/vega_feedback.jsonl` 에 기록한다.
-- 장르별로 최근 N건의 `decisions` 중앙값을 계산해 프리셋을 ±1 LU, ±1 dB 범위 안에서만 보정하는 `suggest_preset_adjustment(genre)` 를 추가한다. **자동 적용은 하지 않고** 제안값만 패널에 보여준다.
-- ML 모델·외부 학습은 도입하지 않는다.
+### 7.4 [P2] 피드백 로그와 프리셋 자동 보정 — `feat/vega-feedback-loop` ✅ 완료
+- MasterIA 의 "사용자 피드백 학습" 아이디어를 경량화하여 구현. A/B 선택(선호), 재마스터(LLM 결정), 영상 렌더(채택) 이벤트를 `data/luna_music/vega_feedback.jsonl` 에 append-only 로 안전하게 기록 (`vega_feedback.py`).
+- 장르별 최근 N건(기본 window=20)의 중앙값(`statistics.median`)을 계산하여 프리셋 보정 제안 (`suggest_preset_adjustment(genre)`).
+- 클램프 허용 범위:
+  - `target_lufs`: ±1.0 LU
+  - `compressor.threshold_db`: ±1.0 dB
+  - `compressor.ratio`: ±0.3
+  - `saturator.drive_db`: ±1.0 dB
+  - `stereo_image.width`: ±0.1
+  - `tonal_eq.low_shelf_gain_db` / `high_shelf_gain_db`: ±1.0 dB
+  - `|delta| < 0.05` 인 항목은 제안 목록에서 자동 제외.
+- 자동 적용은 하지 않고 제안값만 패널에 노출 (ML 모델 및 외부 의존성 없음).
+- 표본 규칙: `remaster(decision_source=="llm")` 와 `render` 만 집계. 마스터링이 `done` 이 아닌 재마스터, `decisions` 가 없는 렌더(마스터 없이 렌더)는 표본에서 제외한다.
+- 코드리뷰 보완 (Claude): 트랙 `genre` 가 표시명("Lo-Fi / Chillhop")으로 저장되는데 베가가 프리셋 키("lofi")로만 찾아 **모든 장르가 default 프리셋으로 마스터링되던 사전 버그**를 발견·수정했다. `vega_engine.resolve_genre_key()` 를 추가(add-only)해 표시명·키 모두 해석하고, `preset_for_genre()`·`master_track()`·생성/재마스터 호출부의 `genre_spec` 조회가 이를 쓴다. `mastering.genre_key` 와 피드백 기록의 `genre_key` 필드가 추가됐다. 이 수정 전의 피드백 기록·마스터 결과는 default 프리셋 기준이므로 참고용으로만 본다.
+- 테스트: `tests/test_vega_feedback.py` 10건, `tests/test_vega_engine.py` 에 표시명 해석 1건 추가.
 
 ### 7.5 [P3] 믹싱 단계 (보컬·반주 분리) — `feat/vega-stem-mixing`
 - 가사가 있는 트랙(`has_lyrics`)에 한해 Demucs(`htdemucs`)로 보컬/반주를 분리한 뒤, 보컬 체인(게이트 → EQ → 컴프 → 리버브)과 반주 밸런스를 조정하고 다시 합쳐 마스터링한다.

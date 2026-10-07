@@ -265,8 +265,29 @@ GENRE_MASTER_PRESETS: dict[str, dict] = {
 }
 
 
+def resolve_genre_key(genre: Optional[str]) -> str:
+    """
+    장르 입력을 GENRE_MASTER_PRESETS 키로 해석한다.
+    루나 트랙의 `genre` 는 표시명("Lo-Fi / Chillhop")으로 저장되므로, 프리셋 키("lofi")와
+    루나 GENRE_SPECS 의 name 을 모두 받아들인다. 어느 쪽에도 없으면 "default".
+    """
+    g = (genre or "").lower().strip()
+    if not g:
+        return "default"
+    if g in GENRE_MASTER_PRESETS:
+        return g
+    try:
+        import luna_engine  # 지연 import — 순환 참조 방지
+        for key, spec in luna_engine.GENRE_SPECS.items():
+            if str(spec.get("name", "")).lower().strip() == g and key in GENRE_MASTER_PRESETS:
+                return key
+    except Exception:
+        pass
+    return "default"
+
+
 def preset_for_genre(genre: str) -> MasteringDecisions:
-    raw = GENRE_MASTER_PRESETS.get((genre or "").lower().strip(), GENRE_MASTER_PRESETS["default"])
+    raw = GENRE_MASTER_PRESETS[resolve_genre_key(genre)]
     return MasteringDecisions.model_validate(raw)
 
 
@@ -670,6 +691,7 @@ def master_track(track_data: dict, prompt: str = "", use_llm: bool = True,
 
     track_id = track_data.get("track_id") or f"luna_{int(time.time())}"
     genre = (track_data.get("genre") or "default").lower()
+    genre_key = resolve_genre_key(genre)   # 프리셋 선택용 키 ("lofi" 등). genre 는 LLM 프롬프트용 표시명 유지
     mood = track_data.get("mood") or ""
     started = time.time()
 
@@ -748,6 +770,7 @@ def master_track(track_data: dict, prompt: str = "", use_llm: bool = True,
             "preview_file": track_data.get("audio_preview_file"),
             "prompt": prompt or "",
             "genre": genre,
+            "genre_key": genre_key,
             "target_lufs": decisions.target_lufs,
             "ceiling_dbtp": decisions.limiter.ceiling_dbtp,
             "before": before,

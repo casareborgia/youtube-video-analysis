@@ -1365,9 +1365,12 @@
                         <i class="fa-solid fa-sliders"></i> 사운드 엔지니어 베가
                         <span id="vegaStatusBadge" class="badge badge-subtle" style="font-size: 10px;"></span>
                       </div>
-                      <div id="vegaAbGroup" style="display: flex; gap: 4px;">
+                      <div id="vegaAbGroup" style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
                         <button type="button" id="btnVegaAbRaw" class="btn btn-xs btn-outline" title="마스터링 전 원본 듣기">A · 원본</button>
                         <button type="button" id="btnVegaAbMaster" class="btn btn-xs btn-outline" title="베가 마스터 결과 듣기">B · 마스터</button>
+                        <button type="button" id="btnVegaLike" class="btn btn-xs btn-outline" style="border-color: rgba(34,211,238,0.35); color: #67e8f9; font-size: 0.72rem; padding: 2px 7px;" title="현재 듣고 있는 버전을 선호로 기록">
+                          <i class="fa-solid fa-thumbs-up"></i> <span id="vegaLikeText">이 쪽이 좋아요</span>
+                        </button>
                       </div>
                     </div>
                     <div id="vegaMetrics" style="font-size: 0.76rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.6;"></div>
@@ -1383,6 +1386,19 @@
                         </div>
                       </div>
                       <div id="vegaSpectrumChart" class="vega-spectrum-chart"></div>
+                    </div>
+                    <!-- 7.4 차트 아래 접이식 줄: 베가 학습 제안 -->
+                    <div id="vegaSuggestSection" style="display: none; margin-top: 8px; background: rgba(0,0,0,0.22); border: 1px dashed rgba(34, 211, 238, 0.25); border-radius: 6px; padding: 6px 10px; font-size: 0.75rem;">
+                      <div id="vegaSuggestToggle" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer; color: #a5f3fc; font-weight: 600; user-select: none;">
+                        <span style="display: flex; align-items: center; gap: 5px;">
+                          <i class="fa-solid fa-lightbulb" style="color: #facc15;"></i> 베가 학습 제안
+                        </span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                          <span id="vegaSuggestBadge" class="badge badge-subtle" style="font-size: 9px; padding: 2px 5px;">조회 중...</span>
+                          <i id="vegaSuggestChevron" class="fa-solid fa-chevron-down" style="font-size: 0.7rem; color: var(--text-muted); transition: transform 0.2s;"></i>
+                        </div>
+                      </div>
+                      <div id="vegaSuggestContent" style="display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 0.73rem; color: var(--text-secondary); line-height: 1.5;"></div>
                     </div>
                     <div id="vegaReasoning" style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px; line-height: 1.45; font-style: italic;"></div>
                     <div id="vegaStaleNotice" style="display: none; margin-top: 6px; font-size: 0.74rem; color: #fbbf24;"><i class="fa-solid fa-triangle-exclamation"></i> 마스터가 바뀌었습니다. 업로드 전에 [비디오 렌더링]을 다시 실행하세요.</div>
