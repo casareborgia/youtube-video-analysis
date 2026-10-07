@@ -393,8 +393,18 @@ class VegaUiAssetsTests(unittest.TestCase):
 
     def test_panel_and_chart_markup_present(self):
         for el_id in ("vegaPanel", "vegaStatusBadge", "vegaMetrics", "vegaSpectrumSection", "vegaSpectrumChart",
-                      "btnVegaAbRaw", "btnVegaAbMaster", "btnVegaRemaster", "vegaPromptInput", "vegaStaleNotice"):
+                      "btnVegaAbRaw", "btnVegaAbMaster", "btnVegaRemaster", "vegaPromptInput", "vegaStaleNotice",
+                      "lunaMasterAudioCheck", "lunaMasteringPromptInput", "vegaPresetOnlyCheck"):
             self.assertIn(f'id="{el_id}"', self.html, el_id)
+
+    def test_preset_selector_ui_and_js_bindings(self):
+        # 7.3 마스터링 프리셋 선택 및 토글 UI 바인딩 검증
+        for field in ("master_audio", "mastering_prompt", "use_llm"):
+            self.assertIn(field, self.js, field)
+        self.assertIn("vega_master_audio", self.js)
+        self.assertIn("vega_preset_only", self.js)
+        # 마스터링 지시문은 곡마다 달라야 하므로 localStorage 에 기억하지 않는다
+        self.assertNotIn("vega_mastering_prompt", self.js)
 
     def test_js_wires_chart_preview_and_model_badge(self):
         self.assertIn("function buildVegaSpectrumChart", self.js)

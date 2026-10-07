@@ -1973,3 +1973,22 @@ body {
   white-space: nowrap;
 }
 .vega-spec-tick.zero { color: #f87171; font-weight: 700; }
+
+
+/* 7.3 베가 마스터링 프리셋 및 토글 컨트롤 */
+.form-control:disabled,
+.form-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background-color: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.vega-form-group {
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.vega-form-group:focus-within {
+  border-color: rgba(34, 211, 238, 0.4);
+  background-color: rgba(34, 211, 238, 0.08);
+}

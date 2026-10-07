@@ -1290,6 +1290,17 @@
                 </div>
               </div>
 
+              <!-- 베가 사운드 마스터링 옵션 (7.3) -->
+              <div class="vega-form-group" style="margin-top: 4px; padding: 10px 12px; background: rgba(34, 211, 238, 0.05); border: 1px solid rgba(34, 211, 238, 0.2); border-radius: 6px;">
+                <label class="checkbox-label" for="lunaMasterAudioCheck" style="font-size: 0.8rem; font-weight: 600; color: #67e8f9; cursor: pointer; user-select: none;">
+                  <input type="checkbox" id="lunaMasterAudioCheck" checked style="accent-color: #22d3ee; width: 15px; height: 15px; cursor: pointer;">
+                  <span><i class="fa-solid fa-sliders"></i> 베가 자동 마스터링 (유튜브 -14 LUFS 규격)</span>
+                </label>
+                <div id="lunaMasteringPromptGroup" style="margin-top: 6px;">
+                  <input type="text" id="lunaMasteringPromptInput" class="form-control" style="font-size: 0.78rem; padding: 5px 8px; width: 100%;" placeholder="마스터링 지시 (선택, 예: 저음을 더 단단하게, 고역은 부드럽게)">
+                </div>
+              </div>
+
               <button type="submit" id="btnRunLunaGen" class="btn btn-primary btn-block" style="margin-top: 14px; background: linear-gradient(135deg, #a855f7 0%, #6366f1 100%); border: none;">
                 <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 🚀 2~3단계. 완곡 작곡 & 앨범아트 생성 (Gemini x Lyria 3)</span>
                 <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 루나 완곡 작곡 & 앨범아트 생성 중...</span>
@@ -1375,12 +1386,21 @@
                     </div>
                     <div id="vegaReasoning" style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px; line-height: 1.45; font-style: italic;"></div>
                     <div id="vegaStaleNotice" style="display: none; margin-top: 6px; font-size: 0.74rem; color: #fbbf24;"><i class="fa-solid fa-triangle-exclamation"></i> 마스터가 바뀌었습니다. 업로드 전에 [비디오 렌더링]을 다시 실행하세요.</div>
-                    <div style="display: flex; gap: 6px; margin-top: 8px;">
-                      <input type="text" id="vegaPromptInput" class="form-control" style="font-size: 0.78rem; padding: 5px 8px; flex: 1;" placeholder="재마스터링 지시 (예: 저음을 더 단단하게, 고역은 부드럽게, -14 LUFS)">
-                      <button type="button" id="btnVegaRemaster" class="btn btn-xs btn-outline" style="white-space: nowrap; border-color: rgba(34,211,238,0.5); color: #67e8f9;">
-                        <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 재마스터</span>
-                        <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 처리 중...</span>
-                      </button>
+                    <!-- 재마스터 영역 (7.3 프리셋 토글 및 지시어) -->
+                    <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(34, 211, 238, 0.15);">
+                      <div style="margin-bottom: 6px;">
+                        <label class="checkbox-label" for="vegaPresetOnlyCheck" style="font-size: 0.73rem; color: #a5f3fc; cursor: pointer; user-select: none;">
+                          <input type="checkbox" id="vegaPresetOnlyCheck" style="accent-color: #22d3ee; width: 14px; height: 14px; cursor: pointer;">
+                          <span>프리셋만 적용 <span style="color: var(--text-muted); font-size: 0.68rem;">(AI 판단 없음, 비용 0)</span></span>
+                        </label>
+                      </div>
+                      <div style="display: flex; gap: 6px;">
+                        <input type="text" id="vegaPromptInput" class="form-control" style="font-size: 0.78rem; padding: 5px 8px; flex: 1; min-width: 0;" placeholder="재마스터링 지시 (예: 저음을 더 단단하게, 고역은 부드럽게, -14 LUFS)">
+                        <button type="button" id="btnVegaRemaster" class="btn btn-xs btn-outline" style="white-space: nowrap; border-color: rgba(34,211,238,0.5); color: #67e8f9; flex-shrink: 0;">
+                          <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 재마스터</span>
+                          <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 처리 중...</span>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
