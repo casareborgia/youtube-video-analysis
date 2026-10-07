@@ -4,6 +4,10 @@ import time
 import unittest
 from fastapi.testclient import TestClient
 
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
 import app
 import threads_client
 from services.engagement_discovery import EngagementDiscoveryService
@@ -13,14 +17,28 @@ from social_store import SocialStore
 
 class TestEngagementDiscovery(unittest.TestCase):
     def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.tmp.name) / "test_social.db"
+        self.patch_db = patch("social_store.DEFAULT_DB_PATH", self.db_path)
+        self.patch_db.start()
+        self.store = SocialStore(str(self.db_path))
+        self.patch_search = patch(
+            "threads_client.search_threads_posts",
+            side_effect=RuntimeError("Test mock: API fallback to demo seeds"),
+        )
+        self.patch_search.start()
         self.client = TestClient(app.app)
-        self.service = EngagementDiscoveryService()
-        self.store = SocialStore()
         self.rel_service = SocialRelationshipService(store=self.store)
+        self.service = EngagementDiscoveryService(store=self.store, relationship_service=self.rel_service)
+
+    def tearDown(self):
+        self.patch_search.stop()
+        self.patch_db.stop()
+        self.tmp.cleanup()
 
     def test_discover_threads_targets_structure(self):
         """탐색 결과 딕셔너리 구조, 카운트 및 요약 메트릭 검증."""
-        res = self.service.discover_targets(platform="threads", topic="스하리", limit=5)
+        res = self.service.discover_targets(platform="threads", topic="스하리", limit=5, allow_demo_seeds=True)
         self.assertIsInstance(res, dict)
         self.assertIn("targets", res)
         self.assertIn("summary", res)
@@ -60,6 +78,7 @@ class TestEngagementDiscovery(unittest.TestCase):
             limit=10,
             exclude_existing_relationships=True,
             actor_account_id=actor,
+            allow_demo_seeds=True,
         )
         filtered_usernames = [t["username"].lower() for t in res_filtered["targets"]]
         self.assertNotIn(target_uname.lower(), filtered_usernames)
@@ -72,6 +91,7 @@ class TestEngagementDiscovery(unittest.TestCase):
             limit=10,
             exclude_existing_relationships=False,
             actor_account_id=actor,
+            allow_demo_seeds=True,
         )
         unfiltered_usernames = [t["username"].lower() for t in res_unfiltered["targets"]]
         self.assertIn(target_uname.lower(), unfiltered_usernames)

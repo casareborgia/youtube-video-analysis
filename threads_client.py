@@ -184,7 +184,13 @@ def get_status() -> dict:
 
 # ── 1. 컨테이너 생성 및 단일 발행 (2-Step Publishing) ───────────────────────
 
-def create_media_container(text: str, reply_to_id: Optional[str] = None, image_url: Optional[str] = None) -> str:
+def create_media_container(
+    text: str,
+    reply_to_id: Optional[str] = None,
+    image_url: Optional[str] = None,
+    access_token: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> str:
     """
     [1단계] 미디어 컨테이너 생성
     - text: 본문 텍스트 (최대 500자)
@@ -193,11 +199,11 @@ def create_media_container(text: str, reply_to_id: Optional[str] = None, image_u
     반환: creation_id (문자열)
     """
     conf = load_config()
-    token = conf.get("access_token")
-    user_id = conf.get("user_id")
+    token = (access_token or conf.get("access_token") or "").strip()
+    uid = (user_id or conf.get("user_id") or "").strip() or "me"
 
-    if not token or not user_id:
-        raise ValueError("Threads Access Token과 User ID가 설정되지 않았습니다.")
+    if not token:
+        raise ValueError("Threads Access Token이 설정되지 않았습니다.")
 
     payload = {
         "access_token": token,
@@ -213,7 +219,7 @@ def create_media_container(text: str, reply_to_id: Optional[str] = None, image_u
     if reply_to_id:
         payload["reply_to_id"] = str(reply_to_id).strip()
 
-    url = f"{THREADS_API_BASE}/{user_id}/threads"
+    url = f"{THREADS_API_BASE}/{uid}/threads"
     res = _http_request(url, method="POST", data=payload)
     creation_id = res.get("id")
     if not creation_id:
@@ -221,19 +227,23 @@ def create_media_container(text: str, reply_to_id: Optional[str] = None, image_u
     return creation_id
 
 
-def publish_media_container(creation_id: str) -> str:
+def publish_media_container(
+    creation_id: str,
+    access_token: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> str:
     """
     [2단계] 생성된 미디어 컨테이너 최종 발행
     반환: 실제 발행된 threads media_id
     """
     conf = load_config()
-    token = conf.get("access_token")
-    user_id = conf.get("user_id")
+    token = (access_token or conf.get("access_token") or "").strip()
+    uid = (user_id or conf.get("user_id") or "").strip() or "me"
 
-    if not token or not user_id:
-        raise ValueError("Threads Access Token과 User ID가 필요합니다.")
+    if not token:
+        raise ValueError("Threads Access Token이 필요합니다.")
 
-    url = f"{THREADS_API_BASE}/{user_id}/threads_publish"
+    url = f"{THREADS_API_BASE}/{uid}/threads_publish"
     payload = {
         "access_token": token,
         "creation_id": creation_id
@@ -246,15 +256,27 @@ def publish_media_container(creation_id: str) -> str:
     return media_id
 
 
-def publish_single_post(text: str, reply_to_id: Optional[str] = None, image_url: Optional[str] = None) -> Dict[str, Any]:
+def publish_single_post(
+    text: str,
+    reply_to_id: Optional[str] = None,
+    image_url: Optional[str] = None,
+    access_token: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> Dict[str, Any]:
     """1단계 컨테이너 생성 + 2단계 최종 발행 원스톱 실행"""
-    creation_id = create_media_container(text=text, reply_to_id=reply_to_id, image_url=image_url)
+    creation_id = create_media_container(
+        text=text,
+        reply_to_id=reply_to_id,
+        image_url=image_url,
+        access_token=access_token,
+        user_id=user_id,
+    )
     if image_url:
         time.sleep(2)
     else:
         time.sleep(1)
 
-    media_id = publish_media_container(creation_id)
+    media_id = publish_media_container(creation_id, access_token=access_token, user_id=user_id)
     conf = load_config()
     username = conf.get("username", "")
     post_url = f"https://www.threads.net/@{username}/post/{media_id}" if username else f"https://www.threads.net/post/{media_id}"
@@ -429,3 +451,159 @@ def repost_post(post_id: str, access_token: Optional[str] = None) -> Dict[str, A
 
     url = f"{THREADS_API_BASE}/{urllib.parse.quote(clean_post_id)}/repost"
     return _http_request(url, method="POST", params={"access_token": token})
+
+
+def search_threads_posts(
+    query: str,
+    search_type: str = "RECENT",
+    limit: int = 25,
+    after: Optional[str] = None,
+    access_token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """공식 Threads API GET /keyword_search 를 통한 실시간 게시물 검색.
+
+    필수 조건:
+    - search_type: RECENT 또는 TOP만 허용
+    - limit: 1 ~ 100 (기본 25)
+    - 반환 필드: id, username, text, timestamp, permalink, has_replies
+    - 권한: threads_keyword_search
+    - 일시적 429 및 5xx 지수 백오프 재시도 (최대 3회)
+    - 토큰 마스킹 및 상세 권한 오류 안내
+    """
+    clean_query = (query or "").strip()
+    if not clean_query:
+        raise ValueError("검색어(query)는 필수입니다.")
+
+    norm_type = (search_type or "RECENT").strip().upper()
+    if norm_type not in ("RECENT", "TOP"):
+        raise ValueError("search_type은 'RECENT' 또는 'TOP'만 허용됩니다.")
+
+    safe_limit = max(1, min(int(limit or 25), 100))
+
+    conf = load_config()
+    token = (access_token or conf.get("access_token") or "").strip()
+    if not token:
+        raise RuntimeError("Threads access_token이 설정되지 않았습니다. 계정 연결이 필요합니다.")
+
+    url = f"{THREADS_API_BASE}/keyword_search"
+    params = {
+        "q": clean_query,
+        "search_type": norm_type,
+        "fields": "id,username,text,timestamp,permalink,has_replies",
+        "limit": safe_limit,
+        "access_token": token,
+    }
+    if after:
+        params["after"] = str(after).strip()
+
+    max_retries = 3
+    last_exc = None
+    for attempt in range(max_retries):
+        try:
+            res = _http_request(url, method="GET", params=params)
+            return res
+        except Exception as exc:
+            last_exc = exc
+            err_str = str(exc)
+            # 권한 부족 감지 (threads_keyword_search 스코프 누락)
+            if "OAuthException" in err_str or "403" in err_str or "threads_keyword_search" in err_str:
+                raise RuntimeError(
+                    "Threads 키워드 검색 권한(threads_keyword_search)이 부족하거나 승인되지 않았습니다. "
+                    "Meta 개발자 콘솔 및 계정 권한을 확인해주세요."
+                ) from exc
+
+            # 429 또는 5xx 일시적 에러인 경우 지수 백오프 재시도
+            if attempt < max_retries - 1 and any(code in err_str for code in ("429", "500", "502", "503", "504")):
+                backoff = (2 ** attempt) * 0.5
+                time.sleep(backoff)
+                continue
+            break
+
+    # 민감 토큰 마스킹된 에러 전파
+    clean_err = str(last_exc)
+    if token:
+        clean_err = clean_err.replace(token, "[MASKED_TOKEN]")
+    raise RuntimeError(f"Threads 키워드 검색 실패: {clean_err}") from last_exc
+
+
+def reply_to_post(
+    post_id: str,
+    text: str,
+    access_token: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """공식 Threads API 2단계 프로토콜을 통한 대상 게시물 답글 발행."""
+    clean_post_id = str(post_id or "").strip()
+    clean_text = (text or "").strip()
+    if not clean_post_id:
+        raise ValueError("답글 대상 post_id는 필수입니다.")
+    if not clean_text:
+        raise ValueError("답글 본문(text)은 필수입니다.")
+
+    return publish_single_post(
+        text=clean_text,
+        reply_to_id=clean_post_id,
+        access_token=access_token,
+        user_id=user_id,
+    )
+
+
+def get_account_insights(
+    metric: str = "views,likes,replies,reposts,quotes,followers_count",
+    since: Optional[int] = None,
+    until: Optional[int] = None,
+    access_token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """공식 Threads Graph API GET /me/threads_insights 계정 인사이트 조회."""
+    conf = load_config()
+    token = (access_token or conf.get("access_token") or "").strip()
+    if not token:
+        raise RuntimeError("Threads access_token이 설정되지 않았습니다.")
+
+    url = f"{THREADS_API_BASE}/me/threads_insights"
+    params = {
+        "metric": metric,
+        "access_token": token,
+    }
+    if since is not None:
+        params["since"] = int(since)
+    if until is not None:
+        params["until"] = int(until)
+
+    try:
+        return _http_request(url, method="GET", params=params)
+    except Exception as exc:
+        clean_err = str(exc)
+        if token:
+            clean_err = clean_err.replace(token, "[MASKED_TOKEN]")
+        raise RuntimeError(f"Threads 계정 인사이트 조회 실패: {clean_err}") from exc
+
+
+def get_post_insights(
+    thread_id: str,
+    metric: str = "views,likes,replies,reposts,quotes,shares",
+    access_token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """공식 Threads Graph API GET /{thread_id}/insights 게시물 인사이트 조회."""
+    clean_tid = str(thread_id or "").strip()
+    if not clean_tid:
+        raise ValueError("thread_id는 필수입니다.")
+
+    conf = load_config()
+    token = (access_token or conf.get("access_token") or "").strip()
+    if not token:
+        raise RuntimeError("Threads access_token이 설정되지 않았습니다.")
+
+    url = f"{THREADS_API_BASE}/{urllib.parse.quote(clean_tid)}/insights"
+    params = {
+        "metric": metric,
+        "access_token": token,
+    }
+
+    try:
+        return _http_request(url, method="GET", params=params)
+    except Exception as exc:
+        clean_err = str(exc)
+        if token:
+            clean_err = clean_err.replace(token, "[MASKED_TOKEN]")
+        raise RuntimeError(f"Threads 게시물({clean_tid}) 인사이트 조회 실패: {clean_err}") from exc

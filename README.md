@@ -327,7 +327,8 @@ FastAPI 라우트 **80개 이상**. 전체 스펙은 서버 실행 후 http://lo
 | 소셜 계정/인증 | `GET /api/social/accounts` · `GET /api/x/auth/login` · `GET /api/x/auth/callback` · `POST /api/x/auth/disconnect` |
 | 소셜 초안/발행 | `POST /api/social/drafts/from-marketing` · `POST /api/social/drafts/manual` · `PUT /api/social/drafts/{job_id}/items/{idx}` · `POST /api/social/publish/{job_id}` |
 | 소셜 댓글/답글 | `GET /api/social/comments/{platform}/{post_id}` · `POST /api/social/replies/batch-preview` · `POST /api/social/replies/batch-execute` |
-| 소셜 스하리 | `GET /api/social/capabilities` · `POST /api/social/engagement/run` |
+| 소셜 스하리 | `GET /api/social/capabilities` · `POST /api/social/engagement/run` · `GET /api/engagement/discover` · `POST /api/engagement/auto-run` |
+| Threads 성장 캠페인 | `POST /api/growth/campaigns/start` · `POST /api/growth/campaigns/end` · `GET /api/growth/campaigns/{id}/summary` · `GET /api/growth/campaigns/{id}/compare` · `POST /api/growth/insights/snapshot` · `POST /api/growth/draft-reply` |
 | 소셜 대기열/예약 | `GET /api/social/jobs` · `POST /api/social/jobs/{job_id}/schedule` · `POST /api/social/jobs/{job_id}/cancel` · `POST /api/social/jobs/{job_id}/retry` · `GET /api/social/scheduler/status` · `POST /api/social/scheduler/tick` |
 | 소셜 통합 이력 | `GET /api/social/history` |
 | 음악 | `POST /api/luna/generate` · `POST /api/luna/master` · `GET /api/vega/status` · `POST /api/luna/render` · `POST /api/luna/upload` |

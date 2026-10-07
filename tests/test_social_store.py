@@ -38,7 +38,7 @@ class SocialStoreTests(unittest.TestCase):
 
     def test_schema_initialization_and_version(self):
         version = self.store.get_schema_version()
-        self.assertEqual(version, 2)
+        self.assertEqual(version, social_store.CURRENT_SCHEMA_VERSION)
 
     def test_v1_to_v2_migration(self):
         # Create a legacy v1 database with global UNIQUE(idempotency_key) AND social_job_items with FK CASCADE
@@ -115,9 +115,9 @@ class SocialStoreTests(unittest.TestCase):
             conn.execute("PRAGMA user_version = 1")
         conn.close()
 
-        # Initialize SocialStore on v1 DB -> must auto-migrate to v2
+        # Initialize SocialStore on v1 DB -> must auto-migrate to latest
         migrated = social_store.SocialStore(v1_db)
-        self.assertEqual(migrated.get_schema_version(), 2)
+        self.assertEqual(migrated.get_schema_version(), social_store.CURRENT_SCHEMA_VERSION)
 
         # 1. Verify old job intact
         old_job = migrated.get_job("job_v1_01")
@@ -184,7 +184,7 @@ class SocialStoreTests(unittest.TestCase):
         conn.close()
 
         migrated_store = social_store.SocialStore(legacy_db)
-        self.assertEqual(migrated_store.get_schema_version(), 2)
+        self.assertEqual(migrated_store.get_schema_version(), social_store.CURRENT_SCHEMA_VERSION)
 
         history = migrated_store.history()
         self.assertEqual(len(history), 1)

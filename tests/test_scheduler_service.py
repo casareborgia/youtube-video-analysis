@@ -32,6 +32,8 @@ class SchedulerServiceTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "test_social.db"
+        self.patch_db = patch("social_store.DEFAULT_DB_PATH", self.db_path)
+        self.patch_db.start()
         self.store = SocialStore(path=self.db_path)
 
         # 가상 시계 초기화 (기본 1,000,000초부터 시작)
@@ -66,6 +68,7 @@ class SchedulerServiceTests(unittest.TestCase):
 
     def tearDown(self):
         self.scheduler.stop()
+        self.patch_db.stop()
         self.tmp.cleanup()
 
     # ==========================================

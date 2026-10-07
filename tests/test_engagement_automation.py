@@ -13,6 +13,7 @@ from engagement_automation import (
     EngagementPolicy,
     EngagementStore,
     EngagementTarget,
+    SUPPORTED_ACTIONS,
     ThreadsApiEngagementClient,
     UnsupportedAction,
     XApiEngagementClient,
@@ -24,6 +25,10 @@ class EngagementAutomationTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.db_path = Path(self.tmp.name) / "events.db"
+        self.patch_social_db = patch("social_store.DEFAULT_DB_PATH", self.db_path)
+        self.patch_social_db.start()
+        self.patch_eng_db = patch("engagement_automation.DB_PATH", self.db_path)
+        self.patch_eng_db.start()
         self.store = EngagementStore(self.db_path)
         self.policy = EngagementPolicy(delay_seconds=0)
         self.service = EngagementAutomationService(store=self.store, policy=self.policy)
@@ -33,6 +38,7 @@ class EngagementAutomationTests(unittest.TestCase):
             account_id="1453335049198202883",
             post_url="https://x.com/example/status/2105629134760370403",
             profile_url="https://x.com/example",
+            reply_text="소통 환영합니다!",
         )
         self.threads_target = EngagementTarget(
             platform="threads",
@@ -40,9 +46,12 @@ class EngagementAutomationTests(unittest.TestCase):
             account_id="acc_threads_456",
             post_url="https://threads.net/@example/post/post_threads_123",
             profile_url="https://threads.net/@example",
+            reply_text="소통 환영합니다!",
         )
 
     def tearDown(self):
+        self.patch_eng_db.stop()
+        self.patch_social_db.stop()
         self.tmp.cleanup()
 
     # ==========================================
@@ -51,7 +60,7 @@ class EngagementAutomationTests(unittest.TestCase):
     def test_dry_run_never_constructs_live_client(self):
         self.service._client = lambda *_: self.fail("live client must not be created")
         result = self.service.execute([self.target], dry_run=True)
-        self.assertEqual([r["status"] for r in result["results"]], ["dry_run"] * 3)
+        self.assertEqual([r["status"] for r in result["results"]], ["dry_run"] * len(SUPPORTED_ACTIONS))
 
     def test_same_target_is_not_processed_twice(self):
         self.service.execute([self.target], actions=["like"], dry_run=True)

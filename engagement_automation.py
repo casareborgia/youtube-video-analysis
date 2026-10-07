@@ -29,7 +29,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / "social_engagement.db"
 
 SUPPORTED_PLATFORMS = {"threads", "x"}
-SUPPORTED_ACTIONS = ("follow", "like", "repost")
+SUPPORTED_ACTIONS = ("follow", "like", "repost", "reply")
 
 
 class EngagementError(RuntimeError):
@@ -48,6 +48,7 @@ class EngagementTarget:
     post_url: str = ""
     profile_url: str = ""
     label: str = ""
+    reply_text: str = ""
 
     def validate(self) -> None:
         if self.platform not in SUPPORTED_PLATFORMS:
@@ -72,6 +73,7 @@ class EngagementPolicy:
     daily_follow: int = 10
     daily_like: int = 25
     daily_repost: int = 10
+    daily_reply: int = 15
     delay_seconds: float = 2.0
 
     def limit_for(self, action: str) -> int:
@@ -344,20 +346,33 @@ class ThreadsApiEngagementClient:
             raise EngagementError("Threads Access Token이 필요합니다.")
 
     def perform(self, action: str, target: EngagementTarget) -> Dict[str, Any]:
-        if action != "repost":
-            raise UnsupportedAction(
-                f"Threads 공식 API는 {action} 동작을 제공하지 않습니다. 웹 브라우저 자동화 방식을 사용하세요."
-            )
         import threads_client
 
-        try:
-            res = threads_client.repost_post(post_id=target.post_id, access_token=self.token)
-            return {"status": "success", "response": res, "via": "official_api"}
-        except Exception as exc:
-            msg = str(exc).lower()
-            if "already" in msg or "duplicate" in msg:
-                return {"status": "already_done", "detail": str(exc), "via": "official_api"}
-            raise EngagementError(str(exc)) from exc
+        if action == "repost":
+            try:
+                res = threads_client.repost_post(post_id=target.post_id, access_token=self.token)
+                return {"status": "success", "response": res, "via": "official_api"}
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "already" in msg or "duplicate" in msg:
+                    return {"status": "already_done", "detail": str(exc), "via": "official_api"}
+                raise EngagementError(str(exc)) from exc
+        elif action == "reply":
+            reply_text = (getattr(target, "reply_text", "") or "").strip()
+            if not reply_text:
+                raise EngagementError(f"답글 본문(reply_text)이 비어 있어 발행할 수 없습니다. (대상: {target.account_id})")
+            try:
+                res = threads_client.reply_to_post(post_id=target.post_id, text=reply_text, access_token=self.token)
+                return {"status": "success", "response": res, "via": "official_api"}
+            except Exception as exc:
+                msg = str(exc).lower()
+                if "already" in msg or "duplicate" in msg:
+                    return {"status": "already_done", "detail": str(exc), "via": "official_api"}
+                raise EngagementError(str(exc)) from exc
+        else:
+            raise UnsupportedAction(
+                f"Threads 공식 API는 '{action}' 동작을 제공하지 않습니다. (공식 지원 동작: repost, reply)"
+            )
 
 
 class WebEngagementClient:
@@ -513,7 +528,7 @@ class EngagementAutomationService:
         if len(targets) > self.policy.max_targets_per_request:
             raise ValueError(f"한 번에 최대 {self.policy.max_targets_per_request}개 대상만 처리할 수 있습니다.")
         if not actions or any(a not in SUPPORTED_ACTIONS for a in actions):
-            raise ValueError("actions는 follow, like, repost만 사용할 수 있습니다.")
+            raise ValueError(f"actions는 {', '.join(SUPPORTED_ACTIONS)}만 사용할 수 있습니다.")
         if len(actions) != len(set(actions)):
             raise ValueError("actions에 같은 동작을 중복 지정할 수 없습니다.")
         for target in targets:
@@ -549,7 +564,31 @@ class EngagementAutomationService:
 
         for target_idx, target in enumerate(targets):
             for action in actions:
-                item = {"platform": target.platform, "post_id": target.post_id, "action": action}
+                item = {
+                    "platform": target.platform,
+                    "post_id": target.post_id,
+                    "action": action,
+                    "account_id": target.account_id,
+                    "target_label": target.label,
+                    "post_url": target.post_url,
+                    "profile_url": target.profile_url,
+                    "reply_text": target.reply_text,
+                }
+
+                # 답글 동작 시 답글 본문 필수 검증 (비어 있으면 발행 차단)
+                if action == "reply" and not (target.reply_text or "").strip():
+                    item.update(status="skipped_missing_reply_text", detail="답글 본문이 비어 있어 실행이 제외되었습니다.")
+                    results.append(item)
+                    if job_id and hasattr(self.store, "social_store"):
+                        self.store.social_store.add_job_item(
+                            job_id=job_id,
+                            item_order=len(results),
+                            content={"target": target.__dict__, "action": action},
+                            status="skipped_missing_reply_text",
+                            error_message="답글 본문이 비어 있음",
+                        )
+                    continue
+
                 allowed, reason = self.store.reserve_slot(target, action, self.policy, dry_run)
                 if not allowed:
                     if reason == "skipped_duplicate":
@@ -595,11 +634,12 @@ class EngagementAutomationService:
                         try:
                             from services.social_relationship_service import SocialRelationshipService
                             rel_svc = SocialRelationshipService(store=self.store.social_store)
+                            target_user_key = target.label or target.account_id
                             rel_svc.record_engagement_success(
                                 platform=target.platform,
                                 actor_account_id=actor_account_id or "default",
                                 action=action,
-                                target_username=target.account_id,
+                                target_username=target_user_key,
                                 target_post_id=target.post_id,
                             )
                         except Exception:
