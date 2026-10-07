@@ -2533,6 +2533,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const lunaDurationSelect = document.getElementById('lunaDurationSelect');
   const lunaVideoQualitySelect = document.getElementById('lunaVideoQualitySelect');
   const lunaVocalSelect = document.getElementById('lunaVocalSelect');
+  const lunaMasterAudioCheck = document.getElementById('lunaMasterAudioCheck');
+  const lunaMasteringPromptInput = document.getElementById('lunaMasteringPromptInput');
   const btnRunLunaGen = document.getElementById('btnRunLunaGen');
 
   const lunaEmptyState = document.getElementById('lunaEmptyState');
@@ -2553,6 +2555,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const vegaReasoning = document.getElementById('vegaReasoning');
   const vegaStaleNotice = document.getElementById('vegaStaleNotice');
   const vegaPromptInput = document.getElementById('vegaPromptInput');
+  const vegaPresetOnlyCheck = document.getElementById('vegaPresetOnlyCheck');
   const btnVegaAbRaw = document.getElementById('btnVegaAbRaw');
   const btnVegaAbMaster = document.getElementById('btnVegaAbMaster');
   const btnVegaRemaster = document.getElementById('btnVegaRemaster');
@@ -2754,6 +2757,53 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // 7.3 베가 생성 옵션 & 재마스터 프리셋 토글 상태 동기화 및 localStorage 연동
+  // 켜기/끄기 상태만 기억한다. 마스터링 지시문은 곡마다 달라야 하므로 기억하지 않는다
+  // (이전 곡의 "저음 더" 같은 지시가 다음 장르의 새 곡에 조용히 적용되는 것을 막기 위함).
+  function lsGet(key) { try { return localStorage.getItem(key); } catch (_) { return null; } }
+  function lsSet(key, val) { try { localStorage.setItem(key, val); } catch (_) {} }
+
+  function initVegaPreferences() {
+    if (lunaMasterAudioCheck) {
+      const savedMasterAudio = lsGet('vega_master_audio');
+      if (savedMasterAudio !== null) {
+        lunaMasterAudioCheck.checked = (savedMasterAudio === 'true');
+      }
+      const syncMasterAudio = () => {
+        const enabled = lunaMasterAudioCheck.checked;
+        lsSet('vega_master_audio', enabled ? 'true' : 'false');
+        if (lunaMasteringPromptInput) {
+          lunaMasteringPromptInput.disabled = !enabled;
+          lunaMasteringPromptInput.placeholder = enabled
+            ? '마스터링 지시 (선택, 예: 저음을 더 단단하게, 고역은 부드럽게)'
+            : '마스터링 건너뜀 (지시 입력 비활성화)';
+        }
+      };
+      lunaMasterAudioCheck.addEventListener('change', syncMasterAudio);
+      syncMasterAudio();
+    }
+
+    if (vegaPresetOnlyCheck) {
+      const savedPresetOnly = lsGet('vega_preset_only');
+      if (savedPresetOnly !== null) {
+        vegaPresetOnlyCheck.checked = (savedPresetOnly === 'true');
+      }
+      const syncPresetOnly = () => {
+        const presetOnly = vegaPresetOnlyCheck.checked;
+        lsSet('vega_preset_only', presetOnly ? 'true' : 'false');
+        if (vegaPromptInput) {
+          vegaPromptInput.disabled = presetOnly;
+          vegaPromptInput.placeholder = presetOnly
+            ? '장르 프리셋 적용 모드 (지시 입력 비활성화)'
+            : '재마스터링 지시 (예: 저음을 더 단단하게, 고역은 부드럽게, -14 LUFS)';
+        }
+      };
+      vegaPresetOnlyCheck.addEventListener('change', syncPresetOnly);
+      syncPresetOnly();
+    }
+  }
+  initVegaPreferences();
+
   if (lunaMusicForm) {
     lunaMusicForm.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -2762,6 +2812,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const customTopic = lunaTopicInput ? lunaTopicInput.value.trim() : '';
       const duration = lunaDurationSelect ? parseInt(lunaDurationSelect.value, 10) : 180;
       const vocalMode = lunaVocalSelect ? lunaVocalSelect.value : 'auto';
+      const masterAudio = lunaMasterAudioCheck ? lunaMasterAudioCheck.checked : true;
+      const masteringPrompt = (masterAudio && lunaMasteringPromptInput) ? lunaMasteringPromptInput.value.trim() : '';
 
       btnRunLunaGen.disabled = true;
       btnRunLunaGen.querySelector('.btn-text').style.display = 'none';
@@ -2781,7 +2833,9 @@ document.addEventListener('DOMContentLoaded', () => {
             custom_topic: customTopic,
             duration_seconds: duration,
             leo_brief: currentLeoBrief,
-            vocal_mode: vocalMode
+            vocal_mode: vocalMode,
+            master_audio: masterAudio,
+            mastering_prompt: masteringPrompt
           })
         });
 
@@ -2794,6 +2848,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentLunaTrack = track;
         renderLunaTrackView(track);
         loadLunaHistory();
+        if (lunaMasteringPromptInput) lunaMasteringPromptInput.value = '';   // 지시는 이 곡에 적용되어 소비됨
         if (track.is_ai_generated) {
           const lyricsNotice = (track.has_lyrics || track.lyrics) ? ' (🎤 감성 가사 포함)' : '';
           showAlert(`🎵 '${track.title}' Lyria 3 Pro 고품질 AI 완곡 작곡 및 앨범아트가 완성되었습니다! (${track.ai_model || 'Lyria 3.5'})${lyricsNotice}`, 'success');
@@ -2962,7 +3017,15 @@ document.addEventListener('DOMContentLoaded', () => {
       vegaReasoning.textContent = m.status === 'done' ? `“${m.reasoning || ''}”${note}` : '';
     }
     if (vegaStaleNotice) vegaStaleNotice.style.display = track.video_stale ? 'block' : 'none';
-    if (vegaPromptInput && m.prompt) vegaPromptInput.value = m.prompt;
+    if (vegaPromptInput) {
+      if (m.prompt && (!vegaPresetOnlyCheck || !vegaPresetOnlyCheck.checked)) {
+        vegaPromptInput.value = m.prompt;
+      }
+      if (vegaPresetOnlyCheck && vegaPresetOnlyCheck.checked) {
+        vegaPromptInput.disabled = true;
+        vegaPromptInput.placeholder = '장르 프리셋 적용 모드 (지시 입력 비활성화)';
+      }
+    }
   }
 
   function vegaAbGroupVisible() { return Boolean(btnVegaAbRaw && btnVegaAbMaster); }
@@ -3009,13 +3072,16 @@ document.addEventListener('DOMContentLoaded', () => {
         lunaStatusBadge.textContent = '베가 마스터링 중...';
       }
       try {
+        const presetOnly = vegaPresetOnlyCheck ? vegaPresetOnlyCheck.checked : false;
+        const useLlm = !presetOnly;
+        const remasterPrompt = useLlm && vegaPromptInput ? vegaPromptInput.value.trim() : '';
         const res = await fetch('/api/luna/master', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             track_id: currentLunaTrack.track_id,
-            prompt: vegaPromptInput ? vegaPromptInput.value.trim() : '',
-            use_llm: true
+            prompt: remasterPrompt,
+            use_llm: useLlm
           })
         });
         if (!res.ok) {

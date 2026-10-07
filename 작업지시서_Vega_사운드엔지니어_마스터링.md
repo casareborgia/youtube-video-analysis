@@ -178,6 +178,8 @@ corrective_eq → compressor → tonal_eq → saturator → M/S stereo_image
 - **A/B 버튼**: `A · 원본` / `B · 마스터` — 재생 위치를 유지한 채 `audio_raw_url` ↔ `audio_preview_url`(없으면 `audio_url`) 전환. 원본·마스터 모두 MP3 라 로딩 속도가 같다.
 - 플레이어 기본 소스도 `audio_preview_url || audio_url`. 4단계 영상 제작의 배경음악 선택과 렌더·업로드는 계속 WAV(`audio_url`/`audio_file`)를 쓴다.
 - **전후 비교 차트**(`#vegaSpectrumSection`, 7.1): `mastering.before/after` 의 4대역 RMS·LUFS·트루피크를 행마다 원본(회색)/마스터(청록) 가로 막대로 그린다. 공통 dB 축(+3 ~ 최소값 기준 12dB 단위), LUFS 행에 목표(`target_lufs`)·트루피크 행에 한도(`ceiling_dbtp`) 노란 세로선, 0 dBTP 빨간선, 0 초과 피크는 빨간 막대. 텍스트는 CSS px 라 패널 폭(약 300px)에서도 읽힌다. 외부 라이브러리 없음.
+- **생성 폼 마스터링 옵션 (7.3)**: 음원 길이/영상 화질 아래 "베가 자동 마스터링 (유튜브 -14 LUFS 규격)" 체크박스(`#lunaMasterAudioCheck`, 기본 켜짐)와 "마스터링 지시 (선택)" 입력란(`#lunaMasteringPromptInput`). 체크 해제 시 지시 입력란 비활성화. 체크 상태만 `localStorage`(`vega_master_audio`)에 기억하고 **지시문은 기억하지 않는다**(이전 곡의 지시가 다른 장르의 새 곡에 조용히 적용되는 것을 막기 위해; 생성 성공 시 입력란을 비운다).
+- **재마스터 프리셋 토글 (7.3)**: 패널 재마스터 영역에 "프리셋만 적용 (AI 판단 없음, 비용 0)" 토글(`#vegaPresetOnlyCheck`, `use_llm = !checked`, 기본 꺼짐). 토글 시 프롬프트 입력란이 비활성화되며 `POST /api/luna/master` 호출 시 `use_llm: false`가 전송된다. `localStorage`(`vega_preset_only`)에 상태 기억.
 - **재마스터**: 프롬프트 입력 후 `POST /api/luna/master` 호출, 결과로 뷰 갱신.
 - `mastering` 필드가 없는 과거 트랙은 패널을 숨긴다.
 
@@ -321,10 +323,12 @@ done
 - 실측 (Etched in Plaster, 180초): WAV 47.2 MB → MP3 4.3 MB, 음량 -14.0 → -14.2 LUFS, 피크 -2.7 → -2.9 dBFS, 전체 마스터링 8초.
 - 테스트: 생성·URL 노출·WAV 유지, 인코더 단독, 실패 시 폴백 3건.
 
-### 7.3 [P2] 마스터링 프리셋 선택·토글 UI — `feat/vega-preset-selector`
-- 생성 폼에 "베가 자동 마스터링" 체크박스(`master_audio`)와 마스터링 지시 입력(`mastering_prompt`)을 추가한다. 기본 켜짐.
-- 재마스터 패널에 "프리셋만 적용"(`use_llm=false`) 옵션 추가.
-- API 는 이미 두 필드를 받으므로 백엔드 변경 없음.
+### 7.3 [P2] 마스터링 프리셋 선택·토글 UI — `feat/vega-preset-selector` ✅ 완료
+- 생성 폼에 "베가 자동 마스터링" 체크박스(`master_audio`)와 마스터링 지시 입력(`mastering_prompt`)을 추가 (기본 켜짐, 체크 해제 시 지시 입력 비활성화, 체크 상태만 localStorage 연동).
+- 리뷰 보완: 지시문 localStorage 기억 제거(곡 간 오염 방지), 생성 성공 시 지시 입력란 초기화, localStorage 읽기도 try/catch. 실측: 폼 폭 542px·패널 폭 307px 안에서 넘침 없음, 프리셋 모드 재마스터 6초·Gemini 호출 0회, 체크 해제 시 요청 body 에 `master_audio:false` 전송 확인.
+- 재마스터 패널에 "프리셋만 적용"(`use_llm=false`) 옵션 추가 (토글 켜짐 시 지시 입력 비활성화, localStorage 연동).
+- `POST /api/luna/generate` 및 `POST /api/luna/master` 호출 바디 연동 완료.
+- `VegaUiAssetsTests` 단위 테스트에 새 요소 ID 검사 추가 및 전체 45개 테스트 통과 유지.
 
 ### 7.4 [P2] 피드백 로그와 프리셋 자동 보정 — `feat/vega-feedback-loop`
 - MasterIA 의 "사용자 피드백 학습" 아이디어를 가볍게 적용한다. A/B 에서 사용자가 최종 선택한 쪽(원본/마스터)과 재마스터 프롬프트를 `data/luna_music/vega_feedback.jsonl` 에 기록한다.
