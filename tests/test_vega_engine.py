@@ -381,6 +381,39 @@ class LunaHistoryExposesMasteringTests(unittest.TestCase):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class VegaUiAssetsTests(unittest.TestCase):
+    """프론트 자산(index.html / app.js / style.css)에 베가 패널·차트 훅이 유지되는지 확인한다 (JS 테스트 러너가 없어 문자열 검사)."""
+
+    @classmethod
+    def setUpClass(cls):
+        base = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
+        cls.html = open(os.path.join(base, "index.html"), encoding="utf-8").read()
+        cls.js = open(os.path.join(base, "app.js"), encoding="utf-8").read()
+        cls.css = open(os.path.join(base, "style.css"), encoding="utf-8").read()
+
+    def test_panel_and_chart_markup_present(self):
+        for el_id in ("vegaPanel", "vegaStatusBadge", "vegaMetrics", "vegaSpectrumSection", "vegaSpectrumChart",
+                      "btnVegaAbRaw", "btnVegaAbMaster", "btnVegaRemaster", "vegaPromptInput", "vegaStaleNotice"):
+            self.assertIn(f'id="{el_id}"', self.html, el_id)
+
+    def test_js_wires_chart_preview_and_model_badge(self):
+        self.assertIn("function buildVegaSpectrumChart", self.js)
+        self.assertIn("buildVegaSpectrumChart(m.before, m.after, m)", self.js)
+        self.assertIn("audio_preview_url || currentLunaTrack.audio_url", self.js.replace("\n", "").replace(" ", "")
+                      .replace("audio_preview_url||currentLunaTrack.audio_url", "audio_preview_url || currentLunaTrack.audio_url"))
+        self.assertIn("m.decision_model", self.js)
+        for key in ("rms_sub_db", "rms_low_db", "rms_mid_db", "rms_high_db", "integrated_lufs", "true_peak_dbtp",
+                    "target_lufs", "ceiling_dbtp"):
+            self.assertIn(key, self.js, key)
+
+    def test_css_has_chart_rules_and_no_external_assets(self):
+        for cls_name in (".vega-spec-row", ".vega-spec-bar.before", ".vega-spec-bar.after", ".vega-spec-marker.target"):
+            self.assertIn(cls_name, self.css, cls_name)
+        # CSP(script-src 'self' cdnjs) 를 지키려면 차트에 외부 스크립트가 없어야 한다
+        self.assertNotIn("chart.js", self.html.lower())
+        self.assertNotIn("d3.min.js", self.html.lower())
+
+
 class VegaApiTests(unittest.TestCase):
     def setUp(self):
         from fastapi.testclient import TestClient

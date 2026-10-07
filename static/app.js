@@ -2556,6 +2556,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnVegaAbRaw = document.getElementById('btnVegaAbRaw');
   const btnVegaAbMaster = document.getElementById('btnVegaAbMaster');
   const btnVegaRemaster = document.getElementById('btnVegaRemaster');
+  const vegaSpectrumSection = document.getElementById('vegaSpectrumSection');
+  const vegaSpectrumChart = document.getElementById('vegaSpectrumChart');
   let vegaAbMode = 'master'; // 'raw' | 'master'
 
   // 가사 & 보컬 뷰어 요소
@@ -2823,10 +2825,90 @@ document.addEventListener('DOMContentLoaded', () => {
     return `${Number(v).toFixed(1)} ${unit}`;
   }
 
+  // ── 7.1 사운드 엔지니어 베가: 전후 스펙트럼 및 음량 비교 차트 ──
+  // 패널 폭(약 300px)에 맞춰 늘어나는 가로 막대 행으로 그린다. 한 장짜리 가로 SVG 는 0.44배로 축소되어
+  // 글자가 4px 가 되었으므로(실측) 텍스트는 CSS px 로 두고 막대만 퍼센트로 스케일한다.
+  const VEGA_SPEC_ITEMS = [
+    { id: 'sub',  name: 'Sub',       freq: '~60Hz',     unit: 'dB',   bKey: 'rms_sub_db',       aKey: 'rms_sub_db' },
+    { id: 'low',  name: 'Low',       freq: '60~250Hz',  unit: 'dB',   bKey: 'rms_low_db',       aKey: 'rms_low_db' },
+    { id: 'mid',  name: 'Mid',       freq: '250~4kHz',  unit: 'dB',   bKey: 'rms_mid_db',       aKey: 'rms_mid_db' },
+    { id: 'high', name: 'High',      freq: '4kHz~',     unit: 'dB',   bKey: 'rms_high_db',      aKey: 'rms_high_db' },
+    { id: 'lufs', name: 'LUFS',      freq: '통합 음량',  unit: 'LUFS', bKey: 'integrated_lufs',  aKey: 'integrated_lufs', deltaUnit: 'LU', target: 'target_lufs',  targetLabel: '목표' },
+    { id: 'tp',   name: 'True Peak', freq: '최대 피크',  unit: 'dBTP', bKey: 'true_peak_dbtp',   aKey: 'true_peak_dbtp',  target: 'ceiling_dbtp', targetLabel: '한도' }
+  ];
+
+  function vegaNum(v) { return (typeof v === 'number' && isFinite(v)) ? v : null; }
+  function vegaFmt(v) { return v === null ? '—' : (v > 0 ? '+' : '') + v.toFixed(1); }
+
+  function buildVegaSpectrumChart(before, after, mastering) {
+    if (!before || !after) return '';
+    const m = mastering || {};
+    const rows = VEGA_SPEC_ITEMS.map(it => ({
+      ...it,
+      bVal: vegaNum(before[it.bKey]),
+      aVal: vegaNum(after[it.aKey]),
+      tVal: it.target ? vegaNum(m[it.target]) : null
+    }));
+
+    // 공통 dB 축: 위는 +3(트루피크 초과 표시용), 아래는 가장 작은 값에 맞춰 12dB 단위로 내린다 (수면 장르는 -45 아래로 내려간다)
+    const vals = rows.flatMap(r => [r.bVal, r.aVal, r.tVal]).filter(v => v !== null);
+    const maxDb = 3;
+    const minDb = Math.min(-45, Math.floor((Math.min(...vals) - 3) / 12) * 12);
+    const pct = v => Math.max(0, Math.min(100, ((Math.max(minDb, Math.min(maxDb, v)) - minDb) / (maxDb - minDb)) * 100));
+
+    const rowsHtml = rows.map(r => {
+      let delta = '', deltaColor = '#94a3b8';
+      if (r.bVal !== null && r.aVal !== null) {
+        const diff = r.aVal - r.bVal;
+        delta = (diff >= 0 ? '+' : '') + diff.toFixed(1) + ' ' + (r.deltaUnit || 'dB');
+        if (Math.abs(diff) < 0.1) deltaColor = '#94a3b8';
+        else if (r.id === 'tp') deltaColor = diff <= 0 ? '#34d399' : '#f87171';   // 피크는 낮아져야 안전
+        else deltaColor = diff > 0 ? '#38bdf8' : '#a78bfa';
+      }
+      const bClip = r.id === 'tp' && r.bVal !== null && r.bVal > 0;   // 0 dBTP 초과 = 클리핑 위험
+      const aClip = r.id === 'tp' && r.aVal !== null && r.aVal > 0;
+      const bBar = r.bVal === null ? '' : `<div class="vega-spec-bar before${bClip ? ' clip' : ''}" style="width:${pct(r.bVal).toFixed(1)}%"></div>`;
+      const aBar = r.aVal === null ? '' : `<div class="vega-spec-bar after${aClip ? ' clip' : ''}" style="width:${pct(r.aVal).toFixed(1)}%"></div>`;
+      const zero = r.id === 'tp' ? `<div class="vega-spec-marker zero" style="left:${pct(0).toFixed(1)}%" title="0 dBTP (클리핑 한계)"></div>` : '';
+      const target = r.tVal === null ? '' : `<div class="vega-spec-marker target" style="left:${pct(r.tVal).toFixed(1)}%" title="${r.targetLabel} ${vegaFmt(r.tVal)} ${r.unit}"></div>`;
+      const tip = `${r.name} (${r.freq})\n원본: ${vegaFmt(r.bVal)} ${r.unit}\n마스터: ${vegaFmt(r.aVal)} ${r.unit}` +
+                  (delta ? `\n변화량: ${delta}` : '') + (r.tVal !== null ? `\n${r.targetLabel}: ${vegaFmt(r.tVal)} ${r.unit}` : '');
+      return `
+        <div class="vega-spec-row" title="${escapeHtml(tip)}">
+          <div class="vega-spec-label"><span class="n">${r.name}</span><span class="f">${r.freq}</span></div>
+          <div class="vega-spec-track">${bBar}${aBar}${zero}${target}</div>
+          <div class="vega-spec-vals">
+            <span class="pair"><span class="b">${vegaFmt(r.bVal)}</span> → <span class="a${aClip ? ' clip' : ''}">${vegaFmt(r.aVal)}</span></span>
+            <span class="d" style="color:${deltaColor}">${delta}</span>
+          </div>
+        </div>`;
+    });
+
+    // 축 눈금: 0 부터 minDb 까지. 축 범위가 48dB 를 넘으면(좁은 패널에서 겹치므로) 24dB 간격
+    const step = (maxDb - minDb) > 48 ? 24 : 12;
+    const ticks = [];
+    for (let db = 0; db >= minDb; db -= step) ticks.push(db);
+    const axisHtml = ticks.map(db =>
+      `<span class="vega-spec-tick${db === 0 ? ' zero' : ''}" style="left:${pct(db).toFixed(1)}%">${db === 0 ? '0 dB' : db}</span>`).join('');
+
+    const bandRows = rowsHtml.slice(0, 4).join('');
+    const loudRows = rowsHtml.slice(4).join('');
+    return `
+      <div class="vega-spec-group-title">4대역 주파수 RMS</div>
+      ${bandRows}
+      <div class="vega-spec-group-title">음량 · 피크 <span class="hint">(세로선: 목표 LUFS / 트루피크 한도)</span></div>
+      ${loudRows}
+      <div class="vega-spec-axis-row"><div class="vega-spec-label"></div><div class="vega-spec-axis">${axisHtml}</div><div class="vega-spec-vals"></div></div>`;
+  }
+
   function renderVegaPanel(track) {
     if (!vegaPanel) return;
     const m = track && track.mastering;
-    if (!m) { vegaPanel.style.display = 'none'; return; }
+    if (!m) {
+      vegaPanel.style.display = 'none';
+      if (vegaSpectrumSection) vegaSpectrumSection.style.display = 'none';
+      return;
+    }
     vegaPanel.style.display = 'block';
 
     const hasMaster = m.status === 'done' && Boolean(track.audio_raw_url);
@@ -2863,6 +2945,16 @@ document.addEventListener('DOMContentLoaded', () => {
           (m.elapsed_seconds ? ` <span style="color:var(--text-muted);">(${m.elapsed_seconds}s)</span>` : '');
       } else {
         vegaMetrics.textContent = m.reason || m.note || '';
+      }
+    }
+
+    // 7.1 전후 스펙트럼 비교 그래프 렌더링
+    if (vegaSpectrumSection && vegaSpectrumChart) {
+      if (m.status === 'done' && m.before && m.after) {
+        vegaSpectrumChart.innerHTML = buildVegaSpectrumChart(m.before, m.after, m);
+        vegaSpectrumSection.style.display = 'block';
+      } else {
+        vegaSpectrumSection.style.display = 'none';
       }
     }
     if (vegaReasoning) {
