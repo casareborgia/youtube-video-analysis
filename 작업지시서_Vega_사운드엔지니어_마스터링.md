@@ -253,7 +253,7 @@ Lyria 3.5 로 생성한 lofi 곡 *Blue Hour Reverie* (180초, 44.1kHz) 를 베�
 |---|---|---|---|
 | 실제 오디오 처리 | ✅ pedalboard/scipy 체인 | ❌ 제안 텍스트만 | mixmaster 구조 채택 |
 | AI 역할 | Claude 가 측정값+프롬프트로 수치 결정(forced tool) | 학습 데이터 없는 ML 모델 | `llm_client` 경유 JSON 결정 + 스키마 검증 |
-| 믹싱 | 보컬·반주 **별도 파일** 필요 | — | Lyria 는 합쳐진 스테레오만 제공 → 1단계 제외 |
+| 믹싱 | 보컬·반주 **별도 파일** 필요 | — | Lyria 는 합쳐진 스테레오만 제공 → 제외 (7.5 참고. Lyria 가 스템을 제공하면 재검토) |
 | 결함 | 음량 매칭이 리미터 뒤 / TP 합산 측정 / 쉘빙 EQ 위상 | 실행 불가(존재하지 않는 import, 폐기된 TF API) | 세 가지 모두 수정해 구현 |
 | 라이선스 | README 는 Apache-2.0 이라 하나 LICENSE 파일 없음 | **GPL-3.0** | 어느 쪽 코드도 복사하지 않음 |
 
@@ -286,7 +286,7 @@ Lyria 3.5 로 생성한 lofi 곡 *Blue Hour Reverie* (180초, 44.1kHz) 를 베�
 ```bash
 git checkout main
 git pull origin main
-git checkout -b feat/vega-preview-mp3      # 과제별 브랜치명은 7.1~7.5 참고
+git checkout -b feat/vega-preview-mp3      # 과제별 브랜치명은 7.1~7.4 참고
 ```
 
 **② 실행 환경**
@@ -329,7 +329,7 @@ python -m unittest discover -s tests -p 'test_*.py'                       # 전�
 | `test_social_store` 3건 (`schema_initialization`, `v1_to_v2_migration`, `migration_from_preexisting_db`) | 테스트가 스키마 v2 를 기대하나 코드는 v3 (테스트 미갱신) |
 | (간헐) `test_account_replies` | 실제 Threads/X 인증 필요 |
 
-**⑤ 실제 음원 검증 방법** — DSP 를 바꾸는 과제(7.2, 7.4, 7.5)는 합성 신호 테스트에 더해 실제 곡으로도 확인한다. 베가 내부 측정이 아닌 **ffmpeg EBU R128 독립 측정**을 기준으로 삼는다.
+**⑤ 실제 음원 검증 방법** — DSP 를 바꾸는 과제(7.2, 7.4)는 합성 신호 테스트에 더해 실제 곡으로도 확인한다. 베가 내부 측정이 아닌 **ffmpeg EBU R128 독립 측정**을 기준으로 삼는다.
 
 ```bash
 D=data/luna_music/<track_id>
@@ -383,10 +383,14 @@ done
 - 코드리뷰 보완 (Claude): 트랙 `genre` 가 표시명("Lo-Fi / Chillhop")으로 저장되는데 베가가 프리셋 키("lofi")로만 찾아 **모든 장르가 default 프리셋으로 마스터링되던 사전 버그**를 발견·수정했다. `vega_engine.resolve_genre_key()` 를 추가(add-only)해 표시명·키 모두 해석하고, `preset_for_genre()`·`master_track()`·생성/재마스터 호출부의 `genre_spec` 조회가 이를 쓴다. `mastering.genre_key` 와 피드백 기록의 `genre_key` 필드가 추가됐다. 이 수정 전의 피드백 기록·마스터 결과는 default 프리셋 기준이므로 참고용으로만 본다.
 - 테스트: `tests/test_vega_feedback.py` 10건, `tests/test_vega_engine.py` 에 표시명 해석 1건 추가.
 
-### 7.5 [P3] 믹싱 단계 (보컬·반주 분리) — `feat/vega-stem-mixing`
-- 가사가 있는 트랙(`has_lyrics`)에 한해 Demucs(`htdemucs`)로 보컬/반주를 분리한 뒤, 보컬 체인(게이트 → EQ → 컴프 → 리버브)과 반주 밸런스를 조정하고 다시 합쳐 마스터링한다.
-- PyTorch 의존성이 크고 3분 곡에 수십 초가 걸리므로 **선택 설치·선택 실행**으로 설계한다(`VEGA_STEM_MIXING=1`). 미설치 시 현재 마스터링만 수행.
-- 스키마는 `MixDecisions` 를 새로 추가하되 3.4 와 같은 범위 원칙을 따른다.
+### 7.5 [P3] 믹싱 단계 (보컬·반주 분리) — ❌ 제외 (2026-10-08 결정)
+- 원래 계획: `has_lyrics` 트랙을 Demucs(`htdemucs`)로 보컬/반주 분리 → 보컬 체인 → 재합성 → 마스터링.
+- 제외 사유:
+  1. **입력이 완성 2트랙이다.** 베가가 받는 음원은 Lyria 가 이미 믹스·마스터해 내보낸 스테레오 파일이지 멀티트랙이 아니다. 분리 후 재합성은 손실 공정이라, 보컬·반주를 다르게 처리해 다시 더하면 분리 오차(물먹은 보컬, 반주 번짐)가 그대로 드러난다. 리버브가 많고 보컬이 일부러 묻힌 로파이·앰비언트 — 루나의 주력 장르 — 에서 특히 심하다.
+  2. **비용 대비 이득이 작다.** torch 포함 약 3 GB 의 별도 환경(프로젝트 Python 3.14 는 미지원이라 3.12 venv 우회 필요), 곡당 1~3분의 CPU 처리, 사실상 유지보수가 중단된 Demucs 의존성을 떠안는 반면, "보컬이 크다/작다" 문제는 Lyria 프롬프트 한 줄로 생성 단계에서 고치는 편이 훨씬 싸다.
+  3. **유일하게 확실했던 이득(반주 버전)도 대체 가능하다.** 같은 컨셉을 `purely instrumental, no vocals` 로 Lyria 에 다시 요청하면 아티팩트 없는 반주 버전이 나온다. 생성 폼의 보컬 모드 선택으로 이미 가능하다.
+- 역할 정리: 베가는 **"루나의 완성곡을 유튜브 규격으로 마감하는 마스터링 엔지니어"** 로 고정한다. 믹싱(보컬 밸런스)은 Lyria 가 생성 단계에서 책임진다. 보컬 밸런스가 반복해서 어긋나면 베가의 믹싱이 아니라 루나의 프롬프트를 고친다.
+- 재검토 조건: Lyria 가 스템(보컬·반주 별도 파일)을 제공하게 되면 분리 공정 없이 믹싱이 가능해지므로 그때 다시 검토한다 (4장 비교표 "믹싱" 행 참고).
 
 ### 7.6 [P3] 레퍼런스 트랙 매칭 — 보류
 - `matchering` 은 GPL-3.0 이므로 프로젝트 라이선스(MIT) 와 충돌한다. 도입하려면 별도 프로세스 호출 방식과 라이선스 검토가 선행되어야 한다. 현재는 보류.
