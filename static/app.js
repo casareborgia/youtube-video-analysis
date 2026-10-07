@@ -3637,13 +3637,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Threads에 5개 타래 즉시 자동 연쇄 발행
   if (btnPublishThreadsLive) {
     btnPublishThreadsLive.addEventListener('click', async () => {
-      // 현재 생성된 스레드 텍스트 추출
+      // 현재 생성된 스레드 텍스트 추출 (문자열 리스트로 정제)
       let posts = [];
-      if (currentMarketingResult && currentMarketingResult.threads && currentMarketingResult.threads.posts) {
-        posts = currentMarketingResult.threads.posts;
+      if (currentMarketingResult && currentMarketingResult.threads && Array.isArray(currentMarketingResult.threads.posts)) {
+        posts = currentMarketingResult.threads.posts.map(p => {
+          if (typeof p === 'object' && p !== null) return (p.content || '').trim();
+          return String(p || '').trim();
+        }).filter(Boolean);
       } else {
-        // DOM에서 텍스트 수집
-        const postBoxes = document.querySelectorAll('#threadsPostList .market-content-box');
+        // DOM에서 텍스트 수집 (.threads-post-body 및 .market-content-box 모두 지원)
+        const postBoxes = document.querySelectorAll('#threadsPostList .threads-post-body, #threadsPostList .market-content-box');
         postBoxes.forEach(box => {
           const t = box.textContent.trim();
           if (t) posts.push(t);
@@ -4475,6 +4478,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (targetTabId === 'socialTabPublish') loadPublishDrafts();
         else if (targetTabId === 'socialTabQueue') loadQueueJobs();
         else if (targetTabId === 'socialTabHistory') loadSocialHistory();
+        else if (targetTabId === 'socialTabEngagement') loadGrowthDashboard();
       };
     });
 
@@ -4771,8 +4775,13 @@ document.addEventListener('DOMContentLoaded', () => {
           const box = document.getElementById(`pubResultBox_${jid}`);
           btn.disabled = true;
           try {
-            const res = await fetch(`/api/social/publish/${jid}?dry_run=true`, { method: 'POST' });
+            const res = await fetch(`/api/social/publish/${jid}?dry_run=true&auto_approve=true`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ dry_run: true, auto_approve: true })
+            });
             const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || '드라이런 실패');
             if (box) {
               box.style.display = 'block';
               box.innerHTML = `<div class="alert alert-info" style="font-size: 0.8rem; margin: 0;"><strong>[드라이런 통과]</strong> ${data.results?.length || 0}개 항목 정상 검증 완료</div>`;
@@ -4798,8 +4807,13 @@ document.addEventListener('DOMContentLoaded', () => {
             async () => {
               btn.disabled = true;
               try {
-                const res = await fetch(`/api/social/publish/${jid}?dry_run=false`, { method: 'POST' });
+                const res = await fetch(`/api/social/publish/${jid}?dry_run=false&auto_approve=true`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ dry_run: false, auto_approve: true })
+                });
                 const data = await res.json();
+                if (!res.ok) throw new Error(data.detail || '발행 실패');
                 showAlert(`🎉 소셜 게시물이 성공적으로 발행되었습니다!`, 'success');
                 loadPublishDrafts();
                 loadSocialHistory();
@@ -5221,13 +5235,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // 1단계: 실시간 활성 스레더 자동 탐색
+  // 1단계: 실시간 활성 스레더 자동 탐색 (공식 검색 + 품질 점수)
   if (btnDiscoverTargets) {
     btnDiscoverTargets.onclick = async () => {
       const platform = document.getElementById('tabEngPlatform')?.value || 'threads';
-      const topic = document.getElementById('tabEngTopic')?.value || '스하리';
+      const customQuery = document.getElementById('tabEngCustomQuery')?.value.trim() || '';
+      const topicPreset = document.getElementById('tabEngTopic')?.value || '스하리';
+      const topic = customQuery || topicPreset;
+      const searchType = document.getElementById('tabEngSearchType')?.value || 'RECENT';
       const limit = document.getElementById('tabEngLimit')?.value || '10';
       const excludeExisting = document.getElementById('chkExcludeExistingRelationships')?.checked ?? true;
+      const allowDemo = document.getElementById('chkAllowDemoSeeds')?.checked ?? false;
       const container = document.getElementById('engTargetsContainer');
       const countBadge = document.getElementById('engTargetCount');
       const summaryBar = document.getElementById('engDiscoverySummaryBar');
@@ -5242,8 +5260,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const queryParams = new URLSearchParams({
           platform: platform,
           topic: topic,
+          search_type: searchType,
           limit: limit,
-          exclude_existing_relationships: excludeExisting ? 'true' : 'false'
+          exclude_existing_relationships: excludeExisting ? 'true' : 'false',
+          allow_demo_seeds: allowDemo ? 'true' : 'false'
         });
         const res = await fetch(`/api/engagement/discover?${queryParams.toString()}`);
         const data = await res.json();
@@ -5258,7 +5278,8 @@ document.addEventListener('DOMContentLoaded', () => {
           const scanned = summary.scanned || discoveredEngTargets.length;
           const excluded = summary.excluded || 0;
           const included = summary.included || discoveredEngTargets.length;
-          summaryText.innerHTML = `<strong><i class="fa-solid fa-filter"></i> 탐색 요약:</strong> 총 ${scanned}명 스캔 · <span style="color: #f87171;">${excluded}명 제외</span> · <span style="color: #34d399;">신규 후보 ${included}명</span>`;
+          const searchSource = data.is_real_search ? 'Meta Threads 공식 검색' : '시드/대체 소스';
+          summaryText.innerHTML = `<strong><i class="fa-solid fa-filter"></i> [${escapeHtml(searchSource)}]</strong> 총 ${scanned}개 스캔 · <span style="color: #f87171;">${excluded}개 제외</span> · <span style="color: #34d399;">신규 후보 ${included}개</span>`;
 
           // 사유별 배지 생성
           summaryBadges.innerHTML = '';
@@ -5289,10 +5310,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!discoveredEngTargets.length) {
           container.innerHTML = `
             <div class="empty-state-box" style="padding: 24px;">
-              <p style="margin: 0; color: var(--text-secondary);">현재 조건에서 새로운 활성 스레더를 찾지 못했습니다. 주제를 변경해보세요.</p>
+              <p style="margin: 0; color: var(--text-secondary);">현재 조건에서 새로운 활성 후보를 찾지 못했습니다. 검색어나 주제를 변경해보세요.</p>
             </div>
           `;
-          showAlert('탐색된 새로운 활성 스레더가 없습니다.', 'info');
+          showAlert('탐색된 새로운 활성 후보가 없습니다.', 'info');
           return;
         }
 
@@ -5303,27 +5324,93 @@ document.addEventListener('DOMContentLoaded', () => {
           card.style.cssText = 'background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; display: flex; gap: 12px; align-items: flex-start;';
 
           const postLink = t.post_url ? `<a href="${escapeHtml(t.post_url)}" target="_blank" rel="noopener noreferrer" style="color: #38bdf8; text-decoration: none; font-size: 0.74rem;"><i class="fa-solid fa-arrow-up-right-from-square"></i> 원문 보기 ↗</a>` : '';
-          const viaBadge = t.discovered_via ? `<span style="font-size: 0.7rem; background: rgba(56,189,248,0.12); color: #38bdf8; padding: 2px 6px; border-radius: 4px; margin-left: 6px;"><i class="fa-solid fa-satellite-dish"></i> ${escapeHtml(t.discovered_via)}</span>` : '';
+          const viaBadge = t.discovered_via ? `<span style="font-size: 0.7rem; background: rgba(56,189,248,0.12); color: #38bdf8; padding: 2px 6px; border-radius: 4px; margin-left: 6px;"><i class="fa-solid fa-magnifying-glass"></i> ${escapeHtml(t.discovered_via)}</span>` : '';
           const newBadge = t.is_new_candidate ? `<span style="font-size: 0.7rem; background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); padding: 2px 6px; border-radius: 4px; margin-left: 4px;"><i class="fa-solid fa-sparkles"></i> 신규 후보</span>` : '';
+
+          // 품질 점수 배지
+          const score = typeof t.candidate_score === 'number' ? t.candidate_score : 50;
+          let scoreBg = 'rgba(148, 163, 184, 0.2)';
+          let scoreColor = '#94a3b8';
+          let scoreText = '보통';
+          if (score >= 70) {
+            scoreBg = 'rgba(16, 185, 129, 0.2)';
+            scoreColor = '#34d399';
+            scoreText = '우수';
+          } else if (score >= 40) {
+            scoreBg = 'rgba(245, 158, 11, 0.2)';
+            scoreColor = '#fbbf24';
+            scoreText = '양호';
+          }
+          const scoreBadge = `<span style="font-size: 0.72rem; font-weight: 700; background: ${scoreBg}; color: ${scoreColor}; border: 1px solid ${scoreColor}44; padding: 2px 8px; border-radius: 6px; margin-left: 6px;">품질 ${score}점 (${scoreText})</span>`;
+
+          // 점수 사유 배지들
+          const reasonTags = (t.score_reasons || []).map(r => `<span style="font-size: 0.68rem; background: rgba(255,255,255,0.06); color: #cbd5e1; padding: 1px 5px; border-radius: 3px; margin-right: 4px;">${escapeHtml(r)}</span>`).join('');
 
           card.innerHTML = `
             <input type="checkbox" data-eng-target-chk="${idx}" checked style="margin-top: 4px; cursor: pointer; width: 16px; height: 16px;">
             <div style="flex: 1; min-width: 0;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; flex-wrap: wrap; gap: 4px;">
-                <div>
+                <div style="display: flex; align-items: center; flex-wrap: wrap;">
                   <strong style="font-size: 0.88rem; color: #fff;">@${escapeHtml(t.username || t.account_id)}</strong>
+                  ${scoreBadge}
                   ${newBadge}
                   ${viaBadge}
                 </div>
                 ${postLink}
               </div>
-              <div style="font-size: 0.84rem; color: #cbd5e1; line-height: 1.4; margin-bottom: 4px;">${escapeHtml(t.post_text || '(텍스트 없음)')}</div>
+              <div style="font-size: 0.82rem; color: #cbd5e1; line-height: 1.45; margin-bottom: 6px; word-break: break-word;">${escapeHtml(t.post_text || '(텍스트 없음)')}</div>
+              <div style="margin-bottom: 8px;">${reasonTags}</div>
+
+              <!-- 맞춤 답글 초안 입력창 -->
+              <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 8px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                  <span style="font-size: 0.72rem; color: #a78bfa; font-weight: 600;"><i class="fa-solid fa-reply"></i> 맞춤 소통 답글</span>
+                  <button type="button" class="btn btn-xs btn-outline btn-draft-reply" data-idx="${idx}" style="font-size: 0.7rem; padding: 1px 6px; border-color: #a78bfa; color: #c4b5fd;">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i> AI 답글 초안 생성
+                  </button>
+                </div>
+                <textarea class="form-control" data-eng-reply-input="${idx}" rows="2" style="font-size: 0.8rem; line-height: 1.4; resize: vertical;" placeholder="게시물 맥락에 어울리는 진정성 있는 답글을 입력하세요...">${escapeHtml(t.reply_text || '')}</textarea>
+              </div>
             </div>
           `;
           container.appendChild(card);
         });
 
-        showAlert(`실시간 활동 중인 불특정 다수 ${discoveredEngTargets.length}명을 성공적으로 발굴했습니다!`, 'success');
+        // AI 답글 초안 생성 버튼 이벤트 바인딩
+        container.querySelectorAll('.btn-draft-reply').forEach(btn => {
+          btn.onclick = async () => {
+            const idx = parseInt(btn.getAttribute('data-idx'), 10);
+            const target = discoveredEngTargets[idx];
+            if (!target) return;
+            const origText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 생성 중...';
+            try {
+              const rRes = await fetch('/api/growth/draft-reply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  post_text: target.post_text || '',
+                  author: target.username || '',
+                  topic: topic
+                })
+              });
+              const rData = await rRes.json();
+              if (rRes.ok && rData.draft) {
+                const txtArea = container.querySelector(`textarea[data-eng-reply-input="${idx}"]`);
+                if (txtArea) txtArea.value = rData.draft;
+                target.reply_text = rData.draft;
+              }
+            } catch (err) {
+              console.error('답글 초안 생성 실패:', err);
+            } finally {
+              btn.disabled = false;
+              btn.innerHTML = origText;
+            }
+          };
+        });
+
+        showAlert(`실시간 활동 중인 후보 ${discoveredEngTargets.length}명을 성공적으로 발굴하고 품질 평가를 완료했습니다!`, 'success');
       } catch (e) {
         showAlert('타겟 탐색 실패: ' + e.message, 'error');
       } finally {
@@ -5345,7 +5432,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
-  // 선택된 타겟 수집 헬퍼
+  // 선택된 타겟 수집 헬퍼 (답글 포함)
   function getSelectedEngagementTargets() {
     const platform = document.getElementById('tabEngPlatform')?.value || 'threads';
     const checkedBoxes = document.querySelectorAll('input[data-eng-target-chk]:checked');
@@ -5354,7 +5441,13 @@ document.addEventListener('DOMContentLoaded', () => {
     checkedBoxes.forEach(chk => {
       const idx = parseInt(chk.getAttribute('data-eng-target-chk'), 10);
       const t = discoveredEngTargets[idx];
-      if (t) selected.push(t);
+      if (t) {
+        const replyInput = document.querySelector(`textarea[data-eng-reply-input="${idx}"]`);
+        if (replyInput) {
+          t.reply_text = replyInput.value.trim();
+        }
+        selected.push(t);
+      }
     });
 
     // 만약 발굴 목록이 비어있고 수동 입력값이 있으면 수동 입력값 사용
@@ -5369,6 +5462,7 @@ document.addEventListener('DOMContentLoaded', () => {
           post_id: manualPost,
           profile_url: document.getElementById('tabEngProfileUrl')?.value.trim(),
           post_url: document.getElementById('tabEngPostUrl')?.value.trim(),
+          reply_text: '좋은 글 잘 읽었습니다! 소통하고 싶어 답글 남깁니다 :)',
           discovered_via: '수동 입력'
         });
       }
@@ -5379,8 +5473,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function getSelectedEngagementActions() {
     const actions = [];
-    if (document.getElementById('tabEngActionLike')?.checked) actions.push('like');
+    if (document.getElementById('tabEngActionReply')?.checked) actions.push('reply');
     if (document.getElementById('tabEngActionRepost')?.checked) actions.push('repost');
+    if (document.getElementById('tabEngActionLike')?.checked) actions.push('like');
     if (document.getElementById('tabEngActionFollow')?.checked) actions.push('follow');
     return actions;
   }
@@ -5395,11 +5490,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const box = document.getElementById('tabEngResultBox');
 
       if (!targets.length) {
-        showAlert('스하리를 실행할 대상을 1명 이상 선택하거나 발굴해주세요.', 'warning');
+        showAlert('소통을 실행할 대상을 1명 이상 선택하거나 발굴해주세요.', 'warning');
         return;
       }
       if (!actions.length) {
-        showAlert('적어도 1개 이상의 스하리 동작(좋아요/리포스트/팔로우)을 선택하세요.', 'warning');
+        showAlert('적어도 1개 이상의 동작(답글/리포스트/좋아요/팔로우)을 선택하세요.', 'warning');
         return;
       }
 
@@ -5430,7 +5525,7 @@ document.addEventListener('DOMContentLoaded', () => {
           box.innerHTML = `
             <div style="background: rgba(56,189,248,0.1); border: 1px solid #38bdf8; border-radius: 8px; padding: 14px; font-size: 0.84rem;">
               <strong style="color: #38bdf8;"><i class="fa-solid fa-flask"></i> [시뮬레이션 완료] 총 ${targets.length}명 대상 검증</strong>
-              <div style="color: #cbd5e1; margin-top: 6px;">동작: ${actions.join(', ')} | 일일 한도 슬롯 정상 확인됨 | 계정 제재 없는 3~5초 인간 모사 딜레이 준비 완료</div>
+              <div style="color: #cbd5e1; margin-top: 6px;">동작: ${actions.join(', ')} | 일일 한도 슬롯 정상 확인됨 | 3~5초 인간 모사 안전 딜레이 준비 완료</div>
               ${skippedInfo}
             </div>
           `;
@@ -5445,7 +5540,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
-  // 3단계: 실제 일괄 스하리 실행
+  // 3단계: 실제 일괄 소통 실행
   if (btnTabEngLive) {
     btnTabEngLive.onclick = () => {
       const targets = getSelectedEngagementTargets();
@@ -5455,11 +5550,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const box = document.getElementById('tabEngResultBox');
 
       if (!targets.length) {
-        showAlert('스하리를 실행할 대상을 1명 이상 선택하거나 발굴해주세요.', 'warning');
+        showAlert('소통을 실행할 대상을 1명 이상 선택하거나 발굴해주세요.', 'warning');
         return;
       }
       if (!actions.length) {
-        showAlert('적어도 1개 이상의 스하리 동작(좋아요/리포스트/팔로우)을 선택하세요.', 'warning');
+        showAlert('적어도 1개 이상의 동작(답글/리포스트 등)을 선택하세요.', 'warning');
         return;
       }
 
@@ -5468,14 +5563,14 @@ document.addEventListener('DOMContentLoaded', () => {
       showSocialConfirmModal(
         {
           platform: document.getElementById('tabEngPlatform')?.value || 'threads',
-          jobType: `불특정 다수 스하리 (${actions.join(', ')})`,
-          itemCount: `불특정 다수 ${targets.length}명 ${noticeExtra}`
+          jobType: `실운영 소통 (${actions.join(', ')})`,
+          itemCount: `선택 후보 ${targets.length}명 ${noticeExtra}`
         },
         async () => {
-          showAlert(`불특정 다수 ${targets.length}명에게 3~5초 안전 딜레이를 적용하며 순차 스하리를 시작합니다...`, 'info');
+          showAlert(`선택된 ${targets.length}명에게 3~5초 안전 딜레이를 적용하며 순차 소통을 시작합니다...`, 'info');
           btnTabEngLive.disabled = true;
           const origHtml = btnTabEngLive.innerHTML;
-          btnTabEngLive.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 순차 스하리 진행 중...';
+          btnTabEngLive.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 순차 소통 진행 중...';
 
           try {
             const res = await fetch('/api/engagement/auto-run', {
@@ -5493,7 +5588,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             const data = await res.json();
             if (res.ok && data.status === 'success') {
-              showAlert(`🎉 스하리 작업이 안전하게 완료되었습니다!`, 'success');
+              showAlert(`🎉 소통 작업이 안전하게 완료되었습니다!`, 'success');
               if (box) {
                 box.style.display = 'block';
                 const skippedCount = data.skipped || (data.result && data.result.skipped_existing_relationships ? data.result.skipped_existing_relationships.length : 0);
@@ -5502,27 +5597,337 @@ document.addEventListener('DOMContentLoaded', () => {
                   : '';
                 box.innerHTML = `
                   <div style="background: rgba(16,185,129,0.1); border: 1px solid #10b981; border-radius: 8px; padding: 14px; font-size: 0.84rem;">
-                    <strong style="color: #34d399;"><i class="fa-solid fa-circle-check"></i> [실제 스하리 실행 완료]</strong>
+                    <strong style="color: #34d399;"><i class="fa-solid fa-circle-check"></i> [실제 소통 실행 완료]</strong>
                     <div style="color: #f1f5f9; margin-top: 6px;">
                       대상: <strong>${targets.length}명</strong> (${actions.join(', ')})<br>
-                      상태: 성공적으로 완료되었으며 감사 로그에 기록되었습니다.
+                      상태: 성공적으로 완료되었으며 감사 로그 및 성장 터치포인트에 기록되었습니다.
                       ${skippedHtml}
                     </div>
                   </div>
                 `;
               }
               loadSocialHistory();
+              loadGrowthDashboard();
             } else {
-              showAlert('스하리 실행 실패: ' + (data.detail || '오류 발생'), 'error');
+              showAlert('소통 실행 실패: ' + (data.detail || '오류 발생'), 'error');
             }
           } catch (e) {
-            showAlert('스하리 실행 중 통신 오류: ' + e.message, 'error');
+            showAlert('소통 실행 중 통신 오류: ' + e.message, 'error');
           } finally {
             btnTabEngLive.disabled = false;
             btnTabEngLive.innerHTML = origHtml;
           }
         }
       );
+    };
+  }
+
+  // -------------------------------------------------------------
+  // 📈 Threads 팔로워 성장 지표 & 캠페인 관제 연동
+  // -------------------------------------------------------------
+  let currentActiveCampaign = null;
+
+  async function loadGrowthDashboard() {
+    try {
+      // 1. 최신 계정 인사이트 조회
+      const insRes = await fetch('/api/growth/insights/latest');
+      if (insRes.ok) {
+        const insData = await insRes.json();
+        const snap = insData.snapshot;
+        if (snap) {
+          const elFol = document.getElementById('growthFollowersCount');
+          const elViews = document.getElementById('growthViewsCount');
+          const elRep = document.getElementById('growthRepliesReposts');
+          if (elFol) elFol.textContent = (snap.followers_count !== null && snap.followers_count !== undefined) ? `${snap.followers_count.toLocaleString()}명` : '-';
+          if (elViews) elViews.textContent = (snap.views !== null && snap.views !== undefined) ? `${snap.views.toLocaleString()}회` : '-';
+          if (elRep) {
+            const replies = snap.replies || 0;
+            const reposts = snap.reposts || 0;
+            elRep.textContent = `${replies} / ${reposts}`;
+          }
+        }
+      }
+
+      // 2. 활성 캠페인 조회
+      const campRes = await fetch('/api/growth/campaigns?status=ACTIVE&limit=1');
+      if (campRes.ok) {
+        const campData = await campRes.json();
+        const camps = campData.campaigns || [];
+        const activeName = document.getElementById('growthActiveCampaignName');
+        const statusText = document.getElementById('growthCampaignStatusText');
+        const btnEnd = document.getElementById('btnEndActiveCampaign');
+        const btnComp = document.getElementById('btnCompareCampaignPeriod');
+
+        if (camps.length > 0) {
+          currentActiveCampaign = camps[0];
+          if (activeName) activeName.textContent = currentActiveCampaign.name;
+          if (statusText) {
+            const baseFol = currentActiveCampaign.baseline_followers_count ?? '-';
+            statusText.innerHTML = `<strong><i class="fa-solid fa-circle-play" style="color: #34d399;"></i> 활성 캠페인 진행 중:</strong> ${escapeHtml(currentActiveCampaign.name)} (시작 팔로워: ${baseFol}명)`;
+          }
+          if (btnEnd) btnEnd.style.display = 'inline-block';
+          if (btnComp) btnComp.style.display = 'inline-block';
+        } else {
+          currentActiveCampaign = null;
+          if (activeName) activeName.textContent = '(활성 캠페인 없음)';
+          if (statusText) statusText.innerHTML = `<i class="fa-solid fa-bullseye" style="color: #6366f1;"></i> 새 캠페인을 시작하여 소통 활동과 팔로워 증가량 상관관계를 측정할 수 있습니다.`;
+          if (btnEnd) btnEnd.style.display = 'none';
+          if (btnComp) btnComp.style.display = 'none';
+        }
+      }
+    } catch (e) {
+      console.warn('성장 대시보드 로드 예외:', e);
+    }
+  }
+
+  // 인사이트 즉시 스냅샷 수집 버튼
+  const btnCaptureSnapshot = document.getElementById('btnCaptureInsightSnapshot');
+  if (btnCaptureSnapshot) {
+    btnCaptureSnapshot.onclick = async () => {
+      btnCaptureSnapshot.disabled = true;
+      const origHtml = btnCaptureSnapshot.innerHTML;
+      btnCaptureSnapshot.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 수집 중...';
+      try {
+        const res = await fetch('/api/growth/insights/snapshot', { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+          const snap = data.snapshot || {};
+          showAlert(`계정 스냅샷 기록 완료! (팔로워: ${snap.followers_count ?? '-'}명, 뷰: ${snap.views ?? '-'}회)`, 'success');
+          loadGrowthDashboard();
+        } else {
+          showAlert('스냅샷 수집 실패: ' + (data.detail || '토큰 및 권한을 확인하세요.'), 'error');
+        }
+      } catch (err) {
+        showAlert('스냅샷 통신 오류: ' + err.message, 'error');
+      } finally {
+        btnCaptureSnapshot.disabled = false;
+        btnCaptureSnapshot.innerHTML = origHtml;
+      }
+    };
+  }
+
+  // 캠페인 모달 바인딩
+  const btnOpenCampaign = document.getElementById('btnOpenCampaignModal');
+  const campModal = document.getElementById('threadsGrowthCampaignModal');
+  const btnCloseCampaign = document.getElementById('btnCloseCampaignModal');
+  const btnCancelCampaign = document.getElementById('btnCancelCampaignModal');
+
+  async function refreshCampaignModal() {
+    if (!campModal) return;
+    try {
+      const res = await fetch('/api/growth/campaigns?limit=20');
+      const data = await res.json();
+      const camps = data.campaigns || [];
+      const historyList = document.getElementById('modalCampaignsHistoryList');
+      const activeCardDetails = document.getElementById('modalActiveCampDetails');
+      const activeCardActions = document.getElementById('modalActiveCampActions');
+      const activeBadge = document.getElementById('modalActiveCampBadge');
+
+      const active = camps.find(c => String(c.status).toUpperCase() === 'ACTIVE');
+      currentActiveCampaign = active || null;
+
+      if (active) {
+        if (activeBadge) activeBadge.style.display = 'inline-block';
+        if (activeCardActions) activeCardActions.style.display = 'flex';
+        if (activeCardDetails) {
+          const sTs = active.started_at ? Number(active.started_at) : 0;
+          const dateStr = sTs > 0 ? new Date(sTs > 1e11 ? sTs : sTs * 1000).toLocaleString('ko-KR') : '-';
+          const qStr = Array.isArray(active.search_queries) ? active.search_queries.join(', ') : (active.search_queries || '-');
+          activeCardDetails.innerHTML = `
+            <strong>캠페인:</strong> ${escapeHtml(active.name)}<br>
+            <strong>시작 팔로워:</strong> ${active.baseline_followers_count ?? '-'}명 ·
+            <strong>시작 시각:</strong> ${dateStr}<br>
+            <strong>주제/키워드:</strong> ${escapeHtml(active.topic || '-')} (${escapeHtml(qStr)})
+          `;
+        }
+      } else {
+        if (activeBadge) activeBadge.style.display = 'none';
+        if (activeCardActions) activeCardActions.style.display = 'none';
+        if (activeCardDetails) {
+          activeCardDetails.innerHTML = '현재 진행 중인 활성 캠페인이 없습니다. 아래에서 새로운 캠페인을 시작하세요.';
+        }
+      }
+
+      if (historyList) {
+        if (!camps.length) {
+          historyList.innerHTML = '<div class="empty-state-box" style="padding: 14px;">기록된 캠페인이 없습니다.</div>';
+        } else {
+          historyList.innerHTML = '';
+          camps.forEach(c => {
+            const item = document.createElement('div');
+            item.style.cssText = 'background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;';
+            const statusColor = c.status === 'ACTIVE' ? '#34d399' : '#94a3b8';
+            item.innerHTML = `
+              <div>
+                <strong>${escapeHtml(c.name)}</strong>
+                <span style="font-size: 0.72rem; color: ${statusColor}; margin-left: 6px;">[${c.status}]</span>
+                <div style="font-size: 0.74rem; color: var(--text-secondary); margin-top: 2px;">
+                  시작 팔로워: ${c.baseline_followers_count ?? '-'} → 종료 팔로워: ${c.final_followers_count ?? '-'} | 순증: ${c.final_followers_count !== null && c.baseline_followers_count !== null ? (c.final_followers_count - c.baseline_followers_count) + '명' : '진행중'}
+                </div>
+              </div>
+              <button type="button" class="btn btn-xs btn-outline btn-compare-item" data-id="${c.campaign_id}">
+                <i class="fa-solid fa-chart-simple"></i> 성과 분석
+              </button>
+            `;
+            historyList.appendChild(item);
+          });
+
+          historyList.querySelectorAll('.btn-compare-item').forEach(b => {
+            b.onclick = () => renderCampaignComparison(b.getAttribute('data-id'));
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('캠페인 모달 갱신 오류:', e);
+    }
+  }
+
+  if (btnOpenCampaign && campModal) {
+    btnOpenCampaign.onclick = () => {
+      campModal.style.display = 'flex';
+      refreshCampaignModal();
+    };
+    const closeCampModal = () => { campModal.style.display = 'none'; };
+    if (btnCloseCampaign) btnCloseCampaign.onclick = closeCampModal;
+    if (btnCancelCampaign) btnCancelCampaign.onclick = closeCampModal;
+  }
+
+  // 새 캠페인 시작
+  const btnStartCamp = document.getElementById('btnModalStartCampaign');
+  if (btnStartCamp) {
+    btnStartCamp.onclick = async () => {
+      const name = document.getElementById('modalCampName')?.value.trim();
+      const topic = document.getElementById('modalCampTopic')?.value;
+      const kw = document.getElementById('modalCampKeywords')?.value.trim();
+      if (!name) {
+        showAlert('캠페인 이름을 입력하세요.', 'warning');
+        return;
+      }
+      btnStartCamp.disabled = true;
+      try {
+        const queriesArray = kw ? kw.split(',').map(s => s.trim()).filter(Boolean) : [];
+        const res = await fetch('/api/growth/campaigns/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name,
+            topic: topic,
+            search_queries: queriesArray
+          })
+        });
+        const data = await res.json();
+        if (res.ok && data.status === 'success') {
+          showAlert(`성장 캠페인 [${name}]이 성공적으로 시작되었습니다!`, 'success');
+          document.getElementById('modalCampName').value = '';
+          document.getElementById('modalCampKeywords').value = '';
+          refreshCampaignModal();
+          loadGrowthDashboard();
+        } else {
+          showAlert('캠페인 시작 실패: ' + (data.detail || '오류 발생'), 'error');
+        }
+      } catch (err) {
+        showAlert('캠페인 시작 통신 오류: ' + err.message, 'error');
+      } finally {
+        btnStartCamp.disabled = false;
+      }
+    };
+  }
+
+  // 캠페인 종료 핸들러
+  async function handleEndCampaign(campaignId) {
+    if (!campaignId) return;
+    if (!confirm('현재 활성 캠페인을 종료하고 최종 팔로워 수 및 성과를 확정하시겠습니까?')) return;
+    try {
+      const res = await fetch('/api/growth/campaigns/end', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaign_id: campaignId })
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'success') {
+        showAlert('캠페인이 성공적으로 종료 및 확정되었습니다!', 'success');
+        refreshCampaignModal();
+        loadGrowthDashboard();
+        renderCampaignComparison(campaignId);
+      } else {
+        showAlert('캠페인 종료 실패: ' + (data.detail || '오류 발생'), 'error');
+      }
+    } catch (err) {
+      showAlert('캠페인 종료 통신 오류: ' + err.message, 'error');
+    }
+  }
+
+  const btnEndActive = document.getElementById('btnEndActiveCampaign');
+  if (btnEndActive) {
+    btnEndActive.onclick = () => {
+      if (currentActiveCampaign) handleEndCampaign(currentActiveCampaign.campaign_id);
+    };
+  }
+  const btnModalEnd = document.getElementById('btnModalEndCampaign');
+  if (btnModalEnd) {
+    btnModalEnd.onclick = () => {
+      if (currentActiveCampaign) handleEndCampaign(currentActiveCampaign.campaign_id);
+    };
+  }
+
+  // 캠페인 성과 비교 렌더러
+  async function renderCampaignComparison(campaignId) {
+    if (!campaignId) return;
+    const box = document.getElementById('modalCompareResultBox');
+    const content = document.getElementById('modalCompareContent');
+    if (!box || !content) return;
+
+    box.style.display = 'block';
+    content.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 기간별 성장 효과 비교 분석 중...';
+    if (campModal) campModal.style.display = 'flex';
+
+    try {
+      const res = await fetch(`/api/growth/campaigns/${campaignId}/compare`);
+      const comp = await res.json();
+      if (!res.ok) {
+        content.innerHTML = `<span style="color: #f87171;">비교 조회 실패: ${escapeHtml(comp.detail || '오류')}</span>`;
+        return;
+      }
+
+      const campGain = comp.campaign_gain ?? 0;
+      const preGain = comp.pre_campaign_gain ?? 0;
+      const days = comp.campaign_duration_days ?? comp.period_days ?? 1;
+      const ratio = comp.gain_ratio_vs_pre_period ? `${comp.gain_ratio_vs_pre_period}배` : '비교 불가 (직전 0)';
+
+      content.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
+          <div style="background: rgba(99,102,241,0.1); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(99,102,241,0.3);">
+            <div style="font-size: 0.72rem; color: #a78bfa;">🎯 캠페인 실행 기간 (${days}일)</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: #fff; margin-top: 2px;">
+              팔로워 순증: <span style="color: #34d399;">+${campGain}명</span>
+            </div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div style="font-size: 0.72rem; color: var(--text-secondary);">⏳ 직전 미실행 기간 (동일 일수)</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: #fff; margin-top: 2px;">
+              팔로워 순증: <span style="color: #94a3b8;">+${preGain}명</span>
+            </div>
+          </div>
+        </div>
+        <div style="font-size: 0.8rem; color: #cbd5e1; margin-top: 6px;">
+          <strong>성장 배율 관찰값:</strong> 직전 기간 대비 약 <strong style="color: #38bdf8;">${ratio}</strong>의 팔로워 증가 효과가 관찰되었습니다.
+        </div>
+      `;
+    } catch (err) {
+      content.innerHTML = `<span style="color: #f87171;">비교 통신 오류: ${escapeHtml(err.message)}</span>`;
+    }
+  }
+
+  const btnCompActive = document.getElementById('btnCompareCampaignPeriod');
+  if (btnCompActive) {
+    btnCompActive.onclick = () => {
+      if (currentActiveCampaign) renderCampaignComparison(currentActiveCampaign.campaign_id);
+    };
+  }
+  const btnModalComp = document.getElementById('btnModalCompareCampaign');
+  if (btnModalComp) {
+    btnModalComp.onclick = () => {
+      if (currentActiveCampaign) renderCampaignComparison(currentActiveCampaign.campaign_id);
     };
   }
 

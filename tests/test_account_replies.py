@@ -1,13 +1,25 @@
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 import unittest
 from fastapi.testclient import TestClient
 import app
 import reply_service
+import social_store
 
 
 class TestAccountWideReplies(unittest.TestCase):
     def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.tmp.name) / "test_replies.db"
+        self.patch_db = patch("social_store.DEFAULT_DB_PATH", self.db_path)
+        self.patch_db.start()
         self.client = TestClient(app.app)
-        self.service = reply_service.ReplyService()
+        self.service = reply_service.ReplyService(store=social_store.SocialStore(self.db_path))
+
+    def tearDown(self):
+        self.patch_db.stop()
+        self.tmp.cleanup()
 
     def test_threads_account_replies(self):
         res = self.service.fetch_account_replies(platform="threads")

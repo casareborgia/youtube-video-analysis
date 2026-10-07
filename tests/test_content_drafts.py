@@ -34,10 +34,13 @@ class ContentDraftTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.db_path = Path(self.temp_dir.name) / "test_content_social.db"
+        self.patch_db = patch("social_store.DEFAULT_DB_PATH", self.db_path)
+        self.patch_db.start()
         self.store = social_store.SocialStore(self.db_path)
         self.client = TestClient(app)
 
     def tearDown(self):
+        self.patch_db.stop()
         self.temp_dir.cleanup()
 
     def test_platform_normalization(self):
@@ -246,6 +249,38 @@ class ContentDraftTests(unittest.TestCase):
         )
         self.assertEqual(resp_reply.status_code, 200)
         self.assertIn("reply", resp_reply.json()["reply"])
+
+    def test_publish_job_auto_approval_and_flexible_params(self):
+        """초안 생성 후 사전 승인 없이 즉시 발행 호출 시 자동 승인 및 쿼리 파라미터/바디 유연성 검증."""
+        # 1. Draft 생성
+        resp_draft = self.client.post(
+            "/api/social/drafts/manual",
+            json={
+                "platform": "threads",
+                "posts": ["초안 텍스트 1", "초안 텍스트 2"],
+                "actor_account_id": "test_author",
+                "dry_run": True,
+            },
+        )
+        self.assertEqual(resp_draft.status_code, 200)
+        job_id = resp_draft.json()["draft"]["job"]["job_id"]
+
+        # 확인: 생성 직후 상태는 draft, approved_at=0
+        job_before = self.store.get_job(job_id)
+        self.assertEqual(job_before["status"], "draft")
+        self.assertEqual(job_before["approved_at"], 0)
+
+        # 2. Body 없이 쿼리 파라미터만으로 /api/social/publish/{job_id}?dry_run=true 호출 (과거 422 및 409 발생 지점)
+        resp_pub = self.client.post(f"/api/social/publish/{job_id}?dry_run=true")
+        self.assertEqual(resp_pub.status_code, 200)
+        res_data = resp_pub.json()
+        self.assertEqual(res_data["status"], "succeeded")
+        self.assertEqual(len(res_data["results"]), 2)
+
+        # 상태가 approved를 거쳐 succeeded로 완료되었는지 확인
+        job_after = self.store.get_job(job_id)
+        self.assertEqual(job_after["status"], "succeeded")
+        self.assertGreater(job_after["approved_at"], 0)
 
 
 if __name__ == "__main__":

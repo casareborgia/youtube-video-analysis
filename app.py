@@ -1777,10 +1777,10 @@ async def convert_draft_to_publish_api(job_id: str, approve: bool = True):
 
 # ==========================================
 # Phase 4: Threads/X 게시물 통합 발행 API
-# ==========================================
 class PublishJobRequest(BaseModel):
     dry_run: Optional[bool] = None
     worker_id: Optional[str] = "manual_api_worker"
+    auto_approve: Optional[bool] = True
 
 
 class ScheduleJobRequest(BaseModel):
@@ -1788,16 +1788,38 @@ class ScheduleJobRequest(BaseModel):
 
 
 @app.post("/api/social/publish/{job_id}")
-async def execute_publish_job_api(job_id: str, req: PublishJobRequest):
-    """승인된 게시물/타래 발행 실행 (드라이런 또는 라이브)"""
+async def execute_publish_job_api(
+    job_id: str,
+    req: Optional[PublishJobRequest] = None,
+    dry_run: Optional[bool] = None,
+    auto_approve: bool = True,
+):
+    """승인된 게시물/타래 발행 실행 (드라이런 또는 라이브). draft 상태일 경우 auto_approve 지원."""
     try:
-        service = publish_service.PublishService()
+        st = social_store.SocialStore()
+        job = st.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="존재하지 않는 작업 ID입니다.")
+
+        # req 와 query param 병합
+        req_dry_run = req.dry_run if (req and req.dry_run is not None) else None
+        effective_dry_run = dry_run if dry_run is not None else req_dry_run
+        effective_worker_id = (req.worker_id if req and req.worker_id else "manual_api_worker")
+        req_auto_approve = req.auto_approve if (req and req.auto_approve is not None) else auto_approve
+
+        # draft 상태이고 auto_approve 요청 시 승인 상태로 원자적 전이
+        if job.get("status") == "draft" and req_auto_approve:
+            st.transition_job_status(job_id, "approved")
+
+        service = publish_service.PublishService(store=st)
         res = service.execute_publish_job(
             job_id=job_id,
-            worker_id=req.worker_id or "manual_api_worker",
-            dry_run=req.dry_run,
+            worker_id=effective_worker_id,
+            dry_run=effective_dry_run,
         )
         return res
+    except HTTPException:
+        raise
     except social_store.InvalidStateTransitionError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
@@ -2169,11 +2191,13 @@ async def get_engagement_history(limit: int = Query(100, ge=1, le=500)):
 async def discover_engagement_targets_api(
     platform: str = Query("threads"),
     topic: str = Query("스하리"),
-    limit: int = Query(10, ge=1, le=30),
+    limit: int = Query(10, ge=1, le=50),
     exclude_existing_relationships: bool = Query(True),
     actor_account_id: Optional[str] = Query(None),
+    allow_demo_seeds: bool = Query(False),
+    search_type: str = Query("RECENT"),
 ):
-    """현재 스레드/X에서 활동 중인 불특정 다수의 활성 타겟 자동 발굴 (신규 발굴 모드 지원)"""
+    """현재 스레드/X에서 활동 중인 불특정 다수의 활성 타겟 자동 발굴 (공식 키워드 검색 및 품질 점수 평가)"""
     try:
         from services.engagement_discovery import EngagementDiscoveryService
         service = EngagementDiscoveryService()
@@ -2183,6 +2207,8 @@ async def discover_engagement_targets_api(
             limit=limit,
             exclude_existing_relationships=exclude_existing_relationships,
             actor_account_id=actor_account_id or "",
+            allow_demo_seeds=allow_demo_seeds,
+            search_type=search_type,
         )
         return {
             "status": "success",
@@ -2191,6 +2217,9 @@ async def discover_engagement_targets_api(
             "count": result["count"],
             "targets": result["targets"],
             "summary": result["summary"],
+            "api_status": result.get("api_status", "success"),
+            "error_message": result.get("error_message"),
+            "is_real_search": result.get("is_real_search", True),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"타겟 발굴 실패: {e}")
@@ -2200,13 +2229,14 @@ class AutoEngagementRunRequest(BaseModel):
     platform: str = "threads"
     topic: Optional[str] = "스하리"
     targets: Optional[List[Dict[str, Any]]] = None
-    actions: List[str] = ["like", "repost", "follow"]
+    actions: List[str] = ["reply", "repost"]
     dry_run: bool = True
     confirm_live: bool = False
     use_web_fallback: bool = False
     limit: int = 10
     exclude_existing_relationships: bool = True
     actor_account_id: Optional[str] = ""
+    campaign_id: Optional[str] = None
 
 
 @app.post("/api/engagement/auto-run")
@@ -2280,6 +2310,7 @@ async def auto_run_engagement_api(req: AutoEngagementRunRequest):
                     post_url=(t.get("post_url") or "").strip(),
                     profile_url=(t.get("profile_url") or "").strip(),
                     label=(raw_uname or t.get("discovered_via") or "").strip(),
+                    reply_text=(t.get("reply_text") or t.get("draft_reply") or "").strip(),
                 )
             )
 
@@ -2312,6 +2343,35 @@ async def auto_run_engagement_api(req: AutoEngagementRunRequest):
         if skipped_results:
             res["skipped_existing_relationships"] = skipped_results
             res["skipped_count"] = res.get("skipped_count", 0) + len(skipped_results)
+
+        # 실운영 실행 시 Threads 성장 터치포인트 기록
+        if not req.dry_run and plat == "threads":
+            try:
+                camp_id = req.campaign_id
+                if not camp_id:
+                    active_camps = social_store.SocialStore().list_growth_campaigns(status="ACTIVE", limit=1)
+                    if active_camps:
+                        camp_id = active_camps[0]["campaign_id"]
+
+                for item in res.get("results", []):
+                    action_type = item.get("action") or "reply"
+                    action_status = item.get("status") or "unknown"
+                    t_post = item.get("post_id") or ""
+                    t_uname = item.get("target_label") or item.get("account_id") or ""
+                    t_url = item.get("post_url") or f"https://www.threads.net/@{t_uname}/post/{t_post}"
+
+                    social_store.SocialStore().record_growth_touchpoint(
+                        campaign_id=camp_id,
+                        target_username=t_uname,
+                        target_post_id=t_post,
+                        target_post_url=t_url,
+                        search_query=req.topic or "",
+                        candidate_score=int(item.get("candidate_score") or 0),
+                        action_type=action_type,
+                        action_status=action_status,
+                    )
+            except Exception as tp_err:
+                logger.warning(f"성장 터치포인트 기록 중 예외: {tp_err}")
 
         return {"status": "success", "result": res}
     except Exception as exc:
@@ -2407,6 +2467,161 @@ async def unsuppress_relationship_account_api(
         return {"status": "success", "unsuppressed": res}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"제외 해제 실패: {e}")
+
+
+# ==========================================
+# Threads 팔로워 성장 루프 & 캠페인 분석 API
+# ==========================================
+class GrowthCampaignStartRequest(BaseModel):
+    name: str
+    topic: str
+    search_queries: Optional[Union[List[str], str]] = None
+    baseline_followers_count: Optional[int] = None
+
+
+class GrowthCampaignEndRequest(BaseModel):
+    campaign_id: str
+    final_followers_count: Optional[int] = None
+
+
+class DraftReplyRequest(BaseModel):
+    post_text: str
+    topic: Optional[str] = "일반"
+    author: Optional[str] = ""
+
+
+@app.post("/api/growth/campaigns/start")
+async def start_growth_campaign_api(req: GrowthCampaignStartRequest):
+    """새로운 Threads 성장 캠페인을 시작하고 baseline 팔로워 수를 스냅샷으로 기록."""
+    try:
+        from services.threads_growth_analytics import ThreadsGrowthAnalyticsService
+        svc = ThreadsGrowthAnalyticsService()
+        queries = req.search_queries
+        if isinstance(queries, str):
+            queries = [q.strip() for q in queries.split(",") if q.strip()]
+
+        camp = svc.start_campaign(
+            name=req.name,
+            topic=req.topic,
+            search_queries=queries,
+            baseline_followers_count=req.baseline_followers_count,
+        )
+        return {"status": "success", "campaign": camp}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"캠페인 시작 실패: {e}")
+
+
+@app.post("/api/growth/campaigns/end")
+async def end_growth_campaign_api(req: GrowthCampaignEndRequest):
+    """성장 캠페인을 종료하고 최종 팔로워 수 및 성과 확정."""
+    try:
+        from services.threads_growth_analytics import ThreadsGrowthAnalyticsService
+        svc = ThreadsGrowthAnalyticsService()
+        camp = svc.finish_campaign(
+            campaign_id=req.campaign_id,
+            final_followers_count=req.final_followers_count,
+        )
+        return {"status": "success", "campaign": camp}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"캠페인 종료 실패: {e}")
+
+
+@app.get("/api/growth/campaigns")
+async def list_growth_campaigns_api(status: Optional[str] = None, limit: int = Query(50, ge=1, le=100)):
+    """성장 캠페인 목록 조회."""
+    try:
+        store = social_store.SocialStore()
+        campaigns = store.list_growth_campaigns(status=status, limit=limit)
+        return {"status": "success", "campaigns": campaigns}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"캠페인 목록 조회 실패: {e}")
+
+
+@app.get("/api/growth/campaigns/{campaign_id}/summary")
+async def get_growth_campaign_summary_api(campaign_id: str):
+    """캠페인 진행 지표 및 팔로워 순증 요약 조회."""
+    try:
+        from services.threads_growth_analytics import ThreadsGrowthAnalyticsService
+        svc = ThreadsGrowthAnalyticsService()
+        summary = svc.get_campaign_summary(campaign_id)
+        return summary
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"캠페인 요약 조회 실패: {e}")
+
+
+@app.get("/api/growth/campaigns/{campaign_id}/compare")
+async def compare_growth_campaign_api(campaign_id: str):
+    """캠페인 실행 기간 vs 직전 미실행 기간의 팔로워 증가량 비교."""
+    try:
+        from services.threads_growth_analytics import ThreadsGrowthAnalyticsService
+        svc = ThreadsGrowthAnalyticsService()
+        res = svc.compare_campaign_periods(campaign_id)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"캠페인 비교 실패: {e}")
+
+
+@app.post("/api/growth/insights/snapshot")
+async def capture_growth_insights_snapshot_api():
+    """공식 Threads API를 통해 현재 계정 메트릭(팔로워, 뷰, 답글 등) 시계열 스냅샷 기록."""
+    try:
+        from services.threads_growth_analytics import ThreadsGrowthAnalyticsService
+        svc = ThreadsGrowthAnalyticsService()
+        res = svc.capture_account_snapshot()
+        if res.get("status") == "error":
+            raise HTTPException(status_code=400, detail=res.get("message") or "인사이트 수집 실패")
+        snap = res.get("snapshot") or res
+        return {"status": "success", "snapshot": snap, **res}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"인사이트 스냅샷 수집 실패: {e}")
+
+
+@app.get("/api/growth/insights/latest")
+async def get_latest_growth_insights_api():
+    """가장 최근에 저장된 계정 인사이트 스냅샷 및 팔로워 수 조회."""
+    try:
+        store = social_store.SocialStore()
+        latest = store.get_latest_insight_snapshot()
+        return {"status": "success", "snapshot": latest}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"최신 인사이트 조회 실패: {e}")
+
+
+@app.post("/api/growth/draft-reply")
+async def draft_growth_reply_api(req: DraftReplyRequest):
+    """대상 게시물 본문과 맥락에 맞는 진정성 있는 답글 초안 생성 (단순 맞팔/도배 배제)."""
+    text = req.post_text.strip()
+    topic = req.topic or "일반"
+
+    if "ai" in text.lower() or "인공지능" in text or topic == "AI":
+        drafts = [
+            "공감합니다! 실무 자동화 파이프라인에서 특히 체감되는 부분이네요. 좋은 인사이트 감사합니다 💡",
+            "정말 흥미로운 관점이네요! 관련해서 어떤 툴이나 구조를 주로 활용하시는지도 궁금합니다 :)",
+            "핵심을 정확히 짚어주셨네요. 앞으로 올려주실 글들도 기대하며 자주 소통하겠습니다! ✨",
+        ]
+    elif "개발" in text or "코딩" in text or topic == "개발자":
+        drafts = [
+            "개발하면서 누구나 한 번쯤 겪는 고민인데 큰 공감이 되네요! 유익한 내용 감사합니다 🚀",
+            "실무 경험이 묻어나는 인사이트네요. 파이썬 자동화나 구조 설계하실 때 많은 참고가 될 것 같습니다!",
+            "좋은 내용 잘 읽고 갑니다. 개발자 스레더 분들 서로 힘이 되는 소통 이어가면 좋겠습니다 :)",
+        ]
+    elif "창업" in text or "스타트업" in text or topic == "스타트업":
+        drafts = [
+            "스타트업 빌딩 과정의 생생한 기록이네요. 문제 해결 과정에 깊이 공감하고 응원합니다! 🙌",
+            "실행력이 정말 대단하십니다. 시장 검증 단계에서 배우신 점도 인상 깊게 읽었습니다 📈",
+        ]
+    else:
+        drafts = [
+            "글에 담긴 생각에 깊이 공감합니다! 오늘 하루도 의미 있게 마무리하시길 응원할게요 ✨",
+            "정성스러운 글 잘 읽고 갑니다. 앞으로도 소통하며 자주 교류하고 싶네요 😊",
+            "따뜻한 인사이트 나눠주셔서 감사합니다. 즐겁고 알찬 스레드 소통 함께해요 :)",
+        ]
+
+    import random
+    selected = random.choice(drafts)
+    return {"status": "success", "draft_reply": selected, "alternatives": drafts}
 
 
 @app.get("/api/social/history")

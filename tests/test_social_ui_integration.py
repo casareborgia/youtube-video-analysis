@@ -1,10 +1,22 @@
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 import unittest
 from fastapi.testclient import TestClient
 from app import app
+import social_store
 
 class TestSocialUIAPIIntegration(unittest.TestCase):
     def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db_path = Path(self.tmp.name) / "test_ui_social.db"
+        self.patch_db = patch("social_store.DEFAULT_DB_PATH", self.db_path)
+        self.patch_db.start()
         self.client = TestClient(app)
+
+    def tearDown(self):
+        self.patch_db.stop()
+        self.tmp.cleanup()
 
     def test_social_accounts(self):
         resp = self.client.get("/api/social/accounts")

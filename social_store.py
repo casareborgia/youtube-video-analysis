@@ -26,7 +26,7 @@ DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_DB_PATH = DATA_DIR / "social_engagement.db"
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
 
 VALID_PLATFORMS = {"threads", "x"}
 VALID_JOB_TYPES = {"publish", "reply", "engagement"}
@@ -267,12 +267,16 @@ class SocialStore:
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_social_accounts_plat ON social_accounts(platform, status)")
 
-            # 3. v1, v2, v3 마이그레이션 처리
+            # 3. v1, v2, v3, v4 마이그레이션 처리
             if current_ver == 1:
                 self._migrate_v1_to_v2(conn)
                 self._migrate_v2_to_v3(conn)
+                self._migrate_v3_to_v4(conn)
             elif current_ver == 2:
                 self._migrate_v2_to_v3(conn)
+                self._migrate_v3_to_v4(conn)
+            elif current_ver == 3:
+                self._migrate_v3_to_v4(conn)
             elif current_ver == 0:
                 conn.execute(
                     """
@@ -385,6 +389,81 @@ class SocialStore:
                 """
                 CREATE INDEX IF NOT EXISTS idx_social_relationship_lookup
                 ON social_relationships(platform, actor_account_id, target_account_key, relationship_type)
+                """
+            )
+
+            # 8. threads_growth 성장 캠페인, 인사이트 스냅샷, 접점 테이블 (v4 신설)
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS threads_growth_campaigns (
+                    campaign_id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    topic TEXT NOT NULL,
+                    search_queries_json TEXT NOT NULL DEFAULT '[]',
+                    started_at INTEGER NOT NULL,
+                    ended_at INTEGER,
+                    status TEXT NOT NULL DEFAULT 'active',
+                    baseline_followers_count INTEGER NOT NULL DEFAULT 0,
+                    final_followers_count INTEGER,
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_threads_campaigns_status
+                ON threads_growth_campaigns(status, started_at)
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS threads_account_insight_snapshots (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    captured_at INTEGER NOT NULL,
+                    followers_count INTEGER NOT NULL DEFAULT 0,
+                    views INTEGER NOT NULL DEFAULT 0,
+                    likes INTEGER NOT NULL DEFAULT 0,
+                    replies INTEGER NOT NULL DEFAULT 0,
+                    reposts INTEGER NOT NULL DEFAULT 0,
+                    quotes INTEGER NOT NULL DEFAULT 0,
+                    raw_metrics_json TEXT NOT NULL DEFAULT '{}'
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_threads_insights_time
+                ON threads_account_insight_snapshots(captured_at)
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS threads_growth_touchpoints (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    campaign_id TEXT,
+                    target_username TEXT NOT NULL,
+                    target_post_id TEXT NOT NULL,
+                    target_post_url TEXT NOT NULL DEFAULT '',
+                    search_query TEXT NOT NULL DEFAULT '',
+                    candidate_score INTEGER NOT NULL DEFAULT 0,
+                    action_type TEXT NOT NULL DEFAULT 'reply',
+                    action_status TEXT NOT NULL DEFAULT 'pending_approval',
+                    executed_at INTEGER,
+                    error_code TEXT,
+                    created_at INTEGER NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_threads_touchpoints_campaign
+                ON threads_growth_touchpoints(campaign_id, action_status)
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_threads_touchpoints_target
+                ON threads_growth_touchpoints(target_username, target_post_id)
                 """
             )
 
@@ -625,6 +704,83 @@ class SocialStore:
             pass
 
         conn.execute("PRAGMA user_version = 3")
+
+    def _migrate_v3_to_v4(self, conn: sqlite3.Connection) -> None:
+        """v3 -> v4 마이그레이션. threads_growth_campaigns, threads_account_insight_snapshots, threads_growth_touchpoints 신설."""
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS threads_growth_campaigns (
+                campaign_id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                topic TEXT NOT NULL,
+                search_queries_json TEXT NOT NULL DEFAULT '[]',
+                started_at INTEGER NOT NULL,
+                ended_at INTEGER,
+                status TEXT NOT NULL DEFAULT 'active',
+                baseline_followers_count INTEGER NOT NULL DEFAULT 0,
+                final_followers_count INTEGER,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_threads_campaigns_status
+            ON threads_growth_campaigns(status, started_at)
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS threads_account_insight_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                captured_at INTEGER NOT NULL,
+                followers_count INTEGER NOT NULL DEFAULT 0,
+                views INTEGER NOT NULL DEFAULT 0,
+                likes INTEGER NOT NULL DEFAULT 0,
+                replies INTEGER NOT NULL DEFAULT 0,
+                reposts INTEGER NOT NULL DEFAULT 0,
+                quotes INTEGER NOT NULL DEFAULT 0,
+                raw_metrics_json TEXT NOT NULL DEFAULT '{}'
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_threads_insights_time
+            ON threads_account_insight_snapshots(captured_at)
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS threads_growth_touchpoints (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                campaign_id TEXT,
+                target_username TEXT NOT NULL,
+                target_post_id TEXT NOT NULL,
+                target_post_url TEXT NOT NULL DEFAULT '',
+                search_query TEXT NOT NULL DEFAULT '',
+                candidate_score INTEGER NOT NULL DEFAULT 0,
+                action_type TEXT NOT NULL DEFAULT 'reply',
+                action_status TEXT NOT NULL DEFAULT 'pending_approval',
+                executed_at INTEGER,
+                error_code TEXT,
+                created_at INTEGER NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_threads_touchpoints_campaign
+            ON threads_growth_touchpoints(campaign_id, action_status)
+            """
+        )
+        conn.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_threads_touchpoints_target
+            ON threads_growth_touchpoints(target_username, target_post_id)
+            """
+        )
+        conn.execute("PRAGMA user_version = 4")
 
     # ==========================================
     # 계정 메타데이터 관리 (소셜 계정)
@@ -1760,3 +1916,261 @@ class SocialStore:
                 (platform.lower(), actor_account_id, norm_key),
             )
             return cur.rowcount > 0
+
+    # ==========================================
+    # 7. Threads 성장 캠페인 및 인사이트 관리 (v4 신설)
+    # ==========================================
+    def create_growth_campaign(
+        self,
+        name: str,
+        topic: str,
+        search_queries: Optional[List[str]] = None,
+        baseline_followers_count: int = 0,
+        campaign_id: Optional[str] = None,
+        started_at: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """새로운 Threads 성장 캠페인 생성."""
+        cid = campaign_id or f"camp_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+        now = int(started_at or time.time())
+        queries_json = json.dumps(search_queries or [], ensure_ascii=False)
+
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO threads_growth_campaigns
+                (campaign_id, name, topic, search_queries_json, started_at, status, baseline_followers_count, created_at)
+                VALUES (?, ?, ?, ?, ?, 'ACTIVE', ?, ?)
+                """,
+                (cid, name.strip(), topic.strip(), queries_json, now, int(baseline_followers_count or 0), now),
+            )
+
+        return self.get_growth_campaign(cid) or {
+            "campaign_id": cid,
+            "name": name,
+            "topic": topic,
+            "status": "ACTIVE",
+            "baseline_followers_count": baseline_followers_count,
+            "started_at": now,
+        }
+
+    def end_growth_campaign(
+        self,
+        campaign_id: str,
+        final_followers_count: int = 0,
+        ended_at: Optional[int] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """성장 캠페인 종료 및 최종 팔로워 수 기록."""
+        now = int(ended_at or time.time())
+        with self._connect() as conn:
+            conn.execute(
+                """
+                UPDATE threads_growth_campaigns
+                SET status = 'COMPLETED', ended_at = ?, final_followers_count = ?
+                WHERE campaign_id = ?
+                """,
+                (now, int(final_followers_count or 0), campaign_id),
+            )
+        return self.get_growth_campaign(campaign_id)
+
+    def get_growth_campaign(self, campaign_id: str) -> Optional[Dict[str, Any]]:
+        """캠페인 단일 조회."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM threads_growth_campaigns WHERE campaign_id = ?",
+                (campaign_id,),
+            ).fetchone()
+            if not row:
+                return None
+            data = dict(row)
+            data["status"] = (data.get("status") or "").upper()
+            try:
+                data["search_queries"] = json.loads(data.get("search_queries_json") or "[]")
+            except Exception:
+                data["search_queries"] = []
+            return data
+
+    def list_growth_campaigns(
+        self,
+        status: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """성장 캠페인 목록 조회 (대소문자 무관)."""
+        with self._connect() as conn:
+            if status:
+                rows = conn.execute(
+                    "SELECT * FROM threads_growth_campaigns WHERE UPPER(status) = UPPER(?) ORDER BY started_at DESC LIMIT ?",
+                    (status.strip(), limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM threads_growth_campaigns ORDER BY started_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+
+            results = []
+            for r in rows:
+                item = dict(r)
+                item["status"] = (item.get("status") or "").upper()
+                try:
+                    item["search_queries"] = json.loads(item.get("search_queries_json") or "[]")
+                except Exception:
+                    item["search_queries"] = []
+                results.append(item)
+            return results
+
+    def insert_insight_snapshot(
+        self,
+        followers_count: int,
+        views: int = 0,
+        likes: int = 0,
+        replies: int = 0,
+        reposts: int = 0,
+        quotes: int = 0,
+        raw_metrics: Optional[Dict[str, Any]] = None,
+        captured_at: Optional[int] = None,
+    ) -> int:
+        """계정 인사이트 시계열 스냅샷 기록."""
+        now = int(captured_at or time.time())
+        raw_json = json.dumps(raw_metrics or {}, ensure_ascii=False)
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO threads_account_insight_snapshots
+                (captured_at, followers_count, views, likes, replies, reposts, quotes, raw_metrics_json)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (now, int(followers_count), int(views), int(likes), int(replies), int(reposts), int(quotes), raw_json),
+            )
+            return cur.lastrowid
+
+    def get_latest_insight_snapshot(self) -> Optional[Dict[str, Any]]:
+        """가장 최근에 기록된 인사이트 스냅샷 1건 조회."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM threads_account_insight_snapshots ORDER BY captured_at DESC LIMIT 1"
+            ).fetchone()
+            if not row:
+                return None
+            data = dict(row)
+            try:
+                data["raw_metrics"] = json.loads(data.get("raw_metrics_json") or "{}")
+            except Exception:
+                data["raw_metrics"] = {}
+            return data
+
+    def list_insight_snapshots(
+        self,
+        limit: int = 100,
+        since: Optional[int] = None,
+        until: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """기간별 인사이트 스냅샷 목록 조회."""
+        with self._connect() as conn:
+            query = "SELECT * FROM threads_account_insight_snapshots WHERE 1=1"
+            params: List[Any] = []
+            if since is not None:
+                query += " AND captured_at >= ?"
+                params.append(int(since))
+            if until is not None:
+                query += " AND captured_at <= ?"
+                params.append(int(until))
+            query += " ORDER BY captured_at ASC LIMIT ?"
+            params.append(int(limit))
+
+            rows = conn.execute(query, tuple(params)).fetchall()
+            results = []
+            for r in rows:
+                item = dict(r)
+                try:
+                    item["raw_metrics"] = json.loads(item.get("raw_metrics_json") or "{}")
+                except Exception:
+                    item["raw_metrics"] = {}
+                results.append(item)
+            return results
+
+    def record_growth_touchpoint(
+        self,
+        campaign_id: Optional[str] = None,
+        target_username: str = "",
+        target_post_id: str = "",
+        target_post_url: str = "",
+        search_query: str = "",
+        candidate_score: int = 0,
+        action_type: str = "reply",
+        action_status: str = "pending_approval",
+        created_at: Optional[int] = None,
+        **kwargs: Any,
+    ) -> int:
+        """캠페인 후보 접점(터치포인트) 등록."""
+        now = int(created_at or time.time())
+        uname = (target_username or kwargs.get("target_account_id") or kwargs.get("target_label") or "").strip()
+        norm_user = normalize_account_key(uname)
+        post_id = str(target_post_id or kwargs.get("post_id") or "").strip()
+        act_status = str(kwargs.get("status") or action_status or "pending_approval").strip()
+        act_type = str(kwargs.get("action") or action_type or "reply").strip()
+        query = str(search_query or kwargs.get("query") or "").strip()
+        p_url = str(target_post_url or kwargs.get("post_url") or "").strip()
+        score = int(kwargs.get("score") or candidate_score or 0)
+
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO threads_growth_touchpoints
+                (campaign_id, target_username, target_post_id, target_post_url, search_query,
+                 candidate_score, action_type, action_status, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    campaign_id or None,
+                    norm_user,
+                    post_id,
+                    p_url,
+                    query,
+                    score,
+                    act_type,
+                    act_status,
+                    now,
+                ),
+            )
+            return cur.lastrowid
+
+    def update_touchpoint_status(
+        self,
+        touchpoint_id: int,
+        action_status: str,
+        error_code: Optional[str] = None,
+        executed_at: Optional[int] = None,
+    ) -> bool:
+        """터치포인트 상태 갱신 (승인, 실행완료, 실패, 거절 등)."""
+        now = int(executed_at or time.time()) if action_status in ("executed", "failed") else None
+        with self._connect() as conn:
+            cur = conn.execute(
+                """
+                UPDATE threads_growth_touchpoints
+                SET action_status = ?, error_code = ?, executed_at = coalesce(?, executed_at)
+                WHERE id = ?
+                """,
+                (action_status, error_code, now, int(touchpoint_id)),
+            )
+            return cur.rowcount > 0
+
+    def list_growth_touchpoints(
+        self,
+        campaign_id: Optional[str] = None,
+        action_status: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """터치포인트 목록 조회."""
+        with self._connect() as conn:
+            query = "SELECT * FROM threads_growth_touchpoints WHERE 1=1"
+            params: List[Any] = []
+            if campaign_id:
+                query += " AND campaign_id = ?"
+                params.append(campaign_id)
+            if action_status:
+                query += " AND action_status = ?"
+                params.append(action_status)
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(int(limit))
+            rows = conn.execute(query, tuple(params)).fetchall()
+            return [dict(r) for r in rows]

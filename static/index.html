@@ -1774,76 +1774,142 @@
           <!-- 4. 스하리(참여) 탭 -->
           <div id="socialTabEngagement" class="social-tab-pane" style="display: none;">
             <div class="card" style="padding: 18px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+              <!-- 헤더 및 뱃지 -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
                 <div>
-                  <h3 style="margin: 0; font-size: 1.05rem;"><i class="fa-solid fa-repeat" style="color: #6366f1;"></i> 불특정 다수 실시간 피드 탐색형 스하리 센터</h3>
+                  <h3 style="margin: 0; font-size: 1.05rem;"><i class="fa-solid fa-chart-line" style="color: #6366f1;"></i> Threads 팔로워 성장 시스템 & 실운영 소통 센터</h3>
                   <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
-                    대상 계정을 일일이 찝지 않고, 실시간 피드에서 활동 중인 불특정 다수의 활성 스레더들을 자동 발굴하여 안전하게 스하리를 수행합니다.
+                    공식 키워드 검색 → 실제 최신 게시물 수집 → 신규 관계 필터 → 품질 평가 → 답글·리포스트 실행 → 성장 인사이트 추적으로 연결되는 실운영 루프입니다.
                   </div>
                 </div>
-                <span class="badge" style="background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); padding: 4px 10px;">
-                  <i class="fa-solid fa-shield-halved"></i> 섀도우밴 방지 인간 모사 딜레이
-                </span>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                  <button id="btnCaptureInsightSnapshot" class="btn btn-xs btn-outline" style="border-color: #38bdf8; color: #38bdf8;">
+                    <i class="fa-solid fa-camera"></i> 인사이트 즉시 스냅샷
+                  </button>
+                  <button id="btnOpenCampaignModal" class="btn btn-xs btn-primary" style="background: #4f46e5; border-color: #4f46e5;">
+                    <i class="fa-solid fa-flag"></i> 캠페인 관리
+                  </button>
+                </div>
+              </div>
+
+              <!-- Threads 성장 지표 대시보드 요약 카드 -->
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 16px;">
+                <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.25); border-radius: 8px; padding: 10px 12px;">
+                  <div style="font-size: 0.72rem; color: var(--text-secondary);">현재 Threads 팔로워</div>
+                  <div style="display: flex; align-items: baseline; gap: 6px; margin-top: 4px;">
+                    <strong id="growthFollowersCount" style="font-size: 1.25rem; color: #fff;">-</strong>
+                    <span id="growthFollowersDiff" style="font-size: 0.72rem; color: #34d399;"></span>
+                  </div>
+                </div>
+                <div style="background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25); border-radius: 8px; padding: 10px 12px;">
+                  <div style="font-size: 0.72rem; color: var(--text-secondary);">공식 계정 뷰(조회수)</div>
+                  <div style="margin-top: 4px;">
+                    <strong id="growthViewsCount" style="font-size: 1.25rem; color: #38bdf8;">-</strong>
+                  </div>
+                </div>
+                <div style="background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 8px; padding: 10px 12px;">
+                  <div style="font-size: 0.72rem; color: var(--text-secondary);">받은 답글 / 리포스트</div>
+                  <div style="margin-top: 4px;">
+                    <strong id="growthRepliesReposts" style="font-size: 1.25rem; color: #34d399;">- / -</strong>
+                  </div>
+                </div>
+                <div style="background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; padding: 10px 12px;">
+                  <div style="font-size: 0.72rem; color: var(--text-secondary);">활성 캠페인 / 상태</div>
+                  <div style="margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    <strong id="growthActiveCampaignName" style="font-size: 0.95rem; color: #fbbf24;">(활성 캠페인 없음)</strong>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 활성 캠페인 진행 요약 및 비교 바 -->
+              <div id="growthCampaignActionBar" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 0.8rem;">
+                <div id="growthCampaignStatusText" style="color: var(--text-primary);">
+                  <i class="fa-solid fa-bullseye" style="color: #6366f1;"></i> 캠페인을 시작하여 소통 활동과 팔로워 증가량 상관관계를 측정할 수 있습니다.
+                </div>
+                <div style="display: flex; gap: 6px;">
+                  <button id="btnEndActiveCampaign" class="btn btn-xs btn-outline" style="border-color: #f87171; color: #f87171; display: none;">
+                    <i class="fa-solid fa-flag-checkered"></i> 캠페인 종료 및 집계
+                  </button>
+                  <button id="btnCompareCampaignPeriod" class="btn btn-xs btn-outline" style="display: none;">
+                    <i class="fa-solid fa-chart-simple"></i> 직전 기간과 비교
+                  </button>
+                </div>
               </div>
 
               <!-- 일일 안전 한도 게이지 바 -->
               <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 14px; margin-bottom: 16px; display: flex; flex-wrap: wrap; gap: 16px; font-size: 0.8rem; align-items: center;">
                 <div><span style="color: var(--text-secondary);">일일 전체 한도:</span> <strong style="color: #38bdf8;">최대 30회</strong></div>
-                <div><span style="color: var(--text-secondary);">좋아요:</span> <strong>최대 25회</strong></div>
-                <div><span style="color: var(--text-secondary);">리포스트:</span> <strong>최대 10회</strong></div>
-                <div><span style="color: var(--text-secondary);">팔로우:</span> <strong>최대 10회</strong></div>
+                <div><span style="color: var(--text-secondary);">답글(핵심 성장):</span> <strong style="color: #a78bfa;">최대 15회</strong></div>
+                <div><span style="color: var(--text-secondary);">리포스트(확산):</span> <strong style="color: #34d399;">최대 10회</strong></div>
+                <div><span style="color: var(--text-secondary);">좋아요/팔로우:</span> <strong>웹 모드 전용</strong></div>
                 <div style="margin-left: auto; color: #34d399; font-size: 0.76rem;"><i class="fa-solid fa-circle-check"></i> 쿨다운: 3~5초 자동 지연</div>
               </div>
 
               <!-- 1단계: 실시간 피드 탐색 컨트롤 -->
               <div style="background: rgba(0,0,0,0.2); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
-                <div style="font-weight: 600; font-size: 0.88rem; margin-bottom: 10px; color: #fff;">
-                  <i class="fa-solid fa-compass" style="color: #38bdf8;"></i> 1단계: 실시간 활성 스레더 자동 탐색
+                <div style="font-weight: 600; font-size: 0.88rem; margin-bottom: 10px; color: #fff; display: flex; justify-content: space-between; align-items: center;">
+                  <span><i class="fa-solid fa-compass" style="color: #38bdf8;"></i> 1단계: 공식 키워드 검색 기반 실시간 활성 게시물 수집</span>
+                  <span style="font-size: 0.72rem; color: #94a3b8;"><i class="fa-solid fa-key"></i> Meta Threads 공식 GET /keyword_search 연동</span>
                 </div>
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: flex-end;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; align-items: flex-end;">
                   <div>
                     <label style="font-size: 0.78rem; color: var(--text-secondary);">플랫폼</label>
                     <select id="tabEngPlatform" class="form-control">
-                      <option value="threads" selected>Meta Threads</option>
+                      <option value="threads" selected>Meta Threads (공식 검색)</option>
                       <option value="x">X (트위터)</option>
                     </select>
                   </div>
                   <div>
-                    <label style="font-size: 0.78rem; color: var(--text-secondary);">탐색 관심 주제 / 키워드</label>
+                    <label style="font-size: 0.78rem; color: var(--text-secondary);">탐색 주제 프리셋</label>
                     <select id="tabEngTopic" class="form-control">
-                      <option value="스하리" selected>스하리 / 맞팔 소통 스트림</option>
-                      <option value="AI">AI / 기술 / 개발자</option>
-                      <option value="일상">일상 / 직장인 / 힐링</option>
+                      <option value="스하리" selected>스하리 / 소통 스트림</option>
+                      <option value="AI">AI / 기술 / 인공지능</option>
+                      <option value="개발자">개발자 / 프로그래밍</option>
                       <option value="스타트업">스타트업 / 비즈니스</option>
-                      <option value="전체">전체 최신 활성 피드</option>
+                      <option value="일상">일상 / 직장인 / 힐링</option>
+                      <option value="전체">전체 최신 피드</option>
                     </select>
                   </div>
                   <div>
-                    <label style="font-size: 0.78rem; color: var(--text-secondary);">발굴 인원수</label>
+                    <label style="font-size: 0.78rem; color: var(--text-secondary);">직접 검색어 (선택)</label>
+                    <input id="tabEngCustomQuery" class="form-control" placeholder="예: 바이브코딩, LLM" autocomplete="off">
+                  </div>
+                  <div>
+                    <label style="font-size: 0.78rem; color: var(--text-secondary);">검색 정렬 방식</label>
+                    <select id="tabEngSearchType" class="form-control">
+                      <option value="RECENT" selected>최신순 (RECENT · 실시간 소통)</option>
+                      <option value="TOP">인기순 (TOP · 반응 우수)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style="font-size: 0.78rem; color: var(--text-secondary);">수집 후보수</label>
                     <select id="tabEngLimit" class="form-control">
-                      <option value="5">5명 (빠른 소통)</option>
-                      <option value="10" selected>10명 (권장 표준)</option>
-                      <option value="15">15명 (적극 소통)</option>
+                      <option value="5">5개 (빠른 소통)</option>
+                      <option value="10" selected>10개 (권장 표준)</option>
+                      <option value="15">15개 (적극 소통)</option>
                     </select>
                   </div>
                   <div>
                     <button id="btnDiscoverTargets" class="btn btn-primary btn-block">
-                      <i class="fa-solid fa-magnifying-glass"></i> 실시간 스레더 탐색 🔍
+                      <i class="fa-solid fa-magnifying-glass"></i> 실시간 게시물 발굴 🔍
                     </button>
                   </div>
                 </div>
 
-                <!-- 신규 발굴 모드 (기존 관계 자동 제외 옵션) -->
+                <!-- 신규 발굴 및 데이터 소스 옵션 -->
                 <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-                  <div>
+                  <div style="display: flex; flex-direction: column; gap: 6px;">
                     <div style="display: flex; align-items: center; gap: 8px;">
                       <input type="checkbox" id="chkExcludeExistingRelationships" checked style="accent-color: #6366f1; width: 16px; height: 16px; cursor: pointer;">
                       <label for="chkExcludeExistingRelationships" style="font-size: 0.82rem; font-weight: 600; color: #fff; cursor: pointer; margin: 0;">
                         <i class="fa-solid fa-user-plus" style="color: #6366f1;"></i> 기존 팔로워 및 기존 상호작용 유저 제외 (신규 발굴 모드)
                       </label>
                     </div>
-                    <div style="font-size: 0.74rem; color: var(--text-secondary); margin: 4px 0 0 24px;">
-                      💡 확인 가능한 팔로워·댓글·답글·스하리 이력을 기준으로 제외합니다.
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <input type="checkbox" id="chkAllowDemoSeeds" style="accent-color: #f59e0b; width: 16px; height: 16px; cursor: pointer;">
+                      <label for="chkAllowDemoSeeds" style="font-size: 0.78rem; color: #94a3b8; cursor: pointer; margin: 0;">
+                        <i class="fa-solid fa-flask" style="color: #f59e0b;"></i> 데모 시드 계정 허용 (체크 해제 시 공식 실시간 API 검색 결과만 수집)
+                      </label>
                     </div>
                   </div>
                   <div>
@@ -1852,7 +1918,7 @@
                     </button>
                   </div>
                 </div>
-                <div id="engExistingNotice" style="display: none; margin: 8px 0 0 24px; padding: 6px 10px; border-radius: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #f87171; font-size: 0.75rem;">
+                <div id="engExistingNotice" style="display: none; margin: 8px 0 0 0; padding: 6px 10px; border-radius: 6px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.25); color: #f87171; font-size: 0.75rem;">
                   ⚠️ 신규 발굴 모드가 비활성화되었습니다. 기존 맞팔 또는 과거 상호작용 계정이 후보에 포함될 수 있습니다.
                 </div>
               </div>
@@ -1867,7 +1933,7 @@
 
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                   <strong style="font-size: 0.88rem; color: #fff;">
-                    <i class="fa-solid fa-users" style="color: #10b981;"></i> 2단계: 발굴된 불특정 다수 타겟 대기열 (<span id="engTargetCount">0</span>명)
+                    <i class="fa-solid fa-users" style="color: #10b981;"></i> 2단계: 품질 평가 완료된 후보 대기열 (<span id="engTargetCount">0</span>명)
                   </strong>
                   <div style="display: flex; gap: 8px; font-size: 0.78rem;">
                     <button id="btnSelectAllTargets" class="btn btn-xs btn-outline">전체 선택</button>
@@ -1875,22 +1941,31 @@
                   </div>
                 </div>
 
-                <div id="engTargetsContainer" style="display: flex; flex-direction: column; gap: 8px; max-height: 420px; overflow-y: auto; padding-right: 4px;">
+                <div id="engTargetsContainer" style="display: flex; flex-direction: column; gap: 8px; max-height: 480px; overflow-y: auto; padding-right: 4px;">
                   <div class="empty-state-box" style="padding: 24px;">
                     <i class="fa-solid fa-satellite-dish" style="font-size: 2rem; color: var(--text-secondary); margin-bottom: 8px; display: block;"></i>
-                    <p style="margin: 0; color: var(--text-secondary);">[실시간 스레더 탐색] 버튼을 누르면 현재 접속 중인 활성 스레더들이 자동으로 발굴됩니다.</p>
+                    <p style="margin: 0; color: var(--text-secondary);">[실시간 게시물 발굴] 버튼을 누르면 최신 검색 기반 활성 후보들이 품질 점수와 함께 선별됩니다.</p>
                   </div>
                 </div>
               </div>
 
-              <!-- 3단계: 일괄 스하리 실행 컨트롤 바 -->
+              <!-- 3단계: 일괄 소통 실행 컨트롤 바 -->
               <div style="background: rgba(16,185,129,0.05); border: 1px solid rgba(16,185,129,0.2); border-radius: 8px; padding: 14px; margin-bottom: 16px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 12px;">
                   <div style="display: flex; align-items: center; gap: 16px; font-size: 0.85rem; flex-wrap: wrap;">
-                    <strong style="color: #fff;"><i class="fa-solid fa-bolt" style="color: #fbbf24;"></i> 스하리 액션:</strong>
-                    <label style="cursor: pointer;"><input id="tabEngActionLike" type="checkbox" checked> ❤️ 좋아요(하트)</label>
-                    <label style="cursor: pointer;"><input id="tabEngActionRepost" type="checkbox" checked> 🔁 리포스트</label>
-                    <label style="cursor: pointer;"><input id="tabEngActionFollow" type="checkbox" checked> 👤 팔로우</label>
+                    <strong style="color: #fff;"><i class="fa-solid fa-bolt" style="color: #fbbf24;"></i> 실행 액션:</strong>
+                    <label style="cursor: pointer; color: #a78bfa; font-weight: 600;" title="공식 Threads POST /me/threads?reply_to_id=... 사용">
+                      <input id="tabEngActionReply" type="checkbox" checked> 💬 답글 (핵심 소통)
+                    </label>
+                    <label style="cursor: pointer; color: #34d399; font-weight: 600;" title="공식 Threads POST /me/threads?media_type=REPOST 사용">
+                      <input id="tabEngActionRepost" type="checkbox" checked> 🔁 리포스트 (확산)
+                    </label>
+                    <label style="cursor: pointer; color: var(--text-secondary);" title="Threads 팔로우/좋아요는 공식 API 미지원으로 웹 모드에서만 동작">
+                      <input id="tabEngActionLike" type="checkbox"> ❤️ 좋아요 (웹 필요)
+                    </label>
+                    <label style="cursor: pointer; color: var(--text-secondary);" title="Threads 팔로우/좋아요는 공식 API 미지원으로 웹 모드에서만 동작">
+                      <input id="tabEngActionFollow" type="checkbox"> 👤 팔로우 (웹 필요)
+                    </label>
                     <label style="cursor: pointer; color: var(--text-secondary);" title="Threads 팔로우·좋아요 등 공식 API 미지원 기능에 필요">
                       <input id="tabEngUseWeb" type="checkbox"> 🌐 전용 브라우저 웹 모드
                     </label>
@@ -1902,7 +1977,7 @@
                     <i class="fa-solid fa-flask"></i> 🧪 모의 시뮬레이션 (검증)
                   </button>
                   <button id="btnTabEngLive" class="btn btn-primary" style="flex: 2; min-width: 200px; background: linear-gradient(135deg, #10b981 0%, #059669 100%);">
-                    <i class="fa-solid fa-paper-plane"></i> ⚡ 선택 대상 일괄 스하리 실행 (안전 딜레이)
+                    <i class="fa-solid fa-paper-plane"></i> ⚡ 선택 대상 일괄 소통 실행 (안전 딜레이)
                   </button>
                 </div>
               </div>
@@ -2469,6 +2544,101 @@
           <button type="button" id="btnSubmitBatchFollowers" class="btn btn-sm btn-primary" style="background: #6366f1; border-color: #6366f1;">
             <i class="fa-solid fa-check"></i> 팔로워 목록 등록 및 즉시 제외
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 📈 Threads 팔로워 성장 캠페인 관리 & 성과 비교 모달 -->
+    <div id="threadsGrowthCampaignModal" class="modal-overlay" style="display: none;">
+      <div class="modal-content" style="max-width: 680px; max-height: 85vh; display: flex; flex-direction: column;">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding-bottom: 12px; border-bottom: 1px solid var(--border-color);">
+          <div>
+            <h3 style="margin: 0; font-size: 1.15rem; color: #818cf8;">
+              <i class="fa-solid fa-chart-line"></i> Threads 성장 캠페인 & 성과 분석
+            </h3>
+            <div style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 2px;">
+              캠페인 기간 동안의 소통 활동과 팔로워 순증 효과를 정량적으로 비교 분석합니다.
+            </div>
+          </div>
+          <button type="button" id="btnCloseCampaignModal" class="btn-close">&times;</button>
+        </div>
+
+        <div class="modal-body" style="padding: 16px 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px;">
+          <!-- 활성 캠페인 현황 카드 -->
+          <div id="modalActiveCampaignCard" style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.3); border-radius: 8px; padding: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+              <strong style="font-size: 0.92rem; color: #fff;"><i class="fa-solid fa-circle-play" style="color: #34d399;"></i> 현재 활성 캠페인</strong>
+              <span id="modalActiveCampBadge" class="badge badge-success" style="font-size: 0.72rem;">ACTIVE</span>
+            </div>
+            <div id="modalActiveCampDetails" style="font-size: 0.82rem; color: #cbd5e1; line-height: 1.6;">
+              진행 중인 캠페인이 없습니다. 아래에서 새 캠페인을 시작하세요.
+            </div>
+            <div id="modalActiveCampActions" style="margin-top: 10px; display: none; gap: 8px;">
+              <button id="btnModalEndCampaign" class="btn btn-sm btn-outline" style="border-color: #f87171; color: #f87171;">
+                <i class="fa-solid fa-flag-checkered"></i> 캠페인 종료 및 최종 확정
+              </button>
+              <button id="btnModalCompareCampaign" class="btn btn-sm btn-outline" style="border-color: #38bdf8; color: #38bdf8;">
+                <i class="fa-solid fa-chart-pie"></i> 미실행 기간과 성장 비교
+              </button>
+            </div>
+          </div>
+
+          <!-- 성과 비교 결과 뷰어 (숨김 상태) -->
+          <div id="modalCompareResultBox" style="display: none; background: rgba(0,0,0,0.3); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px;">
+            <h4 style="margin: 0 0 8px 0; font-size: 0.9rem; color: #38bdf8;"><i class="fa-solid fa-scale-balanced"></i> 기간별 팔로워 증가량 비교 결과</h4>
+            <div id="modalCompareContent" style="font-size: 0.82rem; line-height: 1.6;"></div>
+            <div style="font-size: 0.74rem; color: var(--text-muted); margin-top: 8px;">
+              ※ 관찰 데이터 기반의 상관관계 분석 결과이며, 플랫폼 외부 요인에 따른 변동이 포함될 수 있습니다.
+            </div>
+          </div>
+
+          <!-- 새 캠페인 시작 폼 -->
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px;">
+            <strong style="font-size: 0.9rem; color: #fff; display: block; margin-bottom: 10px;">
+              <i class="fa-solid fa-plus-circle" style="color: #6366f1;"></i> 새 성장 캠페인 시작
+            </strong>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+              <div>
+                <label style="font-size: 0.76rem; color: var(--text-secondary);">캠페인 이름</label>
+                <input id="modalCampName" class="form-control" placeholder="예: 2026-10 AI 스레더 성장 루프">
+              </div>
+              <div>
+                <label style="font-size: 0.76rem; color: var(--text-secondary);">주요 타겟 주제</label>
+                <select id="modalCampTopic" class="form-control">
+                  <option value="AI">AI / 기술 / 개발자</option>
+                  <option value="스타트업">스타트업 / 비즈니스</option>
+                  <option value="스하리">스하리 / 맞소통</option>
+                  <option value="일상">일상 / 직장인</option>
+                </select>
+              </div>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <label style="font-size: 0.76rem; color: var(--text-secondary);">검색 키워드 (쉼표 구분)</label>
+              <input id="modalCampKeywords" class="form-control" placeholder="예: 바이브코딩, LLM, 자동화, 스타트업">
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px;">
+              <div style="font-size: 0.76rem; color: var(--text-secondary);">
+                시작 팔로워 수: <strong id="modalCampBaselineFollowers" style="color: #fff;">최신 스냅샷에서 자동 조회</strong>
+              </div>
+              <button id="btnModalStartCampaign" class="btn btn-sm btn-primary" style="background: #4f46e5; border-color: #4f46e5;">
+                <i class="fa-solid fa-rocket"></i> 새 캠페인 개시
+              </button>
+            </div>
+          </div>
+
+          <!-- 캠페인 이력 목록 -->
+          <div>
+            <strong style="font-size: 0.88rem; color: #fff; display: block; margin-bottom: 8px;">
+              <i class="fa-solid fa-list-check"></i> 캠페인 이력 & 성과 목록
+            </strong>
+            <div id="modalCampaignsHistoryList" style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem;">
+              <div class="empty-state-box" style="padding: 14px;">기록된 캠페인이 없습니다.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="padding-top: 12px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end;">
+          <button type="button" id="btnCancelCampaignModal" class="btn btn-sm btn-outline">닫기</button>
         </div>
       </div>
     </div>
