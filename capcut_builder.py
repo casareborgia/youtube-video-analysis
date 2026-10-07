@@ -351,7 +351,8 @@ def create_capcut_project(
             "id": bgm_id,
             "path": os.path.abspath(bgm_path),
             "duration": bgm_total_dur,
-            "name": "BGM.mp3"
+            # 루나 음원은 베가 마스터링 후 .wav(24bit) 가 되므로 실제 확장자를 따른다
+            "name": "BGM" + (os.path.splitext(bgm_path)[1] or ".mp3")
         })
         bgm_segments.append({
             "id": str(uuid.uuid4()).upper(),

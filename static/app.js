@@ -4088,7 +4088,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/luna/history');
       if (!res.ok) return;
       const data = await res.json();
-      const tracks = data.tracks || [];
+      // /api/luna/history 는 트랙 배열을 그대로 반환한다 ({tracks: [...]} 래핑이 아님)
+      const tracks = Array.isArray(data) ? data : (data.tracks || []);
 
       producerBgmSelect.innerHTML = `
         <option value="">배경음악 없음 (대사 나레이션만)</option>
