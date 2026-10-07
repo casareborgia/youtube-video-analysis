@@ -36,6 +36,7 @@ import producer
 import uploader
 import luna_engine
 import vega_engine
+import vega_feedback
 import threads_client
 import capcut_builder
 import engagement_automation
@@ -1154,6 +1155,11 @@ class LunaMasterRequest(BaseModel):
     prompt: Optional[str] = ""                   # 예: "저음을 더 단단하게, 스트리밍용 -14 LUFS"
     use_llm: Optional[bool] = True               # False 면 장르 프리셋만 적용
 
+class VegaPreferenceFeedbackRequest(BaseModel):
+    track_id: str
+    event: Optional[str] = "preference"
+    choice: str                                  # "raw" | "master"
+
 class LunaRenderVideoRequest(BaseModel):
     track_id: str
     quality: Optional[str] = "1080p"
@@ -1246,6 +1252,29 @@ async def vega_status():
     report["presets"] = vega_engine.describe_presets()
     return report
 
+@app.post("/api/vega/feedback")
+async def post_vega_feedback(req: VegaPreferenceFeedbackRequest):
+    """[7.4] 베가 A/B 청취 선호도 피드백 수집 (choice: 'raw' | 'master')"""
+    if req.choice not in ("raw", "master"):
+        raise HTTPException(status_code=400, detail="choice 는 'raw' 또는 'master' 이어야 합니다.")
+    track = luna_engine.load_track(req.track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
+    event = vega_feedback.build_feedback_event("preference", track, choice=req.choice)
+    return vega_feedback.record_feedback(event)
+
+@app.get("/api/vega/feedback/suggest")
+async def get_vega_feedback_suggest(genre: str):
+    """[7.4] 해당 장르의 최근 피드백 중앙값 기반 프리셋 보정 제안 (자동 적용 없음)"""
+    if not genre:
+        raise HTTPException(status_code=400, detail="genre 파라미터가 필요합니다.")
+    return vega_feedback.suggest_preset_adjustment(genre)
+
+@app.get("/api/vega/feedback")
+async def get_vega_feedback(genre: Optional[str] = None, limit: Optional[int] = 200):
+    """[7.4] 저장된 베가 피드백 이벤트 목록 조회 (최근순)"""
+    return vega_feedback.load_feedback(genre=genre, limit=limit or 200)
+
 @app.post("/api/luna/master")
 async def master_luna_track(req: LunaMasterRequest):
     """
@@ -1260,12 +1289,22 @@ async def master_luna_track(req: LunaMasterRequest):
     try:
         updated = vega_engine.master_track(
             track, prompt=req.prompt or "", use_llm=(req.use_llm if req.use_llm is not None else True),
-            luna_dir=luna_engine.LUNA_DIR, genre_spec=luna_engine.GENRE_SPECS.get(track.get("genre")),
+            luna_dir=luna_engine.LUNA_DIR,
+            genre_spec=luna_engine.GENRE_SPECS.get(vega_engine.resolve_genre_key(track.get("genre"))),
         )
         # 마스터 결과가 바뀌었으므로 이전 렌더 영상은 더 이상 최신이 아니다 → 재렌더 유도
         if updated.get("mastering", {}).get("status") == "done" and updated.get("video_url"):
             updated["video_stale"] = True
         luna_engine.save_track(updated)
+        # 7.4 피드백 자동 기록 (재마스터) — 마스터링이 실제로 완료된 경우만
+        try:
+            if updated.get("mastering", {}).get("status") == "done":
+                fb_ev = vega_feedback.build_feedback_event(
+                    "remaster", updated, prompt=req.prompt or "", use_llm=(req.use_llm if req.use_llm is not None else True)
+                )
+                vega_feedback.record_feedback(fb_ev)
+        except Exception as fb_err:
+            print(f"[Vega Feedback] 재마스터 피드백 기록 건너뜀: {fb_err}")
         return updated
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"베가 마스터링 실패: {e}")
@@ -1278,6 +1317,12 @@ async def render_luna_music_video(req: LunaRenderVideoRequest):
         if not track:
             raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
         rendered = luna_engine.render_luna_video(track, quality=req.quality or "1080p")
+        # 7.4 피드백 자동 기록 (렌더 = 마스터 채택 신호)
+        try:
+            fb_ev = vega_feedback.build_feedback_event("render", rendered)
+            vega_feedback.record_feedback(fb_ev)
+        except Exception as fb_err:
+            print(f"[Vega Feedback] 렌더 피드백 기록 건너뜀: {fb_err}")
         return rendered
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"루나 영상 렌더링 실패: {e}")

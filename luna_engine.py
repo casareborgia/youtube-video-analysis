@@ -577,7 +577,7 @@ def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None, mast
         step(92, "사운드 엔지니어 베가 마스터링 시작...")
         vega_engine.master_track(
             track_data, prompt=mastering_prompt or "", use_llm=True,
-            luna_dir=LUNA_DIR, genre_spec=GENRE_SPECS.get(track_data.get("genre")),
+            luna_dir=LUNA_DIR, genre_spec=GENRE_SPECS.get(vega_engine.resolve_genre_key(track_data.get("genre"))),
             progress_cb=progress_cb,
         )
 

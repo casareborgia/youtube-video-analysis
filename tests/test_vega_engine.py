@@ -49,6 +49,18 @@ class VegaSchemaAndPresetTests(unittest.TestCase):
         d = vega_engine.preset_for_genre("no-such-genre")
         self.assertEqual(d.target_lufs, vega_engine.GENRE_MASTER_PRESETS["default"]["target_lufs"])
 
+    def test_display_name_resolves_to_preset_key(self):
+        # 루나 트랙의 genre 는 표시명으로 저장된다 — 표시명으로도 장르 프리셋을 찾아야 한다 (default 로 떨어지면 안 됨)
+        import luna_engine
+        for key, spec in luna_engine.GENRE_SPECS.items():
+            self.assertEqual(vega_engine.resolve_genre_key(spec["name"]), key, spec["name"])
+            self.assertEqual(vega_engine.preset_for_genre(spec["name"]).model_dump(),
+                             vega_engine.preset_for_genre(key).model_dump(), spec["name"])
+        self.assertEqual(vega_engine.resolve_genre_key("Emotional Piano Solo"), "piano")
+        self.assertEqual(vega_engine.preset_for_genre("Emotional Piano Solo").target_lufs, -16.0)
+        self.assertEqual(vega_engine.resolve_genre_key(""), "default")
+        self.assertEqual(vega_engine.resolve_genre_key(None), "default")
+
     def test_sleep_preset_is_quieter_than_beat_genres(self):
         self.assertLess(vega_engine.preset_for_genre("sleep").target_lufs,
                         vega_engine.preset_for_genre("synthwave").target_lufs)
@@ -394,8 +406,15 @@ class VegaUiAssetsTests(unittest.TestCase):
     def test_panel_and_chart_markup_present(self):
         for el_id in ("vegaPanel", "vegaStatusBadge", "vegaMetrics", "vegaSpectrumSection", "vegaSpectrumChart",
                       "btnVegaAbRaw", "btnVegaAbMaster", "btnVegaRemaster", "vegaPromptInput", "vegaStaleNotice",
-                      "lunaMasterAudioCheck", "lunaMasteringPromptInput", "vegaPresetOnlyCheck"):
+                      "lunaMasterAudioCheck", "lunaMasteringPromptInput", "vegaPresetOnlyCheck",
+                      "btnVegaLike", "vegaSuggestSection", "vegaSuggestToggle", "vegaSuggestBadge", "vegaSuggestContent"):
             self.assertIn(f'id="{el_id}"', self.html, el_id)
+
+    def test_feedback_ui_and_js_bindings(self):
+        # 7.4 피드백 수집 및 학습 제안 UI 바인딩 검증
+        self.assertIn("/api/vega/feedback", self.js)
+        self.assertIn("/api/vega/feedback/suggest", self.js)
+        self.assertIn("fetchVegaFeedbackSuggestions", self.js)
 
     def test_preset_selector_ui_and_js_bindings(self):
         # 7.3 마스터링 프리셋 선택 및 토글 UI 바인딩 검증

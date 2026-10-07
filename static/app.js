@@ -2563,6 +2563,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const vegaSpectrumChart = document.getElementById('vegaSpectrumChart');
   let vegaAbMode = 'master'; // 'raw' | 'master'
 
+  // 7.4 피드백 & 학습 제안 요소
+  const btnVegaLike = document.getElementById('btnVegaLike');
+  const vegaLikeText = document.getElementById('vegaLikeText');
+  const vegaSuggestSection = document.getElementById('vegaSuggestSection');
+  const vegaSuggestToggle = document.getElementById('vegaSuggestToggle');
+  const vegaSuggestBadge = document.getElementById('vegaSuggestBadge');
+  const vegaSuggestContent = document.getElementById('vegaSuggestContent');
+  const vegaSuggestChevron = document.getElementById('vegaSuggestChevron');
+
   // 가사 & 보컬 뷰어 요소
   const lunaLyricsBox = document.getElementById('lunaLyricsBox');
   const lunaLyricsToggle = document.getElementById('lunaLyricsToggle');
@@ -3026,6 +3035,11 @@ document.addEventListener('DOMContentLoaded', () => {
         vegaPromptInput.placeholder = '장르 프리셋 적용 모드 (지시 입력 비활성화)';
       }
     }
+
+    // 7.4 피드백 제안 데이터 비동기 조회
+    if (track && track.genre) {
+      fetchVegaFeedbackSuggestions(track.genre);
+    }
   }
 
   function vegaAbGroupVisible() { return Boolean(btnVegaAbRaw && btnVegaAbMaster); }
@@ -3057,6 +3071,109 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (btnVegaAbRaw) btnVegaAbRaw.addEventListener('click', () => switchVegaAb('raw'));
   if (btnVegaAbMaster) btnVegaAbMaster.addEventListener('click', () => switchVegaAb('master'));
+
+  // 7.4 A/B 선호도 좋아요 버튼 클릭 이벤트
+  if (btnVegaLike) {
+    btnVegaLike.addEventListener('click', async () => {
+      if (!currentLunaTrack || !currentLunaTrack.track_id) {
+        showAlert('먼저 트랙을 선택해주세요.', 'error');
+        return;
+      }
+      btnVegaLike.disabled = true;
+      try {
+        const res = await fetch('/api/vega/feedback', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            track_id: currentLunaTrack.track_id,
+            event: 'preference',
+            choice: vegaAbMode || 'master'
+          })
+        });
+        if (!res.ok) throw new Error('피드백 전송 실패');
+        if (vegaLikeText) vegaLikeText.textContent = '기록됨';
+        setTimeout(() => {
+          if (vegaLikeText) vegaLikeText.textContent = '이 쪽이 좋아요';
+          btnVegaLike.disabled = false;
+        }, 2000);
+      } catch (err) {
+        showAlert('피드백 기록 실패: ' + err.message, 'error');
+        btnVegaLike.disabled = false;
+      }
+    });
+  }
+
+  // 7.4 제안 파라미터 라벨 (내부 키 → 패널 표시명)
+  const VEGA_SUGGEST_LABELS = {
+    'target_lufs': '타깃 라우드니스 (LUFS)',
+    'compressor.threshold_db': '컴프 스레숄드 (dB)',
+    'compressor.ratio': '컴프 비율',
+    'saturator.drive_db': '새츄레이션 드라이브 (dB)',
+    'stereo_image.width': '스테레오 폭',
+    'tonal_eq.low_shelf_gain_db': '저역 쉘프 (dB)',
+    'tonal_eq.high_shelf_gain_db': '고역 쉘프 (dB)',
+  };
+
+  // 7.4 베가 학습 제안 데이터 조회 함수
+  async function fetchVegaFeedbackSuggestions(genre) {
+    if (!vegaSuggestSection || !genre) return;
+    vegaSuggestSection.style.display = 'block';
+    if (vegaSuggestBadge) vegaSuggestBadge.textContent = '조회 중...';
+
+    try {
+      const res = await fetch(`/api/vega/feedback/suggest?genre=${encodeURIComponent(genre)}`);
+      if (!res.ok) throw new Error('조회 실패');
+      const data = await res.json();
+
+      if (data.status === 'insufficient') {
+        const samples = data.samples || 0;
+        if (vegaSuggestBadge) {
+          vegaSuggestBadge.className = 'badge badge-subtle';
+          vegaSuggestBadge.textContent = `${samples}/3건`;
+        }
+        if (vegaSuggestContent) {
+          vegaSuggestContent.innerHTML = `<span style="color: var(--text-muted);"><i class="fa-solid fa-circle-info"></i> <strong>${escapeHtml(genre)}</strong> 기록 <strong>${samples}/3건</strong> — 3건부터 제안됩니다. (재마스터·렌더 시 자동 누적)</span>`;
+        }
+      } else if (data.status === 'ok') {
+        const count = (data.suggestions || []).length;
+        if (vegaSuggestBadge) {
+          vegaSuggestBadge.className = 'badge badge-accent';
+          vegaSuggestBadge.textContent = `${count}개 제안 (${data.samples}건)`;
+        }
+        if (vegaSuggestContent) {
+          if (count === 0) {
+            vegaSuggestContent.innerHTML = `<span style="color: var(--text-muted);"><i class="fa-solid fa-circle-check" style="color:#22c55e;"></i> 현재 프리셋이 최근 ${data.samples}건의 작업 중앙값과 잘 부합합니다.</span>`;
+          } else {
+            const listItems = data.suggestions.map(s => {
+              const sign = s.delta > 0 ? `+${s.delta}` : `${s.delta}`;
+              const label = VEGA_SUGGEST_LABELS[s.param] || s.param;
+              return `<li><strong>${escapeHtml(label)}</strong>: ${s.preset} → <span style="color:#67e8f9; font-weight:700;">${s.suggested}</span> (${sign})</li>`;
+            }).join('');
+            vegaSuggestContent.innerHTML = `
+              <div style="margin-bottom: 4px; color: #a5f3fc; font-weight: 600;">최근 ${data.samples}건 피드백 중앙값 기반 보정안:</div>
+              <ul style="margin: 0; padding-left: 16px; list-style-type: disc;">${listItems}</ul>
+              <div style="margin-top: 5px; font-size: 0.68rem; color: var(--text-muted); font-style: italic;">※ 제안값이며 기존 프리셋에 자동 적용되지 않습니다.</div>
+            `;
+          }
+        }
+      }
+    } catch (err) {
+      if (vegaSuggestBadge) vegaSuggestBadge.textContent = '오류';
+      if (vegaSuggestContent) vegaSuggestContent.innerHTML = `<span style="color: #f87171;">제안 조회 실패: ${escapeHtml(err.message)}</span>`;
+    }
+  }
+
+  // 7.4 접이식 토글 이벤트
+  if (vegaSuggestToggle) {
+    vegaSuggestToggle.addEventListener('click', () => {
+      if (!vegaSuggestContent) return;
+      const isOpen = vegaSuggestContent.style.display !== 'none';
+      vegaSuggestContent.style.display = isOpen ? 'none' : 'block';
+      if (vegaSuggestChevron) {
+        vegaSuggestChevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
+      }
+    });
+  }
 
   if (btnVegaRemaster) {
     btnVegaRemaster.addEventListener('click', async () => {
