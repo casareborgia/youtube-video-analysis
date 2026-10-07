@@ -177,6 +177,7 @@ corrective_eq → compressor → tonal_eq → saturator → M/S stereo_image
 - 보관함 목록(`/api/luna/history`)도 `mastering`, `audio_raw_url`, `video_stale` 을 내려주므로, 보관함에서 곡을 골라도 패널이 보인다.
 - **A/B 버튼**: `A · 원본` / `B · 마스터` — 재생 위치를 유지한 채 `audio_raw_url` ↔ `audio_preview_url`(없으면 `audio_url`) 전환. 원본·마스터 모두 MP3 라 로딩 속도가 같다.
 - 플레이어 기본 소스도 `audio_preview_url || audio_url`. 4단계 영상 제작의 배경음악 선택과 렌더·업로드는 계속 WAV(`audio_url`/`audio_file`)를 쓴다.
+- **전후 비교 차트**(`#vegaSpectrumSection`, 7.1): `mastering.before/after` 의 4대역 RMS·LUFS·트루피크를 행마다 원본(회색)/마스터(청록) 가로 막대로 그린다. 공통 dB 축(+3 ~ 최소값 기준 12dB 단위), LUFS 행에 목표(`target_lufs`)·트루피크 행에 한도(`ceiling_dbtp`) 노란 세로선, 0 dBTP 빨간선, 0 초과 피크는 빨간 막대. 텍스트는 CSS px 라 패널 폭(약 300px)에서도 읽힌다. 외부 라이브러리 없음.
 - **재마스터**: 프롬프트 입력 후 `POST /api/luna/master` 호출, 결과로 뷰 갱신.
 - `mastering` 필드가 없는 과거 트랙은 패널을 숨긴다.
 
@@ -306,10 +307,12 @@ done
 
 **⑦ 데이터 보호** — `data/luna_music/` 는 `.gitignore` 대상이다. 커밋하지 않는다. 각 트랙의 `audio_raw.*` 는 재마스터의 원본이므로 삭제·덮어쓰기 금지.
 
-### 7.1 [P1] 전후 스펙트럼 비교 그래프 — `feat/vega-spectrum-compare`
+### 7.1 [P1] 전후 스펙트럼 비교 그래프 — `feat/vega-spectrum-compare` ✅ 완료
 - `mastering.before/after` 의 4대역 RMS(`rms_sub/low/mid/high_db`)와 LUFS·TP 를 베가 패널에 막대 그래프로 시각화한다.
 - 외부 차트 라이브러리 없이 CSS/SVG 로 구현한다(CSP: `script-src 'self' cdnjs` 만 허용).
 - 범위: `static/index.html`, `static/app.js`, `static/style.css`. 백엔드 변경 없음.
+- 구현 메모: 처음 구현은 가로 560px 짜리 SVG 한 장이었는데, 실제 패널 폭 299px 에서 0.44배로 축소되어 글자가 3.5~4.6px 로 렌더링됐다(실측). 리뷰에서 **텍스트는 CSS px, 막대만 퍼센트**인 가로 막대 행(grid) 방식으로 바꿨다. 교훈: 고정 viewBox SVG 에 텍스트를 넣으면 좁은 컨테이너에서 읽을 수 없으니, 항상 실제 패널 폭에서 렌더 크기를 재 본다.
+- 추가: LUFS 변화량 단위 LU, 목표 LUFS·트루피크 한도 세로선, 원본 피크 0 dBTP 초과도 빨간 표시, 축 하한을 데이터에 맞춰 자동 확장(수면 장르 -45 이하 대응).
 
 ### 7.2 [P1] 마스터 결과 MP3 미리듣기 파일 — `feat/vega-preview-mp3` ✅ 완료 (engine 1.2.0)
 - 24bit WAV(3분 ≈ 47 MB)는 A/B 전환이 느릴 수 있다. `master_track` 끝에서 ffmpeg(libmp3lame)로 `audio_mastered_preview.mp3`(192k)를 추가 생성하고 `audio_preview_url` 로 노출한다.

@@ -1360,6 +1360,19 @@
                       </div>
                     </div>
                     <div id="vegaMetrics" style="font-size: 0.76rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.6;"></div>
+                    <!-- 7.1 전후 스펙트럼 및 음량 비교 그래프 -->
+                    <div id="vegaSpectrumSection" class="vega-spectrum-section" style="display: none;">
+                      <div class="vega-spectrum-header">
+                        <div class="vega-spectrum-title">
+                          <i class="fa-solid fa-chart-column"></i> 전후 스펙트럼 및 음량 비교
+                        </div>
+                        <div class="vega-spectrum-legend">
+                          <span class="legend-item"><span class="legend-dot legend-before"></span> 원본 (Before)</span>
+                          <span class="legend-item"><span class="legend-dot legend-after"></span> 마스터 (After)</span>
+                        </div>
+                      </div>
+                      <div id="vegaSpectrumChart" class="vega-spectrum-chart"></div>
+                    </div>
                     <div id="vegaReasoning" style="font-size: 0.74rem; color: var(--text-muted); margin-top: 4px; line-height: 1.45; font-style: italic;"></div>
                     <div id="vegaStaleNotice" style="display: none; margin-top: 6px; font-size: 0.74rem; color: #fbbf24;"><i class="fa-solid fa-triangle-exclamation"></i> 마스터가 바뀌었습니다. 업로드 전에 [비디오 렌더링]을 다시 실행하세요.</div>
                     <div style="display: flex; gap: 6px; margin-top: 8px;">

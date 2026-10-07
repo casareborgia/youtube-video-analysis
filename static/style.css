@@ -1832,3 +1832,144 @@ body {
 }
 
 
+
+/* ==========================================
+   사운드 엔지니어 베가: 전후 스펙트럼 비교 그래프 (7.1)
+   ========================================== */
+.vega-spectrum-section {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(34, 211, 238, 0.22);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  backdrop-filter: blur(4px);
+}
+
+.vega-spectrum-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.vega-spectrum-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #67e8f9;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: -0.01em;
+}
+
+.vega-spectrum-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.vega-spectrum-legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.vega-spectrum-legend .legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.vega-spectrum-legend .legend-before {
+  background: linear-gradient(180deg, #94a3b8, #64748b);
+  border: 1px solid rgba(148, 163, 184, 0.5);
+}
+
+.vega-spectrum-legend .legend-after {
+  background: linear-gradient(180deg, #22d3ee, #0891b2);
+  box-shadow: 0 0 6px rgba(34, 211, 238, 0.4);
+  border: 1px solid #67e8f9;
+}
+
+.vega-spectrum-chart {
+  width: 100%;
+  font-size: 0.72rem;            /* 텍스트는 CSS px — 패널 폭과 무관하게 읽을 수 있다 */
+}
+
+.vega-spec-group-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #94a3b8;
+  margin: 6px 0 3px;
+  letter-spacing: -0.01em;
+}
+.vega-spec-group-title .hint { font-weight: 400; color: var(--text-muted); }
+
+.vega-spec-row,
+.vega-spec-axis-row {
+  display: grid;
+  grid-template-columns: 58px minmax(70px, 1fr) 96px;
+  gap: 8px;
+  align-items: center;
+}
+.vega-spec-row {
+  padding: 3px 4px;
+  border-radius: 4px;
+  cursor: help;
+}
+.vega-spec-row:hover { background: rgba(34, 211, 238, 0.08); }
+
+.vega-spec-label { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.vega-spec-label .n { font-weight: 700; color: #f8fafc; font-size: 0.72rem; }
+.vega-spec-label .f { color: #94a3b8; font-size: 0.62rem; white-space: nowrap; }
+
+.vega-spec-track {
+  position: relative;
+  height: 16px;
+  background: rgba(15, 23, 42, 0.6);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.vega-spec-bar {
+  position: absolute;
+  left: 0;
+  height: 6px;
+  border-radius: 0 3px 3px 0;
+  transition: width 0.3s ease;
+}
+.vega-spec-bar.before { top: 2px;    background: linear-gradient(90deg, #64748b, #94a3b8); }
+.vega-spec-bar.after  { bottom: 2px; background: linear-gradient(90deg, #0891b2, #22d3ee); box-shadow: 0 0 6px rgba(34, 211, 238, 0.35); }
+.vega-spec-bar.clip   { background: linear-gradient(90deg, #dc2626, #f87171); box-shadow: 0 0 6px rgba(248, 113, 113, 0.4); }
+
+.vega-spec-marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+}
+.vega-spec-marker.zero   { background: #ef4444; }
+.vega-spec-marker.target { background: #fbbf24; box-shadow: 0 0 4px rgba(251, 191, 36, 0.6); }
+
+.vega-spec-vals { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.2; white-space: nowrap; }
+.vega-spec-vals .pair { font-size: 0.7rem; color: #cbd5e1; font-variant-numeric: tabular-nums; }
+.vega-spec-vals .a { color: #67e8f9; font-weight: 700; }
+.vega-spec-vals .a.clip { color: #fca5a5; }
+.vega-spec-vals .d { font-size: 0.64rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.vega-spec-axis { position: relative; height: 14px; border-top: 1px solid rgba(255, 255, 255, 0.15); margin-top: 2px; }
+.vega-spec-tick {
+  position: absolute;
+  top: 1px;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vega-spec-tick.zero { color: #f87171; font-weight: 700; }
