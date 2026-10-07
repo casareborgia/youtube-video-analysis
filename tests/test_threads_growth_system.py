@@ -392,6 +392,54 @@ class TestThreadsGrowthSystem(unittest.TestCase):
         )
         self.assertEqual(res["media_id"], "media_reply_888")
 
+    def test_touchpoint_status_normalization(self):
+        n = threads_growth_analytics.normalize_touchpoint_status
+        self.assertEqual(n("success"), "executed")
+        self.assertEqual(n("already_done"), "already_done")
+        self.assertEqual(n("skipped_duplicate"), "already_done")
+        self.assertEqual(n("skipped_missing_reply_text"), "skipped")
+        self.assertEqual(n("blocked_quota"), "skipped")
+        self.assertEqual(n("error"), "failed")
+        self.assertEqual(n("permission_denied"), "failed")
+        self.assertEqual(n("executed"), "executed")
+        self.assertEqual(n(None), "unknown")
+
+    def test_campaign_summary_counts_raw_automation_statuses(self):
+        """자동화가 돌려주는 원시 상태("success" 등)로 저장된 터치포인트도 요약에서 실행/실패로 집계되어야 한다."""
+        self.store.insert_insight_snapshot(followers_count=100, captured_at=1_000)
+        camp = self.store.create_growth_campaign(name="raw", topic="AI", baseline_followers_count=100, started_at=1_000)
+        cid = camp["campaign_id"]
+        for st in ("success", "success", "error", "already_done", "blocked_quota"):
+            self.store.record_growth_touchpoint(campaign_id=cid, target_username=f"u_{st}", target_post_id=f"p_{st}",
+                                                action_type="reply", action_status=st, created_at=1_100)
+        svc = threads_growth_analytics.ThreadsGrowthAnalyticsService(store=self.store)
+        am = svc.get_campaign_summary(cid, now_ts=90_000)["actions_metrics"]
+        self.assertEqual(am["executed_actions"], 2)
+        self.assertEqual(am["failed_actions"], 1)
+        self.assertEqual(am["skipped_actions"], 2)
+        self.assertEqual(am["failure_rate_percent"], 33.3)
+
+    def test_draft_reply_uses_llm_and_filters_banned_phrases(self):
+        fake = {"drafts": [
+            "말씀하신 자동화 파이프라인 재현성 문제, 저도 로그 스냅샷으로 겨우 잡았던 기억이 나네요. 어떤 단계에서 가장 자주 깨지셨나요?",
+            "맞팔해요! 좋은 글 감사합니다",
+            "짧",
+        ]}
+        with patch.object(threads_growth_analytics.llm_client, "call_llm_json", return_value=(fake, "raw")):
+            drafts, source, note = threads_growth_analytics.draft_reply_candidates("에이전트 자동화 재현성 고민", "AI", "someone")
+        self.assertEqual(source, "llm")
+        self.assertEqual(len(drafts), 1)              # 맞팔 문구와 10자 미만은 걸러진다
+        self.assertIn("재현성", drafts[0])
+
+    def test_draft_reply_falls_back_to_template_when_llm_fails(self):
+        with patch.object(threads_growth_analytics.llm_client, "call_llm_json", side_effect=RuntimeError("offline")):
+            drafts, source, note = threads_growth_analytics.draft_reply_candidates("오늘 코딩하다가 배운 점", "개발자")
+        self.assertEqual(source, "template")
+        self.assertTrue(len(drafts) >= 2)
+        self.assertIn("템플릿", note)
+        with self.assertRaises(ValueError):
+            threads_growth_analytics.draft_reply_candidates("   ", "AI")
+
     def test_zero_baseline_prevention_on_empty_snapshot(self):
         """인사이트 수집 실패 시 기준 팔로워를 0으로 왜곡 저장하지 않고 명시적 에러가 발생해야 함."""
         analytics = threads_growth_analytics.ThreadsGrowthAnalyticsService(store=self.store)

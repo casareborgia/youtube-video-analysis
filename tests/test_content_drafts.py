@@ -270,8 +270,13 @@ class ContentDraftTests(unittest.TestCase):
         self.assertEqual(job_before["status"], "draft")
         self.assertEqual(job_before["approved_at"], 0)
 
-        # 2. Body 없이 쿼리 파라미터만으로 /api/social/publish/{job_id}?dry_run=true 호출 (과거 422 및 409 발생 지점)
-        resp_pub = self.client.post(f"/api/social/publish/{job_id}?dry_run=true")
+        # 2-a. auto_approve 없이 초안을 발행하려 하면 승인 가드가 막아야 한다 (409)
+        resp_blocked = self.client.post(f"/api/social/publish/{job_id}?dry_run=true")
+        self.assertEqual(resp_blocked.status_code, 409)
+        self.assertEqual(self.store.get_job(job_id)["status"], "draft")
+
+        # 2-b. 화면에서 직접 누른 경우처럼 auto_approve=true 를 명시하면 (Body 없이 쿼리만으로도) 승인 → 실행
+        resp_pub = self.client.post(f"/api/social/publish/{job_id}?dry_run=true&auto_approve=true")
         self.assertEqual(resp_pub.status_code, 200)
         res_data = resp_pub.json()
         self.assertEqual(res_data["status"], "succeeded")

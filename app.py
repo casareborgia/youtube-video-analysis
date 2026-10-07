@@ -1780,7 +1780,9 @@ async def convert_draft_to_publish_api(job_id: str, approve: bool = True):
 class PublishJobRequest(BaseModel):
     dry_run: Optional[bool] = None
     worker_id: Optional[str] = "manual_api_worker"
-    auto_approve: Optional[bool] = True
+    # 초안(draft)을 승인 단계 없이 바로 발행하려면 호출자가 명시적으로 True 를 보내야 한다.
+    # 기본 True 로 두면 API 호출 한 번으로 승인 가드를 우회하게 되므로 기본값은 False.
+    auto_approve: Optional[bool] = None
 
 
 class ScheduleJobRequest(BaseModel):
@@ -1792,9 +1794,11 @@ async def execute_publish_job_api(
     job_id: str,
     req: Optional[PublishJobRequest] = None,
     dry_run: Optional[bool] = None,
-    auto_approve: bool = True,
+    auto_approve: bool = False,
 ):
-    """승인된 게시물/타래 발행 실행 (드라이런 또는 라이브). draft 상태일 경우 auto_approve 지원."""
+    """승인된 게시물/타래 발행 실행 (드라이런 또는 라이브).
+    draft 상태 작업은 기본적으로 409 를 돌려준다. 화면에서 사용자가 직접 누른 경우에만 auto_approve=true 를 보내
+    승인 → 실행을 한 번에 처리한다 (서버 기본값은 False — 승인 가드 유지)."""
     try:
         st = social_store.SocialStore()
         job = st.get_job(job_id)
@@ -1807,8 +1811,13 @@ async def execute_publish_job_api(
         effective_worker_id = (req.worker_id if req and req.worker_id else "manual_api_worker")
         req_auto_approve = req.auto_approve if (req and req.auto_approve is not None) else auto_approve
 
-        # draft 상태이고 auto_approve 요청 시 승인 상태로 원자적 전이
-        if job.get("status") == "draft" and req_auto_approve:
+        # draft 상태이고 호출자가 auto_approve 를 명시한 경우에만 승인 상태로 전이
+        if job.get("status") == "draft":
+            if not req_auto_approve:
+                raise HTTPException(
+                    status_code=409,
+                    detail="초안(draft) 상태입니다. 먼저 승인하거나, 직접 확인한 경우 auto_approve=true 를 함께 보내세요.",
+                )
             st.transition_job_status(job_id, "approved")
 
         service = publish_service.PublishService(store=st)
@@ -2353,9 +2362,17 @@ async def auto_run_engagement_api(req: AutoEngagementRunRequest):
                     if active_camps:
                         camp_id = active_camps[0]["campaign_id"]
 
+                # 발굴 단계의 후보 점수는 실행 결과에 실리지 않으므로 요청 targets 에서 post_id 로 찾아 붙인다
+                score_by_post = {
+                    str(t.get("post_id") or "").strip(): int(t.get("candidate_score") or 0)
+                    for t in (req.targets or []) if t.get("post_id")
+                }
+                from services.threads_growth_analytics import normalize_touchpoint_status
+
                 for item in res.get("results", []):
                     action_type = item.get("action") or "reply"
-                    action_status = item.get("status") or "unknown"
+                    # 실행 결과 상태("success"/"already_done"/...)를 집계용 표준 상태("executed"/...)로 통일
+                    action_status = normalize_touchpoint_status(item.get("status"))
                     t_post = item.get("post_id") or ""
                     t_uname = item.get("target_label") or item.get("account_id") or ""
                     t_url = item.get("post_url") or f"https://www.threads.net/@{t_uname}/post/{t_post}"
@@ -2366,7 +2383,7 @@ async def auto_run_engagement_api(req: AutoEngagementRunRequest):
                         target_post_id=t_post,
                         target_post_url=t_url,
                         search_query=req.topic or "",
-                        candidate_score=int(item.get("candidate_score") or 0),
+                        candidate_score=int(item.get("candidate_score") or score_by_post.get(str(t_post), 0)),
                         action_type=action_type,
                         action_status=action_status,
                     )
@@ -2591,37 +2608,23 @@ async def get_latest_growth_insights_api():
 
 @app.post("/api/growth/draft-reply")
 async def draft_growth_reply_api(req: DraftReplyRequest):
-    """대상 게시물 본문과 맥락에 맞는 진정성 있는 답글 초안 생성 (단순 맞팔/도배 배제)."""
-    text = req.post_text.strip()
-    topic = req.topic or "일반"
-
-    if "ai" in text.lower() or "인공지능" in text or topic == "AI":
-        drafts = [
-            "공감합니다! 실무 자동화 파이프라인에서 특히 체감되는 부분이네요. 좋은 인사이트 감사합니다 💡",
-            "정말 흥미로운 관점이네요! 관련해서 어떤 툴이나 구조를 주로 활용하시는지도 궁금합니다 :)",
-            "핵심을 정확히 짚어주셨네요. 앞으로 올려주실 글들도 기대하며 자주 소통하겠습니다! ✨",
-        ]
-    elif "개발" in text or "코딩" in text or topic == "개발자":
-        drafts = [
-            "개발하면서 누구나 한 번쯤 겪는 고민인데 큰 공감이 되네요! 유익한 내용 감사합니다 🚀",
-            "실무 경험이 묻어나는 인사이트네요. 파이썬 자동화나 구조 설계하실 때 많은 참고가 될 것 같습니다!",
-            "좋은 내용 잘 읽고 갑니다. 개발자 스레더 분들 서로 힘이 되는 소통 이어가면 좋겠습니다 :)",
-        ]
-    elif "창업" in text or "스타트업" in text or topic == "스타트업":
-        drafts = [
-            "스타트업 빌딩 과정의 생생한 기록이네요. 문제 해결 과정에 깊이 공감하고 응원합니다! 🙌",
-            "실행력이 정말 대단하십니다. 시장 검증 단계에서 배우신 점도 인상 깊게 읽었습니다 📈",
-        ]
-    else:
-        drafts = [
-            "글에 담긴 생각에 깊이 공감합니다! 오늘 하루도 의미 있게 마무리하시길 응원할게요 ✨",
-            "정성스러운 글 잘 읽고 갑니다. 앞으로도 소통하며 자주 교류하고 싶네요 😊",
-            "따뜻한 인사이트 나눠주셔서 감사합니다. 즐겁고 알찬 스레드 소통 함께해요 :)",
-        ]
-
-    import random
-    selected = random.choice(drafts)
-    return {"status": "success", "draft_reply": selected, "alternatives": drafts}
+    """대상 게시물 본문에 맞춘 답글 초안 생성.
+    LLM(Gemini/로컬)이 상대 글의 구체적 내용을 언급하는 초안 3개를 쓰고, 실패 시에만 범용 템플릿으로 대체한다
+    (source: "llm" | "template"). 같은 문장을 여러 계정에 반복해서 다는 것을 피하기 위함."""
+    from services.threads_growth_analytics import draft_reply_candidates
+    try:
+        drafts, source, note = draft_reply_candidates(
+            post_text=req.post_text, topic=req.topic or "일반", author=req.author or ""
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "status": "success",
+        "draft_reply": drafts[0],
+        "alternatives": drafts,
+        "source": source,
+        "note": note,
+    }
 
 
 @app.get("/api/social/history")

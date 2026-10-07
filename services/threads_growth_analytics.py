@@ -14,10 +14,136 @@ import logging
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+import llm_client
 import social_store
 import threads_client
 
 logger = logging.getLogger("ThreadsGrowthAnalyticsService")
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# 터치포인트 상태 어휘 통일
+# engagement_automation 이 돌려주는 실행 결과 상태("success", "already_done", "blocked_quota", ...)와
+# 캠페인 요약이 집계하는 상태("executed", "failed", "skipped", ...)가 달라 수치가 0 으로 나오던 문제를 막는다.
+# 기록 시점(app.py)과 집계 시점(get_campaign_summary) 양쪽에서 같은 함수로 정규화한다.
+# ──────────────────────────────────────────────────────────────────────────
+TOUCHPOINT_STATUSES = ("pending_approval", "approved", "executed", "failed", "skipped", "already_done", "dry_run", "rejected")
+
+_TOUCHPOINT_STATUS_MAP = {
+    "success": "executed",
+    "succeeded": "executed",
+    "done": "executed",
+    "executed": "executed",
+    "already_done": "already_done",
+    "duplicate": "already_done",
+    "skipped_duplicate": "already_done",
+    "dry_run": "dry_run",
+    "blocked_quota": "skipped",
+    "skipped": "skipped",
+    "pending_approval": "pending_approval",
+    "approved": "approved",
+    "rejected": "rejected",
+    "failed": "failed",
+    "error": "failed",
+}
+
+
+def normalize_touchpoint_status(raw: Any) -> str:
+    """실행 결과 상태를 캠페인 집계용 표준 상태로 바꾼다. 모르는 값은 failed/skipped 힌트로 추정하고, 그래도 모르면 'unknown'."""
+    key = str(raw or "").strip().lower()
+    if not key:
+        return "unknown"
+    if key in _TOUCHPOINT_STATUS_MAP:
+        return _TOUCHPOINT_STATUS_MAP[key]
+    if key.startswith("skipped"):
+        return "skipped"
+    if "fail" in key or "error" in key or "denied" in key:
+        return "failed"
+    return "unknown"
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# 답글 초안 생성 — 상대 글 내용에 맞춰 LLM(Gemini/로컬)이 작성하고, 실패 시에만 범용 템플릿으로 대체
+# 고정 문장을 여러 계정에 반복해서 달면 스팸으로 보이므로 템플릿은 폴백 전용이다.
+# ──────────────────────────────────────────────────────────────────────────
+_FALLBACK_REPLY_TEMPLATES = {
+    "AI": [
+        "공감합니다! 실무 자동화 파이프라인에서 특히 체감되는 부분이네요. 좋은 인사이트 감사합니다 💡",
+        "정말 흥미로운 관점이네요! 관련해서 어떤 툴이나 구조를 주로 활용하시는지도 궁금합니다 :)",
+    ],
+    "개발자": [
+        "개발하면서 누구나 한 번쯤 겪는 고민인데 큰 공감이 되네요! 유익한 내용 감사합니다 🚀",
+        "실무 경험이 묻어나는 인사이트네요. 구조 설계하실 때 어떤 점을 가장 중요하게 보시는지 궁금합니다!",
+    ],
+    "스타트업": [
+        "스타트업 빌딩 과정의 생생한 기록이네요. 문제 해결 과정에 깊이 공감하고 응원합니다! 🙌",
+        "실행력이 정말 대단하십니다. 시장 검증 단계에서 배우신 점도 인상 깊게 읽었습니다 📈",
+    ],
+    "일반": [
+        "글에 담긴 생각에 깊이 공감합니다! 오늘 하루도 의미 있게 마무리하시길 응원할게요 ✨",
+        "정성스러운 글 잘 읽고 갑니다. 앞으로도 소통하며 자주 교류하고 싶네요 😊",
+    ],
+}
+
+_REPLY_SYSTEM_PROMPT = (
+    "당신은 Threads 에서 진심 어린 소통을 하는 한국어 사용자입니다. "
+    "상대방 게시물을 읽고 그 글의 구체적인 내용에 반응하는 답글 초안 3개를 JSON 으로 작성합니다.\n"
+    "규칙:\n"
+    "- 각 답글은 60~180자, 한국어, 존댓말.\n"
+    "- 반드시 상대 글의 구체적인 표현이나 상황을 한 번 이상 언급한다 (일반론 금지).\n"
+    "- 3개 중 최소 1개는 상대가 답하고 싶어질 질문을 포함한다.\n"
+    "- '맞팔', '선팔', '팔로우 부탁', 광고, 링크, 해시태그 도배, 과장된 칭찬은 금지.\n"
+    "- 이모지는 답글당 최대 1개.\n"
+    "- 출력은 {\"drafts\": [\"...\", \"...\", \"...\"]} 형식의 JSON 객체 하나만."
+)
+
+
+def _fallback_reply_drafts(post_text: str, topic: str) -> List[str]:
+    t = (post_text or "").lower()
+    if "ai" in t or "인공지능" in post_text or topic == "AI":
+        return list(_FALLBACK_REPLY_TEMPLATES["AI"])
+    if "개발" in post_text or "코딩" in post_text or topic == "개발자":
+        return list(_FALLBACK_REPLY_TEMPLATES["개발자"])
+    if "창업" in post_text or "스타트업" in post_text or topic == "스타트업":
+        return list(_FALLBACK_REPLY_TEMPLATES["스타트업"])
+    return list(_FALLBACK_REPLY_TEMPLATES["일반"])
+
+
+def draft_reply_candidates(post_text: str, topic: str = "일반", author: str = "") -> Tuple[List[str], str, str]:
+    """
+    반환: (drafts, source, note)
+      source = "llm" (상대 글 맞춤 생성) | "template" (LLM 실패 폴백)
+    """
+    text = (post_text or "").strip()
+    if not text:
+        raise ValueError("답글을 작성할 대상 게시물 본문(post_text)이 비어 있습니다.")
+    if len(text) > 2000:
+        text = text[:2000]
+
+    user_msg = (
+        f"주제: {topic or '일반'}\n"
+        f"작성자: @{author.strip()}\n" if author else f"주제: {topic or '일반'}\n"
+    ) + f"상대 게시물:\n\"\"\"\n{text}\n\"\"\"\n\n위 규칙대로 답글 초안 3개를 JSON 으로만 출력하세요."
+    messages = [{"role": "system", "content": _REPLY_SYSTEM_PROMPT}, {"role": "user", "content": user_msg}]
+
+    try:
+        parsed, _raw = llm_client.call_llm_json(messages, max_tokens=800, temperature=0.8)
+        drafts = parsed.get("drafts") if isinstance(parsed, dict) else None
+        if not isinstance(drafts, list):
+            raise ValueError("LLM 응답에 drafts 배열이 없음")
+        clean: List[str] = []
+        banned = ("맞팔", "선팔", "팔로우 부탁", "http://", "https://")
+        for d in drafts:
+            d_str = str(d or "").strip()
+            if 10 <= len(d_str) <= 300 and not any(b in d_str for b in banned):
+                clean.append(d_str)
+        if not clean:
+            raise ValueError("LLM 초안이 모두 규칙(길이·금지어)에 걸림")
+        return clean[:3], "llm", ""
+    except Exception as exc:
+        note = f"LLM 초안 생성 실패로 범용 템플릿 사용: {str(exc)[:120]}"
+        logger.warning(note)
+        return _fallback_reply_drafts(text, topic or "일반"), "template", note
 
 
 class ThreadsGrowthAnalyticsService:
@@ -232,10 +358,13 @@ class ThreadsGrowthAnalyticsService:
         # 터치포인트 집계
         touchpoints = self.store.list_growth_touchpoints(campaign_id=campaign_id, limit=500)
         total_touchpoints = len(touchpoints)
-        approved_count = sum(1 for t in touchpoints if t.get("action_status") in ("approved", "executed"))
-        executed_count = sum(1 for t in touchpoints if t.get("action_status") == "executed")
-        failed_count = sum(1 for t in touchpoints if t.get("action_status") == "failed")
-        pending_count = sum(1 for t in touchpoints if t.get("action_status") == "pending_approval")
+        # 과거에 원시 상태("success" 등)로 저장된 행도 집계되도록 읽을 때도 정규화한다
+        statuses = [normalize_touchpoint_status(t.get("action_status")) for t in touchpoints]
+        approved_count = sum(1 for st in statuses if st in ("approved", "executed"))
+        executed_count = sum(1 for st in statuses if st == "executed")
+        failed_count = sum(1 for st in statuses if st == "failed")
+        pending_count = sum(1 for st in statuses if st == "pending_approval")
+        skipped_count = sum(1 for st in statuses if st in ("skipped", "already_done"))
 
         execution_attempts = executed_count + failed_count
         failure_rate = round((failed_count / execution_attempts * 100), 1) if execution_attempts > 0 else 0.0
@@ -270,6 +399,7 @@ class ThreadsGrowthAnalyticsService:
                 "approved_actions": approved_count,
                 "executed_actions": executed_count,
                 "failed_actions": failed_count,
+                "skipped_actions": skipped_count,
                 "failure_rate_percent": failure_rate,
             },
             "top_search_queries": [{"query": q, "count": c} for q, c in top_queries],
