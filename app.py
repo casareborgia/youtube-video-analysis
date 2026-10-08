@@ -1192,14 +1192,26 @@ async def get_luna_presets():
     }
 
 @app.get("/api/trends/music-for-luna")
-async def get_music_trends_for_luna(region: str = "KR"):
+async def get_music_trends_for_luna(region: str = "KR", refresh: bool = False, cached_only: bool = False):
     """
-    [레오 1단계] 유튜브 실시간 음악 차트를 분석하여
-    루나 맞춤형 '음악 기획 브리프 3선'을 반환합니다.
+    [레오 1단계] 유튜브 실시간 음악 차트를 분석하여 루나 맞춤형 '음악 기획 브리프 3선'을 반환합니다.
+    - cached_only=1: 저장된 마지막 결과만 돌려준다 (API 호출 없음). 없으면 status="empty", analysis=null.
+    - refresh=1: TTL 과 무관하게 새로 수집한다 (YouTube API + Gemini 호출 → 비용 발생).
+    - 둘 다 아니면 TTL(LEO_MUSIC_BRIEF_TTL_HOURS, 기본 6시간) 안의 캐시를 재사용하고, 지났을 때만 새로 수집한다.
     """
     try:
-        res = trend_scout.analyze_music_trends_for_luna(region_code=region)
-        return res
+        if cached_only:
+            cached = trend_scout.load_cached_music_briefs(region_code=region)
+            if cached:
+                return cached
+            return {
+                "status": "empty", "cached": False, "region_code": region, "analysis": None,
+                "message": "저장된 브리프가 없습니다. [실시간 음악 트렌드 스카우팅 실행] 버튼으로 수집하세요.",
+            }
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, lambda: trend_scout.analyze_music_trends_for_luna(region_code=region, force_refresh=refresh)
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"음악 트렌드 분석 실패: {e}")
 

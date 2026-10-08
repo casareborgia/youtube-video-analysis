@@ -689,11 +689,13 @@ document.addEventListener('DOMContentLoaded', () => {
       loadMarketingHistory();
     } else if (targetId === 'music') {
       loadLunaHistory();
-      const briefList = document.getElementById('leoBriefList');
-      const fetchBtn = document.getElementById('btnFetchMusicTrends');
-      if (briefList && !briefList.children.length && fetchBtn) {
-        fetchBtn.click();
-      }
+      // 레오 스카우팅은 YouTube Data API + Gemini 를 호출하므로(비용 발생) 탭 진입 시 자동 실행하지 않는다.
+      // 서버에 저장된 마지막 브리프만 조용히 불러오고, 새 수집은 사용자가 버튼을 눌렀을 때만 한다.
+      setTimeout(() => {
+        if (typeof loadLeoMusicBriefs === 'function') {
+          loadLeoMusicBriefs({ cachedOnly: true }).catch(e => console.warn('레오 브리프 저장본 조회 실패:', e));
+        }
+      }, 0);
     } else if (targetId === 'social') {
       if (typeof loadSocialDashboard === 'function') {
         loadSocialDashboard();
@@ -2605,31 +2607,44 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentLunaTrack = null;
   let currentLeoBrief = null;
 
-  // 1단계: 레오의 실시간 음악 트렌드 브리프 가져오기
-  if (btnFetchMusicTrends) {
-    btnFetchMusicTrends.addEventListener('click', async () => {
-      btnFetchMusicTrends.disabled = true;
-      const textSpan = btnFetchMusicTrends.querySelector('.btn-text');
-      const spinnerSpan = btnFetchMusicTrends.querySelector('.spinner');
-      if (textSpan) textSpan.style.display = 'none';
-      if (spinnerSpan) spinnerSpan.style.display = 'inline-block';
+  // 1단계: 레오의 실시간 음악 트렌드 브리프
+  // - loadLeoMusicBriefs({cachedOnly:true}) : 탭 진입 시 저장본만 표시 (API 호출 없음)
+  // - loadLeoMusicBriefs({refresh:true, autoApply:true}) : 버튼 클릭 시 새로 수집 (YouTube API + Gemini 비용 발생)
+  function formatLeoBriefAge(fetchedAtSec) {
+    const ts = Number(fetchedAtSec);
+    if (!ts) return '이전에';
+    const mins = Math.max(0, Math.round((Date.now() / 1000 - ts) / 60));
+    if (mins < 1) return '방금';
+    if (mins < 60) return `${mins}분 전`;
+    const hours = Math.round(mins / 60);
+    if (hours < 48) return `${hours}시간 전`;
+    return `${Math.round(hours / 24)}일 전`;
+  }
 
-      if (leoChartInsights) {
-        leoChartInsights.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="color:#38bdf8;"></i> 유튜브 실시간 음악 인기 급상승 차트를 수집하고 Gemini 3.6 Flash로 분석 중입니다...';
-      }
+  async function loadLeoMusicBriefs({ cachedOnly = false, refresh = false, autoApply = false } = {}) {
+    const params = new URLSearchParams({ region: 'KR' });
+    if (cachedOnly) params.set('cached_only', '1');
+    if (refresh) params.set('refresh', '1');
+    const res = await fetch(`/api/trends/music-for-luna?${params.toString()}`);
+    if (!res.ok) {
+      throw new Error('음악 트렌드 수집 실패');
+    }
+    const data = await res.json();
+    if (!data || !data.analysis) return false;   // 저장본 없음 → 기존 안내문 유지
+    renderLeoMusicBriefs(data, { autoApply });
+    return true;
+  }
 
-      try {
-        const res = await fetch('/api/trends/music-for-luna?region=KR');
-        if (!res.ok) {
-          throw new Error('음악 트렌드 수집 실패');
-        }
-        const data = await res.json();
+  function renderLeoMusicBriefs(data, { autoApply = false } = {}) {
         const analysis = data.analysis || {};
         const briefs = analysis.luna_briefs || [];
 
         if (leoMusicBriefBox) leoMusicBriefBox.style.display = 'block';
         if (leoChartInsights) {
-          leoChartInsights.innerHTML = `<strong><i class="fa-solid fa-lightbulb" style="color:#38bdf8;"></i> 레오의 실시간 차트 인사이트:</strong> ${analysis.chart_insights || ''} <span style="color:#a78bfa; margin-left:6px;">#${(analysis.top_keywords || []).join(' #')}</span>`;
+          const cacheNote = data.cached
+            ? `<span style="color:#fbbf24; margin-right:8px;" title="서버에 저장된 마지막 스카우팅 결과입니다. 새로 수집하려면 [실시간 음악 트렌드 스카우팅 실행]을 누르세요 (API 비용 발생)."><i class="fa-solid fa-box-archive"></i> ${formatLeoBriefAge(data.fetched_at)} 수집한 저장본</span>`
+            : '';
+          leoChartInsights.innerHTML = `${cacheNote}<strong><i class="fa-solid fa-lightbulb" style="color:#38bdf8;"></i> 레오의 실시간 차트 인사이트:</strong> ${analysis.chart_insights || ''} <span style="color:#a78bfa; margin-left:6px;">#${(analysis.top_keywords || []).join(' #')}</span>`;
         }
 
         if (leoBriefList) {
@@ -2688,8 +2703,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
           };
 
-          // 첫 번째 추천 브리프를 기본적으로 루나 작업대에 자동 세팅
-          if (briefs.length > 0) {
+          // 새로 수집했을 때만 첫 브리프를 루나 작업대에 자동 세팅한다.
+          // 저장본을 탭 진입 시 조용히 보여줄 때는 사용자의 폼 값을 건드리지 않는다.
+          if (autoApply && briefs.length > 0) {
             const firstCard = leoBriefList.querySelector('.leo-brief-card');
             applyBriefToForm(briefs[0], firstCard);
           }
@@ -2742,6 +2758,22 @@ document.addEventListener('DOMContentLoaded', () => {
             });
           });
         }
+  }
+
+  if (btnFetchMusicTrends) {
+    btnFetchMusicTrends.addEventListener('click', async () => {
+      btnFetchMusicTrends.disabled = true;
+      const textSpan = btnFetchMusicTrends.querySelector('.btn-text');
+      const spinnerSpan = btnFetchMusicTrends.querySelector('.spinner');
+      if (textSpan) textSpan.style.display = 'none';
+      if (spinnerSpan) spinnerSpan.style.display = 'inline-block';
+
+      if (leoChartInsights) {
+        leoChartInsights.innerHTML = '<i class="fa-solid fa-spinner fa-spin" style="color:#38bdf8;"></i> 유튜브 실시간 음악 인기 급상승 차트를 수집하고 Gemini 로 분석 중입니다...';
+      }
+
+      try {
+        await loadLeoMusicBriefs({ refresh: true, autoApply: true });
       } catch (err) {
         showAlert('레오 음악 트렌드 분석 오류: ' + err.message, 'error');
       } finally {
