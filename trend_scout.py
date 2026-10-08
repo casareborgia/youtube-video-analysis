@@ -24,6 +24,44 @@ TRENDS_DIR = DATA_DIR / "trends"
 TRENDS_DIR.mkdir(parents=True, exist_ok=True)
 TOPIC_HISTORY_FILE = TRENDS_DIR / "topic_history.json"
 
+# 레오 음악 브리프(루나용) 결과 캐시 — 스카우팅 1회 = YouTube Data API 1회 + Gemini 1회(≈3.5k 토큰) 비용이므로
+# 같은 지역의 최근 결과를 파일로 보관하고 TTL 안에서는 재사용한다. 0 이하로 두면 캐시를 쓰지 않는다.
+MUSIC_BRIEF_TTL_HOURS = float(os.getenv("LEO_MUSIC_BRIEF_TTL_HOURS", "6"))
+
+
+def _music_brief_cache_file(region_code: str) -> Path:
+    safe = re.sub(r"[^A-Za-z0-9_-]", "", (region_code or "KR").upper()) or "KR"
+    return TRENDS_DIR / f"luna_music_briefs_{safe}.json"
+
+
+def load_cached_music_briefs(region_code: str = "KR") -> Optional[Dict[str, Any]]:
+    """저장된 마지막 음악 브리프를 돌려준다. 없거나 깨졌으면 None. API 호출은 하지 않는다."""
+    path = _music_brief_cache_file(region_code)
+    try:
+        if not path.exists():
+            return None
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict) or not data.get("analysis"):
+            return None
+        fetched_at = float(data.get("fetched_at") or 0)
+        age = max(0.0, time.time() - fetched_at) if fetched_at else None
+        data["cached"] = True
+        data["age_seconds"] = round(age, 1) if age is not None else None
+        data["age_hours"] = round(age / 3600.0, 2) if age is not None else None
+        return data
+    except Exception as e:
+        print(f"[TrendScout] music brief cache load failed: {e}")
+        return None
+
+
+def _save_music_briefs_cache(region_code: str, result: Dict[str, Any]) -> None:
+    try:
+        with open(_music_brief_cache_file(region_code), "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[TrendScout] music brief cache save failed: {e}")
+
 # 주요 유튜브 카테고리 매핑
 YOUTUBE_CATEGORIES = {
     "0": "전체 급상승",
@@ -469,13 +507,22 @@ def pick_balanced_moods(count: int = 2, exclude: Optional[List[str]] = None) -> 
     return random.sample(cand, min(count, len(cand)))
 
 
-def analyze_music_trends_for_luna(region_code: str = "KR") -> Dict[str, Any]:
+def analyze_music_trends_for_luna(region_code: str = "KR", force_refresh: bool = False,
+                                  max_age_hours: Optional[float] = None) -> Dict[str, Any]:
     """
     유튜브 음악(Music, 카테고리 10)의 실시간 급상승 차트를 분석하여,
     에이전트 루나가 즉시 작곡에 착수할 수 있는 '음악 기획 브리프 3선'을 자동 도출합니다.
     - 장르 다양성 보장: 1·2번 브리프는 제작 이력 기반 가중치로 코드가 선별, 3번 브리프는 LLM이 차트에 맞춰 자율 선택
     - 프롬프트 내 하드코딩된 장르 나열 및 (예: ...) 닻내림을 전면 제거
+    - 비용 보호: 최근 결과가 max_age_hours(기본 MUSIC_BRIEF_TTL_HOURS) 안에 있으면 API 호출 없이 캐시를 돌려준다.
+      force_refresh=True 면 항상 새로 수집한다. 반환값의 cached 로 구분한다.
     """
+    ttl_hours = MUSIC_BRIEF_TTL_HOURS if max_age_hours is None else float(max_age_hours)
+    if not force_refresh and ttl_hours > 0:
+        cached = load_cached_music_briefs(region_code)
+        if cached and cached.get("age_hours") is not None and cached["age_hours"] < ttl_hours:
+            return cached
+
     trends = fetch_top20_trends(category_id="10", region_code=region_code)
     raw_items = trends.get("items", [])
 
@@ -707,13 +754,17 @@ def analyze_music_trends_for_luna(region_code: str = "KR") -> Dict[str, Any]:
     if saved_brief_titles:
         _save_topic_history("music", saved_brief_titles)
 
-    return {
+    result = {
         "status": "success",
         "category_id": "10",
         "category_name": "음악 (Music)",
         "region_code": region_code,
         "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "fetched_at": time.time(),
+        "cached": False,
         "analysis": parsed
     }
+    _save_music_briefs_cache(region_code, result)
+    return result
 
 
