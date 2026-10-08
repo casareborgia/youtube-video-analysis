@@ -41,7 +41,7 @@
 | 보고 내용 | 검증 결과 |
 |---|---|
 | "16:9 프리셋을 `veo_generator.py` 에 공식 추가" | `generate_veo_clip(..., config_params)` 가 이미 `aspect_ratio` 를 받는다(기본 `9:16`). 필요한 건 신규 기능이 아니라 호출부에서 `"16:9"` 를 넘기는 것. |
-| 춘식 프로젝트 현황 | `~/coding/영상생성에이전트 춘식` 은 사용자가 예전에 만들어 둔 독립 프로젝트로 **아직 GitHub 에 올라가 있지 않다**(`.git` 없음). TubeInsight 가 이 코드에 의존하려면 먼저 저장소로 올려 버전을 고정해야 한다. |
+| 춘식 프로젝트 현황 | `~/coding/영상생성에이전트 춘식` 은 사용자가 예전에 만들어 둔 독립 프로젝트. 검토 시점에는 GitHub 에 없었으나 2026-10-09 `casareborgia/choonsik-video-agent` (비공개) 로 업로드 완료. |
 | 비용 | Veo 는 Google Cloud 과금. 이 환경에서 Veo 생성은 **아직 한 번도 검증된 적이 없다**(`google-flow` MCP 의 `flow_start_video` 미검증). |
 | 중복 | `~/coding/google-flow-studio` 의 `google-flow` MCP 도 Veo 영상 생성을 담당한다. 춘식과 역할이 겹치므로 어느 쪽을 BGA 엔진으로 쓸지 먼저 정해야 한다. |
 
@@ -209,7 +209,7 @@ Phase A 머지 후 착수. **Veo·춘식 의존 없음, FFmpeg 만 사용.**
 
 #### C-0. 사전 조건 (코드 작업 금지, 조사·보고만)
 
-1. **춘식 프로젝트 GitHub 업로드.** 사용자가 예전에 만들어 두고 아직 올리지 않은 `~/coding/영상생성에이전트 춘식` 을 GitHub 저장소로 올린다. `.gitignore` 에 `assets/`, 토큰, 서비스 계정 키를 반드시 등록하고 커밋 전 스테이징 목록을 보고한다. 이 작업은 사용자 승인 후 진행한다.
+1. **춘식 프로젝트 GitHub 업로드 — ✅ 완료 (2026-10-09).** `casareborgia/choonsik-video-agent` (비공개) 에 올라가 있다. `.env`·`client_secrets.json`·`token.pickle`·`assets/`·`logs/`·venv 는 `.gitignore` 로 제외됐고, `.env.example`·`requirements.txt` 가 추가됐다. 춘식 코드를 수정할 때는 이 저장소에서 브랜치를 따서 작업한다.
 2. **Veo 1회 실측.** 8초 클립 1개를 `16:9` 로 생성해 (a) 소요 시간, (b) 과금액(Cloud Billing 콘솔 수치), (c) 결과 화질을 보고한다. **사용자가 "생성해도 된다" 고 명시한 뒤에만 호출한다.**
 3. **엔진 결정.** 춘식(`veo_generator.py`, Vertex AI 직접 호출)과 `google-flow` MCP(`flow_start_video`) 중 어느 쪽을 BGA 엔진으로 쓸지 비교표를 만든다. 기준: 캐릭터 일관성 기능 유무, 16:9 지원, 재시도·상태 조회, 코드 중복.
 4. **루프 길이 산정.** 2.3 의 "16–24초 씬 + 크로스페이드 루프" 가 3분 곡에서 몇 번 반복되는지, 반복이 눈에 띄지 않으려면 최소 몇 초 클립이 필요한지(= Veo 호출 횟수 = 비용) 계산한다.
