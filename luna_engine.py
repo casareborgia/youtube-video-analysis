@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import urllib.request
 import urllib.error
+from typing import Optional
 
 import llm_client
 import producer
@@ -177,6 +178,74 @@ def detect_vocal_language(text: str = "") -> str:
     return "ko"
 
 
+# ── 보컬/연주곡 판정 보조 ──────────────────────────────────────────────
+# 영문은 단어 경계(\b)로 검사해 "install", "instant" 같은 부분 문자열 오탐을 막는다.
+_INST_KEYWORD_PATTERNS_EN = [
+    r"\bpiano\s+solo\b",
+    r"\bno\s+vocals?\b",
+    r"\bwithout\s+vocals?\b",
+    r"\binstrumentals?\b",
+    r"\binst\b",
+    r"\bbgm\b",
+]
+# 한글은 긴 표현을 먼저 둬야 "피아노 독주"가 "독주"보다 먼저 잡힌다.
+_INST_KEYWORDS_KO = [
+    "피아노 독주", "피아노 솔로", "노래없이", "보컬없이", "연주곡", "배경음악",
+    "독주", "타건", "드론", "연주", "솔로",
+]
+_VOCAL_KEYWORD_PATTERNS_EN = [r"\bvocals?\b", r"\blyrics\b", r"\bsinging\b"]
+_VOCAL_KEYWORDS_KO = ["보컬", "가사", "노랫말", "목소리", "노래"]
+# 보컬 키워드 검사 전에 걷어내는 부정형 — "노래없이"에서 "노래"가 잡히는 것을 막는다.
+_VOCAL_NEGATION_RE = re.compile(r"(?i)\bno\s+vocals?\b|\bwithout\s+vocals?\b|노래없이|보컬없이")
+
+
+def _detect_inst_keyword(text: str) -> Optional[str]:
+    """연주곡 키워드가 있으면 매칭된 키워드를, 없으면 None을 반환합니다."""
+    if not text:
+        return None
+    for pat in _INST_KEYWORD_PATTERNS_EN:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            return m.group(0).lower()
+    for kw in _INST_KEYWORDS_KO:
+        if kw in text:
+            return kw
+    return None
+
+
+def _detect_vocal_keyword(text: str) -> Optional[str]:
+    """보컬 키워드가 있으면 매칭된 키워드를, 없으면 None을 반환합니다."""
+    if not text:
+        return None
+    cleaned = _VOCAL_NEGATION_RE.sub("", text)
+    for pat in _VOCAL_KEYWORD_PATTERNS_EN:
+        m = re.search(pat, cleaned, re.IGNORECASE)
+        if m:
+            return m.group(0).lower()
+    for kw in _VOCAL_KEYWORDS_KO:
+        if kw in cleaned:
+            return kw
+    return None
+
+
+def _sanitize_instrumental_lyria_prompt(prompt: str) -> str:
+    """연주곡으로 확정된 곡의 Lyria 프롬프트에서 보컬·가사 지시어를 걷어내고 무보컬 지시를 보장합니다."""
+    if not prompt:
+        return "Masterpiece purely instrumental, no vocals, studio sound quality"
+    p = prompt
+    p = re.sub(r"(?i)\bsinging\s+in\s+[^,]+", "", p)
+    p = re.sub(r"(?i)\b(female|male|korean|english|japanese|expressive|emotional|soulful|clear)?\s*vocals?\b(\s+(hooks?|style|chops?))?", "", p)
+    p = re.sub(r"(?i)\b(singing|lyrics|lyrical)\b", "", p)
+    p = re.sub(r",\s*(,\s*)+", ", ", p)
+    p = re.sub(r"\s+", " ", p).strip(" ,.")
+    low = p.lower()
+    if "no vocals" not in low and "instrumental" not in low:
+        p = f"{p}, purely instrumental, no vocals"
+    elif "no vocals" not in low:
+        p = f"{p}, no vocals"
+    return p
+
+
 # ── 1. 음악 콘셉트 및 프롬프트 동적 AI 기획 ─────────────────────────────
 
 def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief=None, vocal_mode="auto"):
@@ -189,24 +258,36 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
     genre_info = next((g for g in GENRE_PRESETS if g["id"] == genre_key), GENRE_PRESETS[0])
     mood_info = next((m for m in MOOD_PRESETS if m["id"] == mood), MOOD_PRESETS[0])
 
-    # 1. 보컬 모드 및 가사 생성 여부 지능적·자율적 판단 (장르 종속 앵커링 해제)
+    # 1. 보컬 모드 및 가사 생성 여부 판정
+    #    우선순위: 명시 모드 > 주제 키워드 > 장르 vocal_affinity(none/high) > optional 은 LLM 위임
+    #    should_have_lyrics: True(보컬 확정) / False(연주곡 확정) / None(LLM 이 has_lyrics 로 결정)
     v_mode = (vocal_mode or "auto").strip().lower()
-    topic_str = f"{custom_topic} {(leo_brief.get('topic', '') if isinstance(leo_brief, dict) else '')}".lower()
-    explicit_vocal_keyword = any(k in topic_str for k in ["보컬", "가사", "vocal", "lyrics", "노래", "singing", "목소리", "노랫말"])
-    explicit_inst_keyword = any(k in topic_str for k in ["연주곡", "inst", "instrumental", "노래없이", "보컬없이", "bgm", "배경음악"])
-    is_pure_instrumental_genre = genre_key in ("sleep", "dark-ambient")
-
     if v_mode in ("lyrics", "vocal", "yes", "true"):
-        should_have_lyrics = True
-    elif v_mode in ("instrumental", "inst", "no", "false") or explicit_inst_keyword:
-        should_have_lyrics = False
-    else:  # auto 모드: 로파이, 재즈, 신스웨이브 등 대중 장르 보컬 자유 개방
-        if explicit_vocal_keyword:
-            should_have_lyrics = True
-        elif is_pure_instrumental_genre:
-            should_have_lyrics = False
+        v_mode = "lyrics"
+    elif v_mode in ("instrumental", "inst", "no", "false"):
+        v_mode = "instrumental"
+    else:
+        v_mode = "auto"
+    topic_str = f"{custom_topic} {(leo_brief.get('topic', '') if isinstance(leo_brief, dict) else '')}".lower()
+    vocal_affinity = str(genre_spec.get("vocal_affinity", "optional")).lower()
+
+    if v_mode == "lyrics":
+        should_have_lyrics, vocal_reason = True, "explicit_mode"
+    elif v_mode == "instrumental":
+        should_have_lyrics, vocal_reason = False, "explicit_mode"
+    else:
+        vocal_kw = _detect_vocal_keyword(topic_str)
+        inst_kw = _detect_inst_keyword(topic_str)
+        if vocal_kw:
+            should_have_lyrics, vocal_reason = True, f"keyword:{vocal_kw}"
+        elif inst_kw:
+            should_have_lyrics, vocal_reason = False, f"keyword:{inst_kw}"
+        elif vocal_affinity == "none":
+            should_have_lyrics, vocal_reason = False, "affinity:none"
+        elif vocal_affinity == "high":
+            should_have_lyrics, vocal_reason = True, "affinity:high"
         else:
-            should_have_lyrics = True
+            should_have_lyrics, vocal_reason = None, "llm"
 
     # 2. 지능형 보컬 언어 감지 및 동기화 (시티팝=일본어, R&B=영어 등 언어 왜곡 원천 차단)
     target_lang = detect_vocal_language(f"{custom_topic} {(leo_brief.get('topic', '') if isinstance(leo_brief, dict) else '')}")
@@ -242,7 +323,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
 """
 
     vocal_style_hint = genre_spec.get("vocal_style_hint", "")
-    if should_have_lyrics:
+    if should_have_lyrics is True:
         vocal_prompt_section = f"""[보컬 및 가사 요구사항 (중요: 이 곡은 감성 보컬과 가사가 필요한 곡입니다)]
 1. 보컬 언어 및 스타일 (목표 언어: {target_lang_name}):
    {lang_instruction}
@@ -271,7 +352,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
   "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"],
   "lyrics": "[Verse 1]\\n가사 1절...\\n\\n[Pre-Chorus]\\n빌드업...\\n\\n[Chorus]\\n후렴구...\\n\\n[Verse 2]\\n가사 2절...\\n\\n[Chorus]\\n후렴구...\\n\\n[Bridge]\\n브릿지 감정 고조...\\n\\n[Final Chorus]\\n마지막 후렴...\\n\\n[Outro]\\n아웃트로 여운..."
 }}"""
-    else:
+    elif should_have_lyrics is False:
         vocal_prompt_section = f"""[연주곡 요구사항 (순수 인스트루멘털 BGM)]
 1. 순수 연주곡(Instrumental):
    - 보컬이 전혀 없는 깊은 집중/수면/휴식용 배경음악입니다.
@@ -290,6 +371,32 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
   "visual_prompt": "영문 앨범 커버 프롬프트 (16:9 와이드, 시네마틱 감성)",
   "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"],
   "lyrics": null
+}}"""
+    else:  # vocal_affinity == "optional": 보컬 유무를 LLM 이 곡 성격에 맞춰 결정
+        vocal_prompt_section = f"""[보컬 유무 자율 결정 (이 장르는 보컬 곡과 순수 연주곡이 모두 어울립니다)]
+1. 곡의 서사와 무드에 비추어 보컬·가사가 필요한지 스스로 판단하고, 반환 JSON 의 "has_lyrics" 에 true/false 를 반드시 명시할 것.
+2. 보컬 곡(has_lyrics: true)으로 정했다면 (목표 언어: {target_lang_name}):
+   {lang_instruction}
+   - 보컬 스타일 설명(vocal_style): {vocal_style_hint or genre_spec['name'] + ' 감성에 어울리는 톤'}.
+   - 가사(lyrics): [Verse 1], [Pre-Chorus], [Chorus], [Verse 2], [Chorus], [Bridge], [Final Chorus], [Outro] 구조의 3분 완곡 가사.
+   - Lyria 3 작곡 프롬프트(lyria_prompt)에 반드시 '{lang_lyria_hint}' 를 포함할 것.
+3. 순수 연주곡(has_lyrics: false)으로 정했다면:
+   - lyrics, vocal_style, vocal_language 는 모두 null.
+   - Lyria 3 작곡 프롬프트에 반드시 'No vocals, purely instrumental, studio sound quality, rich analog warmth, approx 3 minutes full-length structure, gentle natural outro fade-out' 를 포함할 것.
+4. 어느 쪽이든 lyria_prompt 는 영문으로, {genre_spec['bpm_range']} 범위의 구체적 BPM 과 3분 완곡 구조 지침을 포함할 것."""
+
+        json_schema_example = f"""{{
+  "title": "영문 제목 (한글 부제)",
+  "genre": "{genre_spec['name']}",
+  "mood": "{mood_info['name']}",
+  "story": "감성 서사 2~3문장 (트렌드 테마와 정서 반영)",
+  "vocal_language": "{target_lang} 또는 연주곡이면 null",
+  "has_lyrics": "true 또는 false — 반드시 boolean 으로 명시",
+  "vocal_style": "보컬 스타일 설명, 연주곡이면 null",
+  "lyria_prompt": "영문 Lyria 작곡 프롬프트 (구체적 BPM, 3분 완곡 구조, 보컬 곡이면 '{lang_lyria_hint}', 연주곡이면 'No vocals, purely instrumental' 포함)",
+  "visual_prompt": "영문 앨범 커버 프롬프트 (16:9 와이드, 시네마틱 감성)",
+  "tags": ["태그1", "태그2", "태그3", "태그4", "태그5", "태그6", "태그7", "태그8"],
+  "lyrics": "가사 전문, 연주곡이면 null"
 }}"""
 
     prompt = f"""당신은 글로벌 AI 음악 아티스트 '에이전트 루나(Agent Luna)'의 수석 총괄 프로듀서이자 작곡가입니다.
@@ -328,10 +435,18 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
     try:
         parsed, raw = llm_client.call_llm_json(messages, max_tokens=4096, temperature=0.75)
         if isinstance(parsed, dict) and parsed.get("title"):
-            if not parsed.get("lyria_prompt"):
-                parsed["lyria_prompt"] = f"Masterpiece {genre_spec['name']} with {genre_spec['instruments']}, {genre_spec['bpm_range']}, {lang_lyria_hint if should_have_lyrics else 'purely instrumental, no vocals'}"
             concept = parsed
-            concept["has_lyrics"] = bool(parsed.get("has_lyrics") or parsed.get("lyrics"))
+            # 판정이 확정된 경우(명시 모드·키워드·affinity) LLM 응답이 이를 덮어쓰지 못한다.
+            # optional(None) 일 때만 LLM 의 has_lyrics 를 신뢰한다.
+            if should_have_lyrics is None:
+                llm_has_lyrics = parsed.get("has_lyrics")
+                if isinstance(llm_has_lyrics, str):
+                    llm_has_lyrics = llm_has_lyrics.strip().lower() == "true"
+                concept["has_lyrics"] = bool(llm_has_lyrics or parsed.get("lyrics"))
+            else:
+                concept["has_lyrics"] = should_have_lyrics
+            if not concept.get("lyria_prompt"):
+                concept["lyria_prompt"] = f"Masterpiece {genre_spec['name']} with {genre_spec['instruments']}, {genre_spec['bpm_range']}, {lang_lyria_hint if concept['has_lyrics'] else 'purely instrumental, no vocals'}"
     except Exception as e:
         print(f"[LunaEngine] LLM concept generation error: {e}")
 
@@ -366,6 +481,10 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
             )
         }
 
+        # LLM 없이 optional 장르를 만들 때는 연주곡을 기본값으로 둔다 (폴백 음원도 앰비언트 합성이라 보컬이 없다)
+        if should_have_lyrics is None:
+            should_have_lyrics, vocal_reason = False, "fallback:instrumental"
+
         fb_vocal_style = None
         fb_lyrics = None
         if should_have_lyrics:
@@ -399,24 +518,39 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
         }
 
     if concept:
+        final_has_lyrics = bool(concept.get("has_lyrics"))
+        concept["has_lyrics"] = final_has_lyrics
         concept["trend_brief_applied"] = trend_brief_applied
-        concept["vocal_language"] = target_lang if should_have_lyrics else None
+        concept["vocal_language"] = target_lang if final_has_lyrics else None
+        # 판정 근거 기록 — 사후에 "왜 보컬/연주곡이 됐는지" 추적용 (A-3)
+        concept["vocal_mode"] = v_mode
+        concept["vocal_decision"] = {
+            "resolved": "lyrics" if final_has_lyrics else "instrumental",
+            "reason": vocal_reason,
+        }
+        if not final_has_lyrics:
+            # 연주곡 확정: LLM 이 끼워 넣은 가사·보컬 설명을 비운다
+            concept["lyrics"] = None
+            concept["vocal_style"] = None
 
         # [핵심 안전망] Lyria 프롬프트 오디오 앵커링 원천 정제 및 보컬 언어 강제 동기화
         if concept.get("lyria_prompt"):
             lp = concept["lyria_prompt"]
             # 1. 한국어 모드일 때 일본어/도쿄 편향 키워드 원천 제거 (시티팝 도쿄 앵커링 차단)
-            if target_lang == "ko":
+            if target_lang == "ko" and final_has_lyrics:
                 lp = re.sub(r"\b(80s\s+)?tokyo\s*(city\s*pop)?\b", "retro city pop", lp, flags=re.IGNORECASE)
                 lp = re.sub(r"\btokyo\b", "city", lp, flags=re.IGNORECASE)
                 lp = re.sub(r"\bjapanese(\s+female|\s+male)?\s+vocals?\b", "Korean female vocals", lp, flags=re.IGNORECASE)
-            
+
             # 2. 보컬이 필요한 곡인 경우 목표 언어(Korean, English, Japanese) 지침 누락 시 자동 보강
-            if should_have_lyrics:
+            if final_has_lyrics:
                 lp_lower = lp.lower()
                 expected_kw = "korean" if target_lang == "ko" else ("english" if target_lang == "en" else "japanese")
                 if expected_kw not in lp_lower:
                     lp = f"{lp.rstrip('.')}, {lang_lyria_hint}"
+            else:
+                # 연주곡 확정: 보컬 힌트 제거 + 무보컬 지시 보장
+                lp = _sanitize_instrumental_lyria_prompt(lp)
 
             # 3. 3분 완곡 및 자연스러운 아웃트로(Fade-out) 종결 지침 보강
             lp_lower = lp.lower()
@@ -1083,6 +1217,9 @@ def list_tracks():
                 "studio_comment_url": f"https://studio.youtube.com/video/{d.get('uploaded_video_id')}/comments" if d.get("uploaded_video_id") else "",
                 "trend_brief_applied": d.get("trend_brief_applied", False),
                 "trend_brief": d.get("trend_brief"),
+                # 보컬 판정 근거 (A-3). 구 트랙에는 없으므로 None 그대로 내려준다
+                "vocal_mode": d.get("vocal_mode"),
+                "vocal_decision": d.get("vocal_decision"),
                 # 사운드 엔지니어 베가 — 보관함에서 선택해도 마스터링 패널·A/B 비교가 보이도록 함께 내려준다
                 "mastering": d.get("mastering"),
                 "audio_raw_url": d.get("audio_raw_url"),

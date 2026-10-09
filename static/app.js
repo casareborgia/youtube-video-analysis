@@ -3542,13 +3542,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const isRendered = !!t.video_url;
         const isUploaded = !!t.uploaded_video_id;
         const hasLyrics = Boolean(t.has_lyrics || t.lyrics);
+        // 보컬 판정 근거 — 구 트랙(vocal_mode 없음)은 '—' 로 표시
+        const vocalModeLabel = { auto: '자동', lyrics: '보컬 지정', instrumental: '연주곡 지정' }[t.vocal_mode] || '—';
+        const vocalReason = t.vocal_decision && t.vocal_decision.reason ? ` · ${t.vocal_decision.reason}` : '';
         return `
           <div class="luna-track-card" data-id="${escapeHtml(t.track_id)}" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); border:1px solid var(--border-color); border-radius:6px; padding:8px 10px; cursor:pointer; transition:background 0.2s;">
             <div style="display:flex; align-items:center; gap:10px; min-width:0;">
               <img src="${t.cover_url || '/static/favicon.ico'}" style="width:36px; height:36px; border-radius:4px; object-fit:cover;">
               <div style="min-width:0;">
                 <div style="font-size:0.85rem; font-weight:600; color:#fff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeHtml(t.title || 'Untitled')}</div>
-                <div style="font-size:0.75rem; color:var(--text-secondary);">${escapeHtml(t.genre || '')} • ${escapeHtml(t.mood || '')}</div>
+                <div style="font-size:0.75rem; color:var(--text-secondary);">${escapeHtml(t.genre || '')} • ${escapeHtml(t.mood || '')} • <span title="보컬 모드${escapeHtml(vocalReason)}">${hasLyrics ? '🎤' : '🎹'} ${escapeHtml(vocalModeLabel)}</span></div>
               </div>
             </div>
             <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
