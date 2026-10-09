@@ -247,11 +247,22 @@ Veo 3.1 Fast/Lite 는 클립당 최대 8초. 선택지:
 
 B 안을 권장하는 이유: 로파이·앰비언트 BGA 는 시청자가 화면을 응시하지 않는 장르라 22초 주기면 반복이 거슬리지 않고, 비용이 트랙당 $3 이내로 루나 1곡 생성 비용과 같은 자릿수다. 클립 3개는 같은 커버 이미지를 첫 프레임으로 한 Image-to-Video 로 뽑아 색감을 맞추고, 카메라 무빙만 다르게 지시한다(slow push-in / lateral drift / slow pull-back). 루프 이음새는 마지막 클립 끝 → 첫 클립 시작을 `xfade` 로 한 번 더 섞어 끊김을 없앤다.
 
-**(2) 실측 제안 — 승인 대기**
-- 호출 1회: `flow_start_video(prompt, image_path=<루나 커버>, duration_seconds=8, aspect_ratio="16:9", generate_audio=False)` → `flow_check_video`.
-- 예상 비용 약 **$0.8 (1080p) / $0.4 이하 (Lite)**, 생성 대기 1~3분.
-- 보고 항목: 실제 과금액(Cloud Billing), 소요 시간, 커버 톤 유지 여부, 루프 소재로 쓸 만한지.
-- 이 호출은 **사용자가 명시적으로 승인한 뒤에만** 실행한다.
+**(2) Veo 1회 실측 — ✅ 완료 (2026-10-09 13:46, 사용자 승인 후 호출)**
+
+| 항목 | 결과 |
+|---|---|
+| 호출 | `google-flow` `flow_start_video` — 모델 `veo-3.1-fast-generate-001`, Vertex `us-central1`, Image-to-Video(루나 `luna_1791476313` 커버 1376×768), 8초, 16:9, `generate_audio=False` |
+| 소요 시간 | 시작 13:46:50 → 완료 확인 13:48:16, **약 80초** (첫 상태 확인이 90초 후라 실제는 그 이하) |
+| 결과물 | `google-flow-studio/outputs/luna_bga_test_19c59d12….mp4` — **1280×720**, 24fps, H.264 2.7Mbps, 8.000초, **오디오 스트림 없음**, 2.7MB |
+| 화질·톤 | 커버의 청사진·젖은 나무 테이블·빗방울 창·발코니 구도가 그대로 유지됨. 느린 푸시인, 커튼이 바람에 움직이고 빗방울이 흘러내림. 사람·텍스트 없음. 로파이/피아노 BGA 루프 소재로 적합. |
+| 과금 | Cloud Billing(`01A4AD-1553B9-86DAA6`, 프로젝트 `southern-engine-495314-p2`)은 수 시간 뒤 반영되므로 호출 직후 확인 불가. 2차 출처 단가 기준 720p 무오디오 8초 ≈ **$0.64**. 실제 금액은 콘솔 반영 후 이 표에 기입. |
+
+발견 사항:
+- `google-flow` 의 `start_video` 는 `resolution` 을 넘기지 않아 **720p 로 생성**된다. 1080p 가 필요하면 `flow_visual.py` 의 `GenerateVideosConfig` 에 `resolution="1080p"` 를 추가해야 한다(C-1 선행 작업, `google-flow-studio` 저장소). 단가는 2차 출처 기준 약 1.25배.
+- 입력 이미지는 `google-flow-studio/outputs/` 안에 있어야 하므로, C-1 에서 루나 커버를 거기로 복사하는 단계가 필요하다(또는 `FLOW_EXTRA_INPUT_DIRS` 에 `data/luna_music` 추가).
+- 무오디오 지정이 실제로 반영됐다(오디오 스트림 0개) → BGA 는 무오디오 단가로 계산해도 된다.
+
+C-0 네 항목이 모두 끝났다. B 안(8초×3, xfade) 기준 트랙당 예상 비용은 720p ≈ $1.9, 1080p ≈ $2.4.
 
 C-0 결과를 사용자에게 보고하고 **C-1 착수 여부를 별도 승인**받는다.
 
