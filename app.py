@@ -37,6 +37,7 @@ import uploader
 import luna_engine
 import vega_engine
 import vega_feedback
+import choonsik_bga
 import threads_client
 import capcut_builder
 import engagement_automation
@@ -1186,6 +1187,19 @@ class LunaShortsUploadRequest(BaseModel):
     publish_at: Optional[str] = None
     playlist_id: Optional[str] = None
 
+class LunaBgaPlanRequest(BaseModel):
+    track_id: str
+
+class LunaBgaGenerateRequest(BaseModel):
+    track_id: str
+    confirm: Optional[bool] = False       # True 가 아니면 400
+    dry_run: Optional[bool] = False
+
+class LunaBgaRenderRequest(BaseModel):
+    track_id: str
+    with_waveform: Optional[bool] = False
+    upscale: Optional[bool] = True
+
 class CreatePlaylistRequest(BaseModel):
     title: str
     description: Optional[str] = ""
@@ -1407,6 +1421,72 @@ async def upload_luna_shorts(req: LunaShortsUploadRequest):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"숏폼 업로드 실패: {e}")
+
+@app.post("/api/luna/bga/plan")
+async def plan_luna_bga(req: LunaBgaPlanRequest):
+    track = luna_engine.load_track(req.track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
+    try:
+        shots = choonsik_bga.plan_bga_shots(track)
+        return {
+            "shots": shots,
+            "estimate": choonsik_bga.estimate_bga_cost(len(shots)),
+            "usage": {
+                "today": choonsik_bga.get_today_usage(),
+                "cap": choonsik_bga.daily_cap(),
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"BGA 샷 기획 실패: {e}")
+
+@app.post("/api/luna/bga/generate")
+async def generate_luna_bga(req: LunaBgaGenerateRequest):
+    if not req.confirm:
+        raise HTTPException(status_code=400, detail="confirm=true 가 필요합니다 (Veo 과금)")
+    track = luna_engine.load_track(req.track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
+    try:
+        updated = choonsik_bga.generate_bga_clips(track, dry_run=bool(req.dry_run))
+        return updated
+    except RuntimeError as e:
+        if "상한" in str(e):
+            raise HTTPException(status_code=429, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"BGA 생성 실패: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"BGA 생성 실패: {e}")
+
+@app.post("/api/luna/bga/render")
+async def render_luna_bga(req: LunaBgaRenderRequest):
+    track = luna_engine.load_track(req.track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
+    try:
+        updated = choonsik_bga.render_bga_loop(
+            track,
+            with_waveform=bool(req.with_waveform),
+            upscale=True if req.upscale is None else bool(req.upscale),
+        )
+        return updated
+    except RuntimeError as e:
+        if "2개 미만" in str(e):
+            raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"BGA 렌더 실패: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"BGA 렌더 실패: {e}")
+
+@app.get("/api/luna/bga/usage")
+async def get_luna_bga_usage():
+    try:
+        return {
+            "today": choonsik_bga.get_today_usage(),
+            "cap": choonsik_bga.daily_cap(),
+            "rate_source": "secondary",
+            "estimate_per_track": choonsik_bga.estimate_bga_cost(),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"BGA 사용량 조회 실패: {e}")
 
 @app.get("/api/luna/history")
 async def get_luna_history():
