@@ -121,10 +121,10 @@ LLM 호출 없이(`llm_client.call_llm_json` 모킹) 다음을 검증한다.
 #### A-6. 수용 기준
 
 - [ ] `piano`/`ambient`/`sleep`/`dark-ambient` + `auto` 로 3회 연속 생성 시 전부 연주곡
-- [ ] `instrumental` 명시 시 LLM 응답과 무관하게 연주곡
-- [ ] 신규 트랙 `meta.json` 에 `vocal_mode`·`vocal_decision` 저장
-- [ ] 기존 67개 트랙 `meta.json` 은 수정하지 않음 (마이그레이션 불필요, 필드 없으면 UI 에 `—` 표시)
-- [ ] 신규 테스트 + 기존 테스트 전체 통과
+- [x] `instrumental` 명시 시 LLM 응답과 무관하게 연주곡 (단위 테스트로 검증)
+- [x] 신규 트랙 `meta.json` 에 `vocal_mode`·`vocal_decision` 저장
+- [x] 기존 67개 트랙 `meta.json` 은 수정하지 않음 (마이그레이션 불필요, 필드 없으면 UI 에 `—` 표시)
+- [x] 신규 테스트(19개) + 기존 루나·베가 테스트 통과. `test_gemini_model_selection`·`test_account_replies` 의 실패는 `.env`(Gemini 키·Threads 토큰) 의존으로 `main` 에서도 동일하게 실패하는 기존 문제.
 
 ---
 
