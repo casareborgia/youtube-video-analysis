@@ -1180,6 +1180,12 @@ class LunaShortsExtractRequest(BaseModel):
 class LunaShortsRenderRequest(BaseModel):
     track_id: str
 
+class LunaShortsUploadRequest(BaseModel):
+    track_id: str
+    privacy_status: Optional[str] = "public"
+    publish_at: Optional[str] = None
+    playlist_id: Optional[str] = None
+
 class CreatePlaylistRequest(BaseModel):
     title: str
     description: Optional[str] = ""
@@ -1385,6 +1391,22 @@ async def render_luna_shorts_video(req: LunaShortsRenderRequest):
         return luna_engine.render_luna_shorts_video(track)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"숏폼 렌더링 실패: {e}")
+
+@app.post("/api/luna/shorts/upload")
+async def upload_luna_shorts(req: LunaShortsUploadRequest):
+    """하이라이트 숏폼 영상만 단독으로 유튜브에 업로드"""
+    track = luna_engine.load_track(req.track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
+    try:
+        return luna_engine.upload_luna_shorts_standalone(
+            track_id=req.track_id,
+            privacy_status=req.privacy_status or "public",
+            publish_at=req.publish_at,
+            playlist_id=req.playlist_id,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"숏폼 업로드 실패: {e}")
 
 @app.get("/api/luna/history")
 async def get_luna_history():

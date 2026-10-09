@@ -207,6 +207,15 @@ class UploadWithShortsTests(unittest.TestCase):
         self.assertEqual(res["video_id"], "VID1")
         self.assertIsNone(res["shorts"])
 
+    def test_standalone_shorts_upload_success(self):
+        with patch.object(uploader, "upload_video", side_effect=self._fake_upload()):
+            res = luna_engine.upload_luna_shorts_standalone("luna_u")
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual(res["video_id"], "VID1")
+        self.assertEqual(res["url"], "https://youtu.be/VID1")
+        saved = luna_engine.load_track("luna_u")
+        self.assertEqual(saved["shorts"]["youtube"]["video_id"], "VID1")
+
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg 필요")
 class RealFfmpegRenderTests(unittest.TestCase):

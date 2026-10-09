@@ -1723,3 +1723,31 @@ def _upload_luna_shorts(track, longform_meta, longform_video_id, privacy_status,
     return {"video_id": res.get("video_id"), "url": res.get("url"), "title": sm["youtube_title"],
             "publish_at": res.get("publish_at"), "comment_posted": res.get("comment_posted", False)}
 
+
+def upload_luna_shorts_standalone(track_id, privacy_status="public", progress_cb=None, publish_at=None, playlist_id=None):
+    """이미 롱폼이 업로드된 트랙(또는 단독)에 대해 숏폼만 유튜브로 업로드한다."""
+    def step(pct, msg):
+        if progress_cb:
+            progress_cb("shorts_upload", msg, pct)
+        print(f"[{pct}%] [LunaShortsUpload] {msg}")
+
+    track = load_track(track_id)
+    if not track:
+        raise ValueError("트랙 정보를 찾을 수 없습니다.")
+
+    longform_video_id = track.get("uploaded_video_id")
+    longform_meta = track.get("metadata") or build_luna_metadata(track)
+
+    step(10, "숏폼 업로드 준비 중...")
+    res = _upload_luna_shorts(
+        track=track,
+        longform_meta=longform_meta,
+        longform_video_id=longform_video_id,
+        privacy_status=privacy_status,
+        publish_at=publish_at,
+        playlist_id=playlist_id,
+        step=step,
+    )
+    step(100, f"숏폼 업로드 완료! ({res.get('url')})")
+    return res
+
