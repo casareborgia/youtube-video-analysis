@@ -211,8 +211,47 @@ Phase A 머지 후 착수. **Veo·춘식 의존 없음, FFmpeg 만 사용.**
 
 1. **춘식 프로젝트 GitHub 업로드 — ✅ 완료 (2026-10-09).** `casareborgia/choonsik-video-agent` (비공개) 에 올라가 있다. `.env`·`client_secrets.json`·`token.pickle`·`assets/`·`logs/`·venv 는 `.gitignore` 로 제외됐고, `.env.example`·`requirements.txt` 가 추가됐다. 춘식 코드를 수정할 때는 이 저장소에서 브랜치를 따서 작업한다.
 2. **Veo 1회 실측.** 8초 클립 1개를 `16:9` 로 생성해 (a) 소요 시간, (b) 과금액(Cloud Billing 콘솔 수치), (c) 결과 화질을 보고한다. **사용자가 "생성해도 된다" 고 명시한 뒤에만 호출한다.**
-3. **엔진 결정.** 춘식(`veo_generator.py`, Vertex AI 직접 호출)과 `google-flow` MCP(`flow_start_video`) 중 어느 쪽을 BGA 엔진으로 쓸지 비교표를 만든다. 기준: 캐릭터 일관성 기능 유무, 16:9 지원, 재시도·상태 조회, 코드 중복.
-4. **루프 길이 산정.** 2.3 의 "16–24초 씬 + 크로스페이드 루프" 가 3분 곡에서 몇 번 반복되는지, 반복이 눈에 띄지 않으려면 최소 몇 초 클립이 필요한지(= Veo 호출 횟수 = 비용) 계산한다.
+3. **엔진 결정 — ✅ 조사 완료 (2026-10-09, 아래 C-0 결과 참고).** 결론: **`google-flow` MCP 를 BGA 엔진으로 쓰고, 춘식에서는 Optical Mastery 프롬프트 어휘만 가져온다.**
+4. **루프 길이 산정 — ✅ 조사 완료 (아래 C-0 결과 참고).** 권장: 8초 클립 3개 + 1초 크로스페이드 = 약 22초 주기, 3분 곡에 8회 반복, 트랙당 Veo 호출 3회.
+
+#### C-0 조사 결과 (2026-10-09, Claude Code)
+
+**(3) 엔진 비교 — 춘식 `veo_generator.py` vs `google-flow` MCP**
+
+| 기준 | 춘식 (`~/coding/영상생성에이전트 춘식`) | `google-flow` MCP (`~/coding/google-flow-studio`) |
+|---|---|---|
+| 호출 경로 | Gemini API (API 키, `genai.Client(api_key=)`) | Vertex AI (ADC, `us-central1`) — 프로젝트 과금·할당량·콘솔 관리 가능 |
+| 모델 | `settings.py` 기본이 **`veo-3.1-lite-generate-preview`**. 코드 주석의 "Fast" 와 불일치 | `veo-3.1-fast-generate-001` 기본, 환경변수로 standard 전환 |
+| 16:9 | `config_params["aspect_ratio"]` 로 가능 (기본 9:16) | `aspect_ratio="16:9"` 가 **기본값** |
+| 캐릭터·스타일 일관성 | `EXTEND`(이전 클립 마지막 프레임 참조) 에 의존. **Lite 는 EXTEND 미지원** → 현재 설정대로면 8개 씬 체인이 동작하지 않을 가능성 큼 | `flow_register_character` + `flow_compile_scene_prompt`(@tag 일관성) + **Image-to-Video**(`image_path`) → **루나 앨범 커버를 첫 프레임으로 넣어 곡과 같은 톤의 영상**을 뽑을 수 있음 |
+| 오디오 | `generate_audio` 파라미터가 `GenerateVideosConfig` 에 전달되지 않음(버그) | `generate_audio=False` 지정 가능 → BGA 는 루나 음원을 쓰므로 **오디오 없는 단가** 적용 |
+| 비동기·상태 조회 | 동기 폴링(10초×150회 블로킹) | `flow_start_video` → `flow_check_video` 논블로킹, 작업 이름으로 재조회 가능 |
+| 재시도·안전장치 | 429 시 5분 sleep ×3, 일일 생성 상한(`tracker.py`). **429 시 Playwright 로 사용자 Chrome 프로필을 열어 Google Vids 웹을 조작하는 폴백**이 켜져 있음(`USE_WEB_VIDS_FALLBACK=True`) — 서버 프로세스에서 쓰기엔 위험 | 파일 쓰기 `outputs/`·`characters/` 로 제한, 입력 이미지 경로 화이트리스트, MCP 도구에 과금 여부 어노테이션 |
+| TubeInsight 연동 | 별도 venv(3.11), moviepy 의존, 패키지 구조가 쇼츠 파이프라인(`main.py`) 중심 | 이미 Claude Code 에 user 스코프 MCP 로 등록돼 있고, 순수 함수 호출(`flow_visual.FlowVisual.start_video/get_video`) 로 임포트 가능 |
+| 검증 상태 | Veo 실생성 이력 있음(`assets/veo_output*.mp4`, 5월) — 단 Lite 전환 후는 불명 | Veo 미검증(이미지·텍스트만 검증) |
+
+결론: **`google-flow` 를 엔진으로 채택.** 이유는 (a) 16:9·무오디오·Image-to-Video 가 BGA 요구와 정확히 맞고, (b) Vertex 과금을 콘솔에서 통제할 수 있으며, (c) 춘식의 Chrome 프로필 폴백은 FastAPI 서버 안에서 돌릴 수 없다. 춘식에서는 `producer.py` 의 카메라·조명·그레이딩 어휘(Optical Mastery)만 프롬프트 템플릿으로 옮긴다. 춘식 저장소 자체는 쇼츠 에이전트로 그대로 둔다.
+
+**(4) 루프 길이·호출 횟수·비용 산정 (3분 = 180초 기준)**
+
+Veo 3.1 Fast/Lite 는 클립당 최대 8초. 선택지:
+
+| 안 | 구성 | 루프 주기 | 180초 반복 횟수 | Veo 호출 | 1080p 무오디오 예상 비용* |
+|---|---|---|---|---|---|
+| A | 8초 1개를 정·역재생(부메랑) | 16초 | 11회 | 1 | 약 $0.8 |
+| **B (권장)** | 8초 3개 + 1초 `xfade` | 약 22초 | 8회 | 3 | **약 $2.4** |
+| C | 8초 6개 + 1초 `xfade` | 약 43초 | 4회 | 6 | 약 $4.8 |
+| D | 루프 없이 전 구간 생성 | — | 1회 | 23 | 약 $18 + 생성 대기 20분↑ |
+
+\* 단가는 2차 출처 기준(Vertex Veo 3.1 Fast, 1080p 무오디오 ≈ $0.10/초, 오디오 포함 ≈ $0.12/초; Lite 는 Fast 의 절반 이하). **Google 공식 가격 페이지는 자동 수집이 되지 않아 확인하지 못했으므로, 정확한 금액은 (2) 실측으로 확정한다.** 출처: [benchlm.ai Veo 가격](https://benchlm.ai/media-pricing/veo), [anotherwrapper Veo 3.1 Fast](https://anotherwrapper.com/tools/llm-pricing/video-models/veo-31-fast), [Google 블로그 — Veo 3.1 Lite](https://blog.google/innovation-and-ai/technology/ai/veo-3-1-lite/), [Krea Veo 3.1 Lite API](https://www.krea.ai/docs/api-reference/video/veo-31-lite.md).
+
+B 안을 권장하는 이유: 로파이·앰비언트 BGA 는 시청자가 화면을 응시하지 않는 장르라 22초 주기면 반복이 거슬리지 않고, 비용이 트랙당 $3 이내로 루나 1곡 생성 비용과 같은 자릿수다. 클립 3개는 같은 커버 이미지를 첫 프레임으로 한 Image-to-Video 로 뽑아 색감을 맞추고, 카메라 무빙만 다르게 지시한다(slow push-in / lateral drift / slow pull-back). 루프 이음새는 마지막 클립 끝 → 첫 클립 시작을 `xfade` 로 한 번 더 섞어 끊김을 없앤다.
+
+**(2) 실측 제안 — 승인 대기**
+- 호출 1회: `flow_start_video(prompt, image_path=<루나 커버>, duration_seconds=8, aspect_ratio="16:9", generate_audio=False)` → `flow_check_video`.
+- 예상 비용 약 **$0.8 (1080p) / $0.4 이하 (Lite)**, 생성 대기 1~3분.
+- 보고 항목: 실제 과금액(Cloud Billing), 소요 시간, 커버 톤 유지 여부, 루프 소재로 쓸 만한지.
+- 이 호출은 **사용자가 명시적으로 승인한 뒤에만** 실행한다.
 
 C-0 결과를 사용자에게 보고하고 **C-1 착수 여부를 별도 승인**받는다.
 
