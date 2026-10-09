@@ -1458,6 +1458,38 @@
                 </div>
               </div>
 
+              <!-- 📱 하이라이트 숏폼 (9:16) — ffmpeg 전용, 외부 API 없음 -->
+              <div id="lunaShortsPanel" style="display: none; background: rgba(251, 191, 36, 0.05); border: 1px solid rgba(251, 191, 36, 0.25); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: #fbbf24;">
+                    <i class="fa-solid fa-mobile-screen"></i> 3.5단계: 하이라이트 숏폼 (9:16 · 60초 미만)
+                  </span>
+                  <span id="lunaShortsInfo" style="font-size: 0.74rem; color: var(--text-muted);">아직 추출 전</span>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px;">
+                  <select id="lunaShortsDurationSelect" class="form-select" style="width: auto; padding: 4px 8px; font-size: 0.8rem;">
+                    <option value="30">30초</option>
+                    <option value="45" selected>45초</option>
+                    <option value="59">59초</option>
+                  </select>
+                  <input type="number" id="lunaShortsStartInput" class="form-control" min="0" step="1" placeholder="시작 초 (비우면 자동)" style="width: 150px; font-size: 0.8rem; padding: 4px 8px;">
+                  <button type="button" id="btnLunaShortsExtract" class="btn btn-xs btn-outline" style="border-color: #fbbf24; color: #fbbf24;">
+                    <span class="btn-text"><i class="fa-solid fa-scissors"></i> 하이라이트 추출</span>
+                    <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 음량 분석 중...</span>
+                  </button>
+                  <button type="button" id="btnLunaShortsRender" class="btn btn-xs btn-primary" style="background: #d97706; border: none;" disabled>
+                    <span class="btn-text"><i class="fa-solid fa-film"></i> 9:16 렌더</span>
+                    <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 렌더링 중...</span>
+                  </button>
+                </div>
+                <div id="lunaShortsPlayerBox" style="display: none; text-align: center;">
+                  <video id="lunaShortsPlayer" controls style="height: 320px; aspect-ratio: 9 / 16; border-radius: 6px; background: #000; border: 1px solid var(--border-color);"></video>
+                  <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+                    <a id="lunaShortsDownloadBtn" href="#" download class="btn btn-xs btn-outline"><i class="fa-solid fa-download"></i> 숏폼 MP4 다운로드</a>
+                  </div>
+                </div>
+              </div>
+
               <!-- 3. 루나 공식 유튜브 업로드 섹션 -->
               <div style="background: rgba(244, 63, 94, 0.05); border: 1px solid rgba(244, 63, 94, 0.2); border-radius: 8px; padding: 14px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
@@ -1537,6 +1569,11 @@
                   <textarea id="lunaPinnedCommentInput" class="form-control" rows="3" style="font-size: 0.8rem; background: rgba(0,0,0,0.5); border-color: rgba(168,85,247,0.4); color: #fff; line-height: 1.4; resize: vertical;" placeholder="업로드 즉시 최상단에 자동 등록할 고정 댓글을 확인하거나 수정하세요."></textarea>
                   <div id="lunaPinnedCommentPreview" style="display: none;"></div>
                 </div>
+
+                <label style="display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: #fbbf24; margin-bottom: 10px; cursor: pointer;">
+                  <input type="checkbox" id="lunaWithShortsCheck" style="width: 16px; height: 16px; accent-color: #fbbf24;">
+                  <span><i class="fa-solid fa-mobile-screen"></i> 하이라이트 숏폼 함께 업로드 — 롱폼 10분 뒤 공개, 설명·고정 댓글에 풀버전 링크 자동 삽입 <span style="color: var(--text-muted);">(업로드 할당량 +1,600 유닛, 하루 10,000)</span></span>
+                </label>
 
                 <button type="button" id="btnUploadLunaYt" class="btn btn-primary btn-block" style="background: #e11d48; border: none;">
                   <span class="btn-text"><i class="fa-solid fa-cloud-arrow-up"></i> 🚀 루나 유튜브 채널에 즉시/예약 업로드 & 플레이리스트 추가</span>

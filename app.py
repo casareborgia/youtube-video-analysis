@@ -1170,6 +1170,15 @@ class LunaUploadRequest(BaseModel):
     publish_at: Optional[str] = None
     playlist_id: Optional[str] = None
     pinned_comment: Optional[str] = None
+    with_shorts: Optional[bool] = False          # 하이라이트 숏폼 연계 업로드 (기본 꺼짐, 업로드 할당량 2배)
+
+class LunaShortsExtractRequest(BaseModel):
+    track_id: str
+    duration: Optional[int] = 45                 # 15~59초
+    start_override: Optional[float] = None       # 수동 시작 초 (None 이면 에너지 분석)
+
+class LunaShortsRenderRequest(BaseModel):
+    track_id: str
 
 class CreatePlaylistRequest(BaseModel):
     title: str
@@ -1348,11 +1357,34 @@ async def upload_luna_music_video(req: LunaUploadRequest):
             privacy_status=req.privacy_status or "public",
             publish_at=req.publish_at,
             playlist_id=req.playlist_id,
-            pinned_comment=req.pinned_comment
+            pinned_comment=req.pinned_comment,
+            with_shorts=bool(req.with_shorts),
         )
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"루나 유튜브 업로드 실패: {e}")
+
+@app.post("/api/luna/shorts/extract")
+async def extract_luna_shorts_highlight(req: LunaShortsExtractRequest):
+    """완곡(베가 마스터본)에서 하이라이트 구간을 자동/수동으로 잘라 숏폼용 음원을 만든다 (ffmpeg 전용)"""
+    track = luna_engine.load_track(req.track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
+    try:
+        return luna_engine.extract_audio_highlight(track, duration=req.duration or 45, start_override=req.start_override)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"하이라이트 추출 실패: {e}")
+
+@app.post("/api/luna/shorts/render")
+async def render_luna_shorts_video(req: LunaShortsRenderRequest):
+    """하이라이트 음원 + 앨범 커버로 1080x1920 세로 숏폼 영상 렌더링"""
+    track = luna_engine.load_track(req.track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
+    try:
+        return luna_engine.render_luna_shorts_video(track)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"숏폼 렌더링 실패: {e}")
 
 @app.get("/api/luna/history")
 async def get_luna_history():
