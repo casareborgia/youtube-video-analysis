@@ -177,7 +177,7 @@ Phase A 머지 후 착수. **Veo·춘식 의존 없음, FFmpeg 만 사용.**
 - `POST /api/luna/shorts/extract` `{track_id, duration?, start_override?}` → B-1
 - `POST /api/luna/shorts/render` `{track_id}` → B-2
 - `POST /api/luna/upload` 기존 요청 모델에 `with_shorts: bool = False` 추가
-- `GET /api/luna/tracks/{id}` 응답에 `shorts` 블록 포함
+- `GET /api/luna/history`(`list_tracks`) 응답에 `shorts` 블록 포함 (`/api/luna/tracks/{id}` 는 원래 없는 라우트라 history 로 대체)
 
 #### B-6. UI (6단계 루나 탭)
 
@@ -197,11 +197,11 @@ Phase A 머지 후 착수. **Veo·춘식 의존 없음, FFmpeg 만 사용.**
 
 #### B-8. 수용 기준
 
-- [ ] 외부 API 호출 없이 추출·렌더 가능 (FFmpeg 만)
-- [ ] 숏폼 길이 < 60초, 1080x1920, 음원은 베가 마스터본
-- [ ] `with_shorts` 기본값 False 로 기존 업로드 흐름 불변
-- [ ] 숏폼 설명·고정 댓글에 롱폼 링크 자동 삽입, 숏폼 공개 시각 ≥ 롱폼
-- [ ] 신규·기존 테스트 전체 통과
+- [x] 외부 API 호출 없이 추출·렌더 가능 (FFmpeg 만). 참고: Homebrew ffmpeg 에 `drawtext`(libfreetype) 가 없어 텍스트 레이어는 생략되고 파형+블러 배경으로 렌더됨 (롱폼도 동일한 기존 제약).
+- [x] 숏폼 길이 < 60초, 1080x1920, 음원은 베가 마스터본 (ffprobe 로 검증하는 테스트 포함)
+- [x] `with_shorts` 기본값 False 로 기존 업로드 흐름 불변
+- [x] 숏폼 설명·고정 댓글에 롱폼 링크 자동 삽입, 숏폼 공개 시각 = 롱폼 +10분
+- [x] 신규 18개(`tests/test_luna_shorts.py`) + 루나·베가·레오 기존 91개 통과. 실제 유튜브 2건 연속 업로드는 머지 후 수동 확인.
 
 ---
 

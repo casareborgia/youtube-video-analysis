@@ -1023,6 +1023,248 @@ def sanitize_pinned_comment(comment_text: str, default_cta: str = "가장 좋았
     return text.strip()
 
 
+# ── 4b. 하이라이트 숏폼 (9:16) — Phase B ────────────────────────────────
+# 외부 API 없이 ffmpeg 만 사용한다. 입력은 항상 베가 마스터 결과(audio.mp3)이고 audio_raw 는 건드리지 않는다.
+
+SHORTS_DEFAULT_DURATION = 45
+SHORTS_MIN_DURATION = 15
+SHORTS_MAX_DURATION = 59          # 유튜브 쇼츠 판정 상한(60초 미만)
+SHORTS_HEAD_SKIP = 10             # 인트로 페이드 구간 제외
+SHORTS_TAIL_SKIP = 15             # 아웃트로 페이드 구간 제외
+SHORTS_FALLBACK_START = 45        # 측정 실패 시 0:45 부터 (1절 후렴 통계적 위치)
+SHORTS_WIDTH, SHORTS_HEIGHT = 1080, 1920
+LONGFORM_URL_PLACEHOLDER = "{longform_url}"
+PLAYLIST_URL_PLACEHOLDER = "{playlist_url}"
+
+_EBUR_LINE_RE = re.compile(r"t:\s*([0-9.]+)\s+.*?M:\s*(-?[0-9.]+|-inf)")
+
+
+def _measure_loudness_timeline(audio_path: str) -> list:
+    """ffmpeg ebur128 로 1초 단위 평균 순간 음량(M, LUFS) 목록을 만든다. index = 초."""
+    cmd = ["ffmpeg", "-hide_banner", "-nostats", "-i", audio_path, "-af", "ebur128=peak=none", "-f", "null", "-"]
+    proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"ebur128 측정 실패: {proc.stderr[-200:]}")
+    buckets = {}
+    for line in proc.stderr.splitlines():
+        m = _EBUR_LINE_RE.search(line)
+        if not m:
+            continue
+        sec = int(float(m.group(1)))
+        val = -70.0 if m.group(2) == "-inf" else float(m.group(2))
+        buckets.setdefault(sec, []).append(val)
+    if not buckets:
+        raise RuntimeError("ebur128 출력에서 음량 값을 읽지 못했습니다.")
+    n = max(buckets) + 1
+    return [sum(buckets[i]) / len(buckets[i]) if i in buckets else -70.0 for i in range(n)]
+
+
+def pick_highlight_window(levels, duration, total_seconds, head_skip=SHORTS_HEAD_SKIP, tail_skip=SHORTS_TAIL_SKIP):
+    """1초 단위 음량 목록에서 평균 음량이 가장 높은 `duration` 초 구간의 시작 초를 고른다.
+
+    시작·끝 페이드 구간은 후보에서 뺀다. 유효한 후보가 없을 만큼 곡이 짧으면 None 을 돌려준다.
+    """
+    duration = int(duration)
+    total = int(min(total_seconds, len(levels)))
+    lo = head_skip
+    hi = total - tail_skip - duration  # 마지막 허용 시작 초
+    if hi < lo:
+        return None
+    best_start, best_score = None, None
+    window_sum = sum(levels[lo:lo + duration])
+    for start in range(lo, hi + 1):
+        if start > lo:
+            window_sum += levels[start + duration - 1] - levels[start - 1]
+        if best_score is None or window_sum > best_score:
+            best_start, best_score = start, window_sum
+    return best_start
+
+
+def extract_audio_highlight(track_data, duration=SHORTS_DEFAULT_DURATION, start_override=None, progress_cb=None):
+    """완곡(베가 마스터본)에서 하이라이트 구간을 잘라 audio_shorts.mp3 로 저장한다."""
+    def step(pct, msg):
+        if progress_cb:
+            progress_cb("shorts_extract", msg, pct)
+        print(f"[{pct}%] [LunaShorts] {msg}")
+
+    track_id = track_data.get("track_id")
+    if not track_id:
+        raise ValueError("유효한 트랙 ID가 없습니다.")
+    t_dir = os.path.join(LUNA_DIR, track_id)
+    audio_path = track_data.get("audio_file") or os.path.join(t_dir, "audio.mp3")
+    if not os.path.exists(audio_path):
+        raise FileNotFoundError(f"음원 파일을 찾을 수 없습니다: {audio_path}")
+
+    duration = max(SHORTS_MIN_DURATION, min(SHORTS_MAX_DURATION, int(duration or SHORTS_DEFAULT_DURATION)))
+    total = float(producer.audio_duration(audio_path) or track_data.get("duration_seconds") or 180)
+    latest_start = max(0.0, total - duration)
+
+    if start_override is not None:
+        start = max(0.0, min(float(start_override), latest_start))
+        method = "manual"
+    else:
+        step(10, "구간별 음량 측정 중 (ebur128)...")
+        try:
+            levels = _measure_loudness_timeline(audio_path)
+            picked = pick_highlight_window(levels, duration, total)
+            if picked is None:
+                raise RuntimeError("곡이 짧아 페이드 제외 구간 안에서 후보를 찾지 못함")
+            start, method = float(picked), "energy"
+        except Exception as e:
+            print(f"[LunaShorts] 에너지 분석 실패 → 기본 구간 사용: {e}")
+            start, method = float(min(SHORTS_FALLBACK_START, latest_start)), "fallback"
+
+    end = min(start + duration, total)
+    clip_len = max(1.0, end - start)
+    out_path = os.path.join(t_dir, "audio_shorts.mp3")
+    step(40, f"하이라이트 {start:.0f}s–{end:.0f}s 추출 ({method})...")
+    fade_out_at = max(0.0, clip_len - 2)
+    cmd = [
+        "ffmpeg", "-y", "-ss", f"{start:.3f}", "-t", f"{clip_len:.3f}", "-i", audio_path,
+        "-af", f"afade=t=in:st=0:d=1,afade=t=out:st={fade_out_at:.3f}:d=2",
+        "-c:a", "libmp3lame", "-b:a", "192k", out_path,
+    ]
+    proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    if proc.returncode != 0:
+        raise RuntimeError(f"하이라이트 추출 실패: {proc.stderr[-300:]}")
+
+    shorts = dict(track_data.get("shorts") or {})
+    if shorts.get("video_file"):
+        shorts["video_stale"] = True  # 구간이 바뀌었으니 이전 숏폼 영상은 다시 렌더해야 한다
+    shorts.update({
+        "start": round(start, 2), "end": round(end, 2), "duration": round(clip_len, 2), "method": method,
+        "audio_file": out_path, "audio_url": f"/data/luna_music/{track_id}/audio_shorts.mp3",
+        "extracted_at": time.time(),
+    })
+    track_data["shorts"] = shorts
+    save_track(track_data)
+    step(100, "하이라이트 음원 준비 완료")
+    return track_data
+
+
+def waveform_overlay_filter(width, height, color="0xa5b4fc@0.85"):
+    """오디오 파형 바 필터 조각. 숏폼이 쓰고, 롱폼에도 같은 모양으로 붙일 수 있게 분리해 둔다."""
+    return f"showwaves=s={width}x{height}:mode=cline:colors={color}:scale=sqrt:rate=25"
+
+
+def _shorts_filter_graph(title_safe, clip_len, with_text=True, with_wave=True):
+    w, h = SHORTS_WIDTH, SHORTS_HEIGHT
+    fg_w = int(w * 0.85) // 2 * 2
+    parts = [
+        f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},boxblur=24:2,eq=brightness=-0.22[bg]",
+        f"[0:v]scale={fg_w}:-2[fg]",
+        f"[bg][fg]overlay=(W-w)/2:(H-h)/2-90[base]",
+    ]
+    last = "base"
+    if with_wave:
+        parts.append(f"[1:a]{waveform_overlay_filter(w, 180)}[wave]")
+        parts.append(f"[{last}][wave]overlay=0:H-h-170[wv]")
+        last = "wv"
+    if with_text:
+        parts.append(
+            f"[{last}]drawtext=text='AGENT LUNA':fontcolor=white@0.9:fontsize={h//30}:x=(w-text_w)/2:y=h*0.11:shadowcolor=black@0.6:shadowx=2:shadowy=2,"
+            f"drawtext=text='{title_safe}':fontcolor=0xa5b4fc@0.95:fontsize={h//42}:x=(w-text_w)/2:y=h*0.15:shadowcolor=black@0.6:shadowx=2:shadowy=2[tx]"
+        )
+        last = "tx"
+    parts.append(f"[{last}]fade=t=in:st=0:d=1,fade=t=out:st={max(clip_len-1.5, 0.5):.2f}:d=1.5,format=yuv420p[v]")
+    return ";".join(parts)
+
+
+def render_luna_shorts_video(track_data, progress_cb=None):
+    """하이라이트 음원 + 앨범 커버로 1080x1920 세로 숏폼 영상을 만든다 (video_shorts.mp4)."""
+    def step(pct, msg):
+        if progress_cb:
+            progress_cb("shorts_render", msg, pct)
+        print(f"[{pct}%] [LunaShorts] {msg}")
+
+    track_id = track_data.get("track_id")
+    if not track_id:
+        raise ValueError("유효한 트랙 ID가 없습니다.")
+    t_dir = os.path.join(LUNA_DIR, track_id)
+    shorts = dict(track_data.get("shorts") or {})
+    audio_path = shorts.get("audio_file") or os.path.join(t_dir, "audio_shorts.mp3")
+    cover_path = track_data.get("cover_file") or os.path.join(t_dir, "cover.jpg")
+    if not os.path.exists(audio_path):
+        raise FileNotFoundError("하이라이트 음원이 없습니다. 먼저 [하이라이트 추출]을 실행해주세요.")
+    if not os.path.exists(cover_path):
+        raise FileNotFoundError(f"앨범 커버 이미지를 찾을 수 없습니다: {cover_path}")
+
+    clip_len = float(producer.audio_duration(audio_path) or shorts.get("duration") or SHORTS_DEFAULT_DURATION)
+    clip_len = min(clip_len, SHORTS_MAX_DURATION)  # 쇼츠 판정 보장
+    out_path = os.path.join(t_dir, "video_shorts.mp4")
+    title_safe = re.sub(r"['\":]", "", track_data.get("title") or "Agent Luna")
+
+    def run(with_text, with_wave):
+        cmd = [
+            "ffmpeg", "-y", "-loop", "1", "-i", cover_path, "-i", audio_path,
+            "-filter_complex", _shorts_filter_graph(title_safe, clip_len, with_text, with_wave),
+            "-map", "[v]", "-map", "1:a",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-r", "25",
+            "-c:a", "aac", "-b:a", "192k", "-t", f"{clip_len:.3f}", out_path,
+        ]
+        return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+
+    step(20, f"9:16 숏폼 렌더링 시작 ({clip_len:.1f}초)...")
+    proc = run(True, True)
+    if proc.returncode != 0:
+        # 폰트(drawtext) 문제가 흔하므로 롱폼과 같은 방식으로 단순 모드 폴백
+        print(f"[LunaShorts] 필터 경고 -> 단순 모드 재시도: {proc.stderr[-150:]}")
+        proc = run(False, True)
+        if proc.returncode != 0:
+            proc = run(False, False)
+            if proc.returncode != 0:
+                raise RuntimeError(f"숏폼 렌더링 실패: {proc.stderr[-300:]}")
+
+    shorts["video_file"] = out_path
+    shorts["video_url"] = f"/data/luna_music/{track_id}/video_shorts.mp4"
+    shorts["rendered_at"] = time.time()
+    shorts.pop("video_stale", None)
+    track_data["shorts"] = shorts
+    save_track(track_data)
+    step(100, "숏폼 영상 렌더링 완성!")
+    return track_data
+
+
+def build_luna_shorts_metadata(track_data, base_meta):
+    """숏폼용 제목·설명·태그·고정 댓글. 롱폼 링크는 업로드 시점에 플레이스홀더를 치환한다."""
+    title = (track_data.get("title") or "Agent Luna").strip()
+    suffix = " (Highlight) #Shorts"
+    yt_title = title[: 100 - len(suffix)].rstrip() + suffix
+
+    base_desc = base_meta.get("youtube_description") or track_data.get("story") or ""
+    paragraphs = [p.strip() for p in base_desc.split("\n\n") if p.strip() and not p.strip().startswith("[Lyrics") and not p.strip().startswith("#")]
+    genre_tag = re.sub(r"[^0-9A-Za-z가-힣]", "", (track_data.get("genre") or "").split("/")[0]) or "Music"
+    desc = "\n\n".join(
+        [f"🎧 3분 풀버전 👉 {LONGFORM_URL_PLACEHOLDER}"] + paragraphs[:2] + [f"#Shorts #AgentLuna #{genre_tag} #에이전트루나 #AI음악"]
+    )
+
+    tags = list(dict.fromkeys((base_meta.get("youtube_tags") or []) + ["Shorts", "YouTubeShorts"]))[:15]
+    pinned = sanitize_pinned_comment(
+        f"🎧 3분 풀버전은 여기서 👉 {LONGFORM_URL_PLACEHOLDER} {PLAYLIST_URL_PLACEHOLDER}".strip()
+    )
+    return {"youtube_title": yt_title, "youtube_description": desc, "youtube_tags": tags, "pinned_comment": pinned}
+
+
+def _fill_shorts_placeholders(text, longform_video_id, playlist_id=None):
+    longform_url = f"https://youtu.be/{longform_video_id}"
+    playlist_url = f"https://www.youtube.com/playlist?list={playlist_id}" if playlist_id else ""
+    out = (text or "").replace(LONGFORM_URL_PLACEHOLDER, longform_url)
+    out = out.replace(PLAYLIST_URL_PLACEHOLDER, (f"· 재생목록 👉 {playlist_url}" if playlist_url else ""))
+    return re.sub(r"[ \t]{2,}", " ", out).strip()
+
+
+def _shift_publish_at(publish_at, minutes=10):
+    """롱폼 예약 시각 + N분. 파싱 실패 시 원본 그대로."""
+    if not publish_at:
+        return None
+    try:
+        from datetime import datetime, timedelta
+        dt = datetime.fromisoformat(str(publish_at).replace("Z", "+00:00"))
+        return (dt + timedelta(minutes=minutes)).isoformat()
+    except Exception:
+        return publish_at
+
+
 def build_luna_metadata(track_data):
     """
     에이전트 레오의 유튜브 알고리즘 최적화 공식을 결합하여,
@@ -1154,7 +1396,7 @@ def build_luna_metadata(track_data):
     custom_tags = track_data.get("tags") or []
     merged_tags = list(dict.fromkeys(base_tags + custom_tags))[:15]
 
-    return {
+    meta = {
         "youtube_title": yt_title,
         "youtube_description": yt_desc,
         "youtube_tags": merged_tags,
@@ -1162,6 +1404,8 @@ def build_luna_metadata(track_data):
         "category_id": 10,  # 10: 음악 (Music)
         "privacy_status": "public"
     }
+    meta["shorts"] = build_luna_shorts_metadata(track_data, meta)
+    return meta
 
 
 # ── 6. 이력 저장 및 관리 ────────────────────────────────────────────────
@@ -1220,6 +1464,8 @@ def list_tracks():
                 # 보컬 판정 근거 (A-3). 구 트랙에는 없으므로 None 그대로 내려준다
                 "vocal_mode": d.get("vocal_mode"),
                 "vocal_decision": d.get("vocal_decision"),
+                # 하이라이트 숏폼 상태 (Phase B)
+                "shorts": d.get("shorts"),
                 # 사운드 엔지니어 베가 — 보관함에서 선택해도 마스터링 패널·A/B 비교가 보이도록 함께 내려준다
                 "mastering": d.get("mastering"),
                 "audio_raw_url": d.get("audio_raw_url"),
@@ -1331,11 +1577,13 @@ def recommend_playlist_for_track(track, playlists):
     }
 
 
-def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, publish_at=None, playlist_id=None, pinned_comment=None):
+def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, publish_at=None, playlist_id=None, pinned_comment=None, with_shorts=False):
     """
     렌더링된 루나 음악 영상을 유튜브 채널로 업로드하고,
     레오의 인게이지먼트 최적화 고정 댓글(Pinned Comment)을 자동으로 게시하며,
     지정된 재생목록(Playlist)에 자동으로 추가합니다.
+    with_shorts=True 면 롱폼 업로드 성공 직후 하이라이트 숏폼을 이어서 올리고 설명·고정 댓글에 롱폼 링크를 넣는다.
+    롱폼이 실패하면 숏폼은 시도하지 않고, 숏폼이 실패해도 롱폼 결과는 그대로 돌려준다.
     """
     def step(pct, msg):
         if progress_cb:
@@ -1395,10 +1643,26 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, 
     track["playlist_added"] = result.get("playlist_added", False)
     save_track(track)
 
-    pl_msg = f" & 재생목록 추가 완료" if result.get("playlist_added") else ""
-    step(100, f"루나 유튜브 채널 업로드 및 레오 고정댓글{pl_msg}! ({result.get('url')})")
-    
     vid = result.get("video_id")
+    warnings = list(result.get("warnings", []))
+
+    # 숏폼 연계 업로드 — 롱폼 video_id 가 있어야만 링크를 넣을 수 있으므로 반드시 롱폼 뒤에 온다
+    shorts_result = None
+    if with_shorts and vid:
+        try:
+            shorts_result = _upload_luna_shorts(track, meta, vid, privacy_status, publish_at, playlist_id, step)
+        except Exception as e:
+            shorts = dict(track.get("shorts") or {})
+            shorts["upload_error"] = str(e)
+            track["shorts"] = shorts
+            save_track(track)
+            warnings.append(f"숏폼 업로드 실패 (롱폼은 정상): {e}")
+            print(f"[LunaUpload] 숏폼 업로드 실패 (롱폼은 정상): {e}")
+
+    pl_msg = f" & 재생목록 추가 완료" if result.get("playlist_added") else ""
+    sh_msg = " & 숏폼 업로드 완료" if shorts_result else ""
+    step(100, f"루나 유튜브 채널 업로드 및 레오 고정댓글{pl_msg}{sh_msg}! ({result.get('url')})")
+    
     studio_comment_url = f"https://studio.youtube.com/video/{vid}/comments" if vid else ""
     comment_notice = (
         "댓글이 등록되었습니다. 유튜브 정책상 '상단 고정'은 유튜브 스튜디오에서 [고정] 버튼을 1회 클릭해주세요."
@@ -1417,6 +1681,45 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, 
         "publish_at": result.get("publish_at"),
         "playlist_id": playlist_id,
         "playlist_added": result.get("playlist_added", False),
-        "warnings": result.get("warnings", [])
+        "warnings": warnings,
+        "shorts": shorts_result,
     }
+
+
+def _upload_luna_shorts(track, longform_meta, longform_video_id, privacy_status, publish_at, playlist_id, step):
+    """하이라이트 숏폼 업로드. 롱폼 링크 치환, 공개 시각은 롱폼 +10분 (롱폼보다 먼저 공개되지 않도록)."""
+    track_id = track.get("track_id")
+    shorts = dict(track.get("shorts") or {})
+    video_path = shorts.get("video_file") or os.path.join(LUNA_DIR, track_id, "video_shorts.mp4")
+    if not os.path.exists(video_path):
+        raise FileNotFoundError("숏폼 영상이 없습니다. 먼저 [하이라이트 추출] → [9:16 렌더]를 실행해주세요.")
+
+    sm = longform_meta.get("shorts") or build_luna_shorts_metadata(track, longform_meta)
+    desc = _fill_shorts_placeholders(sm["youtube_description"], longform_video_id, playlist_id)
+    pinned = sanitize_pinned_comment(_fill_shorts_placeholders(sm["pinned_comment"], longform_video_id, playlist_id))
+    shorts_publish_at = _shift_publish_at(publish_at, minutes=10)
+
+    step(92, f"하이라이트 숏폼 업로드 중: '{sm['youtube_title']}'...")
+    res = uploader.upload_video(
+        video_path=video_path,
+        title=sm["youtube_title"],
+        description=desc,
+        tags=sm["youtube_tags"],
+        category_id=10,
+        privacy=privacy_status,
+        publish_at=shorts_publish_at,
+        thumbnail_path=None,  # 세로 영상엔 16:9 커버 썸네일이 맞지 않아 유튜브 자동 썸네일 사용
+        pinned_comment=pinned,
+        playlist_id=playlist_id,
+    )
+    shorts["youtube"] = {
+        "video_id": res.get("video_id"), "url": res.get("url"),
+        "uploaded_at": time.time(), "publish_at": res.get("publish_at"),
+        "comment_posted": res.get("comment_posted", False), "longform_video_id": longform_video_id,
+    }
+    shorts.pop("upload_error", None)
+    track["shorts"] = shorts
+    save_track(track)
+    return {"video_id": res.get("video_id"), "url": res.get("url"), "title": sm["youtube_title"],
+            "publish_at": res.get("publish_at"), "comment_posted": res.get("comment_posted", False)}
 

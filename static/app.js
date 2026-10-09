@@ -3379,6 +3379,95 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // AI 플레이리스트 추천 업데이트
     updateLunaPlaylistRecommendation(track);
+    renderLunaShortsPanel(track);
+  }
+
+  // ── 3.5단계: 하이라이트 숏폼 (Phase B) ──
+  const lunaShortsPanel = document.getElementById('lunaShortsPanel');
+  const lunaShortsInfo = document.getElementById('lunaShortsInfo');
+  const lunaShortsPlayerBox = document.getElementById('lunaShortsPlayerBox');
+  const lunaShortsPlayer = document.getElementById('lunaShortsPlayer');
+  const lunaShortsDownloadBtn = document.getElementById('lunaShortsDownloadBtn');
+  const btnLunaShortsExtract = document.getElementById('btnLunaShortsExtract');
+  const btnLunaShortsRender = document.getElementById('btnLunaShortsRender');
+  const lunaWithShortsCheck = document.getElementById('lunaWithShortsCheck');
+
+  const fmtSec = (s) => { const n = Math.max(0, Math.round(Number(s) || 0)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`; };
+  const shortsMethodLabel = { energy: '에너지 분석', fallback: '기본 구간', manual: '수동 지정' };
+
+  function renderLunaShortsPanel(track) {
+    if (!lunaShortsPanel) return;
+    const hasAudio = !!(track && (track.audio_url || track.audio_file));
+    lunaShortsPanel.style.display = hasAudio ? 'block' : 'none';
+    if (!hasAudio) return;
+    const sh = track.shorts || null;
+    if (sh && sh.audio_file) {
+      const stale = sh.video_stale ? ' · <span style="color:#fbbf24;">구간 변경됨 — 다시 렌더 필요</span>' : '';
+      lunaShortsInfo.innerHTML = `구간 ${fmtSec(sh.start)}–${fmtSec(sh.end)} (${shortsMethodLabel[sh.method] || sh.method})${stale}`;
+      if (btnLunaShortsRender) btnLunaShortsRender.disabled = false;
+    } else {
+      lunaShortsInfo.textContent = '아직 추출 전';
+      if (btnLunaShortsRender) btnLunaShortsRender.disabled = true;
+    }
+    if (sh && sh.video_url && !sh.video_stale) {
+      if (lunaShortsPlayerBox) lunaShortsPlayerBox.style.display = 'block';
+      if (lunaShortsPlayer) { lunaShortsPlayer.src = sh.video_url; lunaShortsPlayer.load(); }
+      if (lunaShortsDownloadBtn) lunaShortsDownloadBtn.href = sh.video_url;
+    } else if (lunaShortsPlayerBox) {
+      lunaShortsPlayerBox.style.display = 'none';
+    }
+    // 업로드 결과에 숏폼 링크 덧붙이기
+    if (sh && sh.youtube && sh.youtube.video_id && lunaUploadResultBadge && lunaUploadResultBadge.style.display !== 'none') {
+      lunaUploadResultBadge.insertAdjacentHTML('beforeend', `
+        <div style="margin-top:6px;">
+          <a href="https://youtu.be/${escapeHtml(sh.youtube.video_id)}" target="_blank" class="badge" style="font-size:12px; padding:6px 12px; text-decoration:none; background:rgba(251,191,36,0.15); color:#fbbf24; border:1px solid rgba(251,191,36,0.35);">
+            <i class="fa-solid fa-mobile-screen"></i> 숏폼 업로드 완료 (youtu.be/${escapeHtml(sh.youtube.video_id)})
+          </a>
+        </div>`);
+    } else if (sh && sh.upload_error && lunaUploadResultBadge && lunaUploadResultBadge.style.display !== 'none') {
+      lunaUploadResultBadge.insertAdjacentHTML('beforeend', `<div style="margin-top:6px; font-size:0.76rem; color:#fca5a5;">숏폼 업로드 실패: ${escapeHtml(sh.upload_error)}</div>`);
+    }
+  }
+
+  async function runShortsAction(btn, url, body, okMsg) {
+    if (!currentLunaTrack || !currentLunaTrack.track_id) { showAlert('먼저 음원을 생성하거나 보관함에서 트랙을 선택해주세요.', 'error'); return; }
+    btn.disabled = true;
+    btn.querySelector('.btn-text').style.display = 'none';
+    btn.querySelector('.spinner').style.display = 'inline-block';
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ track_id: currentLunaTrack.track_id, ...body }) });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail || '요청 실패'); }
+      const updated = await res.json();
+      currentLunaTrack = updated;
+      renderLunaTrackView(updated);
+      loadLunaHistory();
+      showAlert(okMsg, 'success');
+    } catch (err) {
+      showAlert(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.querySelector('.btn-text').style.display = 'inline-block';
+      btn.querySelector('.spinner').style.display = 'none';
+    }
+  }
+
+  if (btnLunaShortsExtract) {
+    btnLunaShortsExtract.addEventListener('click', () => {
+      const duration = parseInt(document.getElementById('lunaShortsDurationSelect')?.value || '45', 10);
+      const startRaw = document.getElementById('lunaShortsStartInput')?.value;
+      const body = { duration };
+      if (startRaw !== undefined && startRaw !== '') body.start_override = Number(startRaw);
+      runShortsAction(btnLunaShortsExtract, '/api/luna/shorts/extract', body, '하이라이트 구간을 추출했습니다. 이제 [9:16 렌더]를 누르세요.');
+    });
+  }
+  if (btnLunaShortsRender) {
+    btnLunaShortsRender.addEventListener('click', () => {
+      runShortsAction(btnLunaShortsRender, '/api/luna/shorts/render', {}, '9:16 숏폼 영상 렌더링이 완료되었습니다!');
+    });
+  }
+  if (lunaWithShortsCheck) {
+    lunaWithShortsCheck.checked = lsGet('luna_with_shorts') === 'true';
+    lunaWithShortsCheck.addEventListener('change', () => lsSet('luna_with_shorts', lunaWithShortsCheck.checked ? 'true' : 'false'));
   }
 
   // 2. 비디오 렌더링
@@ -3470,6 +3559,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const pinnedInput = document.getElementById('lunaPinnedCommentInput');
       const customPinnedComment = pinnedInput ? pinnedInput.value.trim() : '';
 
+      const withShorts = !!(lunaWithShortsCheck && lunaWithShortsCheck.checked);
+      if (withShorts && !(currentLunaTrack.shorts && currentLunaTrack.shorts.video_url && !currentLunaTrack.shorts.video_stale)) {
+        showAlert('숏폼 함께 업로드가 켜져 있지만 렌더된 숏폼 영상이 없습니다. [하이라이트 추출] → [9:16 렌더]를 먼저 하거나 체크를 해제해주세요.', 'error');
+        return;
+      }
+
       btnUploadLunaYt.disabled = true;
       btnUploadLunaYt.querySelector('.btn-text').style.display = 'none';
       btnUploadLunaYt.querySelector('.spinner').style.display = 'inline-block';
@@ -3487,7 +3582,8 @@ document.addEventListener('DOMContentLoaded', () => {
             privacy_status: effectivePrivacy,
             publish_at: publishAt,
             playlist_id: playlistId || null,
-            pinned_comment: customPinnedComment || null
+            pinned_comment: customPinnedComment || null,
+            with_shorts: withShorts
           })
         });
 
@@ -3499,10 +3595,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await res.json();
         const schedMsg = publishAt ? ` (예약 공개 일시: ${new Date(publishAt).toLocaleString('ko-KR')})` : '';
         const plMsg = data.playlist_added ? ' & 재생목록 추가 완료' : '';
-        const commentMsg = data.comment_posted 
-          ? '\n💬 레오의 고정 댓글이 등록되었습니다! (유튜브 정책상 상단 고정은 스튜디오에서 [고정] 1회 클릭 필요)' 
+        const commentMsg = data.comment_posted
+          ? '\n💬 레오의 고정 댓글이 등록되었습니다! (유튜브 정책상 상단 고정은 스튜디오에서 [고정] 1회 클릭 필요)'
           : '';
-        showAlert(`루나 유튜브 채널에 성공적으로 업로드되었습니다!${schedMsg}${plMsg}${commentMsg}`, 'success');
+        const shortsMsg = data.shorts && data.shorts.url
+          ? `\n📱 숏폼도 업로드됐습니다: ${data.shorts.url}`
+          : (withShorts ? '\n⚠️ 숏폼 업로드는 실패했습니다 (롱폼은 정상). 아래 경고를 확인하세요.' : '');
+        showAlert(`루나 유튜브 채널에 성공적으로 업로드되었습니다!${schedMsg}${plMsg}${commentMsg}${shortsMsg}`, 'success');
         if (currentLunaTrack) {
           currentLunaTrack.uploaded_video_id = data.video_id;
           currentLunaTrack.uploaded_url = data.url;
@@ -3511,6 +3610,9 @@ document.addEventListener('DOMContentLoaded', () => {
           currentLunaTrack.playlist_added = data.playlist_added;
           currentLunaTrack.comment_posted = data.comment_posted;
           currentLunaTrack.studio_comment_url = data.studio_comment_url;
+          if (data.shorts && data.shorts.video_id) {
+            currentLunaTrack.shorts = { ...(currentLunaTrack.shorts || {}), youtube: { video_id: data.shorts.video_id, url: data.shorts.url } };
+          }
         }
         renderLunaTrackView(currentLunaTrack);
         loadLunaHistory();
