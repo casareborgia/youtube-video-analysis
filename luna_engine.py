@@ -962,6 +962,7 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
     track_data["video_url"] = f"/data/luna_music/{track_id}/video.mp4"
     track_data.pop("video_stale", None)  # 최신 마스터로 다시 렌더했으므로 경고 해제
     track_data["rendered_at"] = time.time()
+    track_data["video_source"] = "cover"
     save_track(track_data)
 
     step(100, "에이전트 루나 음악 영상 렌더링 완성!")
@@ -1466,6 +1467,8 @@ def list_tracks():
                 "vocal_decision": d.get("vocal_decision"),
                 # 하이라이트 숏폼 상태 (Phase B)
                 "shorts": d.get("shorts"),
+                "bga": d.get("bga"),
+                "video_source": d.get("video_source"),
                 # 사운드 엔지니어 베가 — 보관함에서 선택해도 마스터링 패널·A/B 비교가 보이도록 함께 내려준다
                 "mastering": d.get("mastering"),
                 "audio_raw_url": d.get("audio_raw_url"),
