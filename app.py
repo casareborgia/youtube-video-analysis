@@ -1200,6 +1200,9 @@ class LunaBgaRenderRequest(BaseModel):
     with_waveform: Optional[bool] = False
     upscale: Optional[bool] = True
 
+class LunaBgaRenderRemotionRequest(BaseModel):
+    track_id: str
+
 class CreatePlaylistRequest(BaseModel):
     title: str
     description: Optional[str] = ""
@@ -1487,6 +1490,25 @@ async def get_luna_bga_usage():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"BGA 사용량 조회 실패: {e}")
+
+@app.post("/api/luna/bga/render-remotion")
+async def render_luna_bga_remotion(req: LunaBgaRenderRemotionRequest):
+    track = luna_engine.load_track(req.track_id)
+    if not track:
+        raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
+    try:
+        updated = choonsik_bga.render_bga_remotion(track)
+        return updated
+    except RuntimeError as e:
+        msg = str(e)
+        if "미설치" in msg:
+            raise HTTPException(status_code=503, detail=msg)
+        if "loop_unit" in msg:
+            raise HTTPException(status_code=400, detail=msg)
+        raise HTTPException(status_code=500, detail=f"Remotion 렌더 실패: {msg}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Remotion 렌더 실패: {e}")
+
 
 @app.get("/api/luna/history")
 async def get_luna_history():
