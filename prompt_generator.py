@@ -90,13 +90,26 @@ def image_prompt_tokens(scene_count: int) -> int:
     return min(TOKEN_CEILING, max(3500, 1200 + 600 * int(scene_count or 1)))
 
 
-def sanitize_input_text(text: str) -> str:
-    """사용자 입력 텍스트에서 프롬프트 인젝션 의심 구문 및 제어 문자 정제"""
+# 픽션 채널 운영 기준: 세계관·시놉시스·캐릭터 설정을 길게 넣을 수 있어야 하므로 기본 상한을 2000자로 두고 줄바꿈을 보존한다.
+INPUT_TEXT_MAX_LEN = 2000
+
+
+def sanitize_input_text(text: str, max_len: int = INPUT_TEXT_MAX_LEN, keep_newlines: bool = True) -> str:
+    """사용자 입력 텍스트에서 프롬프트 인젝션 의심 구문 및 제어 문자 정제.
+
+    keep_newlines=True 면 줄바꿈을 살리되 3줄 이상의 빈 줄은 2줄로 줄이고, False 면 한 줄로 합친다(짧은 앵글·키워드용).
+    """
     if not text:
         return ""
-    cleaned = re.sub(r'[\r\n]+', ' ', text)
+    cleaned = str(text).replace("\r\n", "\n").replace("\r", "\n")
+    if keep_newlines:
+        cleaned = re.sub(r'[ \t]+\n', '\n', cleaned)
+        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
+    else:
+        cleaned = re.sub(r'\n+', ' ', cleaned)
+    cleaned = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', cleaned)
     cleaned = re.sub(r'(?i)(ignore\s+previous\s+instructions|system\s*:|assistant\s*:|\[system\]|\[inst\]|<\|im_start\|>|<\|im_end\|>)', '', cleaned)
-    return cleaned.strip()[:300]
+    return cleaned.strip()[:max_len]
 
 
 def extract_script_numerical_facts(topic: str, scenes: List[Dict[str, Any]]) -> List[str]:
@@ -492,10 +505,10 @@ class PromptGenerator:
         사용자가 입력한 주제(topic)에 대해 8초 단위 씬별 대본, AI 영상 프롬프트 및
         [파이프라인 마지막 단계] 나노바나나 레드라인 이미지 프롬프트(썸네일 & 씬별 첫 프레임) 일괄 생성
         """
-        safe_topic = sanitize_input_text(topic)
-        safe_subject = sanitize_input_text(custom_subject)
+        safe_topic = sanitize_input_text(topic)                      # 세계관·시놉시스 (최대 2000자, 줄바꿈 보존)
+        safe_subject = sanitize_input_text(custom_subject)            # 주인공/피사체 설정 (최대 2000자)
         # 트렌드 분석이 제안한 '차별화 앵글'. 주제문을 오염시키지 않도록 별도 항목으로 전달한다.
-        safe_angle = sanitize_input_text(angle)
+        safe_angle = sanitize_input_text(angle, max_len=300, keep_newlines=False)
         target_lang = SUPPORTED_LANGUAGES.get(language, SUPPORTED_LANGUAGES["korean"])
         style_info = STYLE_PRESETS.get(style_key, STYLE_PRESETS["photorealistic_8k"])
         concept = concept_packs.get_pack(concept_key)
@@ -513,6 +526,7 @@ class PromptGenerator:
 [신규 기획 주제]
 "{safe_topic}"
 {f"- 특정 주인공/피사체 설정: {safe_subject}" if safe_subject else ""}
+{f"- [★ 피사체 일관성 절대 규칙] 위 주인공/피사체는 모든 씬에 동일 인물로 등장한다. 모든 씬의 prompt_en 첫 문장에 같은 외형 묘사(성별·나이대·머리·의상·색상·특징)를 영문으로 그대로 반복 기술하고, 씬마다 다른 인물이나 피사체로 바꾸거나 묘사를 생략하지 말 것." if safe_subject else ""}
 {f"- 연출 앵글/차별화 방향(이 방향으로 서사를 전개할 것): {safe_angle}" if safe_angle else ""}
 
 [★ 8초 나레이션 대사 작성 절대 규칙]
