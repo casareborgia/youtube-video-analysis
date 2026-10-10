@@ -1326,7 +1326,10 @@
                 <i class="fa-solid fa-play" style="color: #38bdf8;"></i>
                 <h3 style="margin: 0;">스튜디오 프리뷰 & 유튜브 업로더</h3>
               </div>
-              <span id="lunaStatusBadge" class="badge badge-subtle">대기 중</span>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span id="lunaStatusBadge" class="badge badge-subtle">대기 중</span>
+                <span id="lunaVideoSourceBadge" class="badge" style="display: none;"></span>
+              </div>
             </div>
 
             <!-- 미생성 상태 안내 -->
@@ -1445,7 +1448,7 @@
                   <div style="font-size: 0.75rem; color: var(--text-secondary);">시네마틱 줌인 + 타이포그래피 자막 합성</div>
                 </div>
                 <button type="button" id="btnRenderLunaVideo" class="btn btn-sm btn-accent" style="background: #6366f1; border: none;">
-                  <span class="btn-text"><i class="fa-solid fa-clapperboard"></i> 비디오 렌더링 시작</span>
+                  <span class="btn-text"><i class="fa-solid fa-clapperboard"></i> 비디오 렌더링 시작 <small style="font-size: 0.8rem; opacity: 0.8;">(커버 켄번즈)</small></span>
                   <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 렌더링 중...</span>
                 </button>
               </div>
@@ -1488,6 +1491,46 @@
                     <a id="lunaShortsDownloadBtn" href="#" download class="btn btn-xs btn-outline"><i class="fa-solid fa-download"></i> 숏폼 MP4 다운로드</a>
                   </div>
                 </div>
+              </div>
+
+              <!-- 🎬 춘식 BGA (Veo 루프 배경 영상) 패널 -->
+              <div id="lunaBgaPanel" style="display: none; background: rgba(192, 132, 252, 0.05); border: 1px solid rgba(192, 132, 252, 0.25); border-radius: 8px; padding: 12px 14px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+                  <span style="font-size: 0.85rem; font-weight: 600; color: #c084fc;">
+                    <i class="fa-solid fa-clapperboard"></i> 3.7단계: 춘식 BGA (Veo 루프 배경 영상)
+                  </span>
+                  <span id="lunaBgaUsage" style="font-size: 0.74rem; color: var(--text-muted);">오늘 0/12 · 트랙당 ≈ $1.92</span>
+                </div>
+                <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px;">
+                  <button type="button" id="btnLunaBgaPlan" class="btn btn-xs btn-outline" style="border-color: #c084fc; color: #c084fc;">
+                    <span class="btn-text"><i class="fa-solid fa-wand-magic-sparkles"></i> 샷 기획 (무료)</span>
+                    <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 기획 중...</span>
+                  </button>
+                  <button type="button" id="btnLunaBgaGenerate" class="btn btn-xs btn-primary" style="background: #9333ea; border: none;" disabled>
+                    <span class="btn-text"><i class="fa-solid fa-video"></i> Veo 클립 생성 (과금)</span>
+                    <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 생성 중...</span>
+                  </button>
+                  <span id="lunaBgaGenStatus" style="font-size: 0.74rem; color: var(--text-muted);"></span>
+                </div>
+                <div id="lunaBgaShots" style="display: none; margin-bottom: 8px; background: rgba(0,0,0,0.25); border-radius: 6px; padding: 8px 10px; font-size: 0.78rem;"></div>
+                <div id="lunaBgaClips" style="display: none; gap: 8px; overflow-x: auto; margin-bottom: 8px; padding-bottom: 4px;"></div>
+                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.05);">
+                  <label style="font-size: 0.78rem; color: var(--text-secondary); margin: 0; display: flex; align-items: center; gap: 4px;">
+                    렌더러:
+                    <select id="lunaBgaRendererSelect" class="form-select" style="width: auto; padding: 3px 6px; font-size: 0.78rem;">
+                      <option value="ffmpeg">ffmpeg (빠름, 20초)</option>
+                      <option value="remotion">Remotion (타이포·스펙트럼, 약 2분)</option>
+                    </select>
+                  </label>
+                  <label style="font-size: 0.78rem; color: var(--text-secondary); margin: 0; display: flex; align-items: center; gap: 4px; cursor: pointer;">
+                    <input type="checkbox" id="lunaBgaWaveformCheck" style="margin: 0;"> 파형 오버레이(ffmpeg)
+                  </label>
+                  <button type="button" id="btnLunaBgaRender" class="btn btn-xs btn-primary" style="background: #7e22ce; border: none;" disabled>
+                    <span class="btn-text"><i class="fa-solid fa-repeat"></i> 루프 렌더 → video.mp4</span>
+                    <span class="spinner" style="display: none;"><i class="fa-solid fa-circle-notch fa-spin"></i> 렌더링 중...</span>
+                  </button>
+                </div>
+                <div id="lunaBgaRenderNote" style="font-size: 0.74rem; color: #a855f7; margin-top: 6px;"></div>
               </div>
 
               <!-- 3. 루나 공식 유튜브 업로드 섹션 -->

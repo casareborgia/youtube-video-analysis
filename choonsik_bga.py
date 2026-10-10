@@ -6,6 +6,7 @@ import shutil
 import mimetypes
 import datetime
 import subprocess
+from typing import Callable, Optional
 
 import luna_engine
 import vega_engine
@@ -35,8 +36,8 @@ BGA_GRADING_BY_GENRE = {
     "synthwave": "teal and magenta neon", "citypop": "teal and magenta neon",
     "jazz": "warm amber low-key", "rnb-chill": "warm amber low-key",
 }
-BGA_PROMPT_SUFFIX = ("No people, no text, no logos, no camera shake, seamless slow motion suitable for looping, "
-                     "start exactly from the reference image")
+BGA_PROMPT_SUFFIX = ("No people, no text, no logos, no camera shake, clean lens, no vignette, no lens condensation, "
+                     "seamless slow motion suitable for looping, start exactly from the reference image")
 
 
 def daily_cap() -> int:
@@ -571,4 +572,105 @@ def render_bga_remotion(track_data: dict, progress_cb=None, timeout: int = 1800,
 
     step(100, f"Remotion 비디오 렌더링 완료 ({elapsed:.1f}초) -> {out_file}")
     return track_data
+
+
+def remotion_available() -> bool:
+    """Remotion 빌드 도구 및 node_modules 설치 여부 확인"""
+    return os.path.isdir(os.path.join(REMOTION_DIR, "node_modules"))
+
+
+def default_renderer() -> str:
+    """기본 BGA 렌더러 (BGA_RENDERER 환경변수; 기본 ffmpeg, remotion 지정 가능)"""
+    r = os.getenv("BGA_RENDERER", "ffmpeg").strip().lower()
+    return "remotion" if r == "remotion" else "ffmpeg"
+
+
+def _promote_remotion_output(track_data: dict) -> dict:
+    """Remotion 결과(video_remotion.mp4)를 메인 비디오(video.mp4)로 승격하여 채택"""
+    track_id = track_data.get("track_id")
+    t_dir = os.path.join(luna_engine.LUNA_DIR, track_id)
+    bga = track_data.get("bga", {})
+    rem_meta = bga.get("remotion", {})
+    rem_file = rem_meta.get("file")
+    if not rem_file or not os.path.exists(rem_file):
+        raise RuntimeError(f"Remotion 결과 파일이 존재하지 않습니다: {rem_file}")
+
+    final_video_path = os.path.join(t_dir, "video.mp4")
+    current_source = track_data.get("video_source")
+
+    # 기존 커버 켄번즈 영상 백업 (bga 계열이 아닐 때만 1회 백업)
+    if os.path.exists(final_video_path) and current_source not in ("bga", "bga-remotion"):
+        backup_path = os.path.join(t_dir, "video_cover_backup.mp4")
+        if not os.path.exists(backup_path):
+            shutil.copy(final_video_path, backup_path)
+
+    # video_remotion.mp4 -> video.mp4 복사 (원본 video_remotion.mp4 는 보존)
+    shutil.copy(rem_file, final_video_path)
+
+    track_data["video_file"] = final_video_path
+    track_data["video_url"] = f"/data/luna_music/{track_id}/video.mp4"
+    track_data["rendered_at"] = time.time()
+    track_data["video_source"] = "bga-remotion"
+    track_data.pop("video_stale", None)
+
+    luna_engine.save_track(track_data)
+    return track_data
+
+
+def render_bga(
+    track_data: dict,
+    renderer: Optional[str] = None,
+    with_waveform: bool = False,
+    upscale: bool = True,
+    progress_cb: Optional[Callable[[str, str, int], None]] = None,
+) -> dict:
+    """BGA 비디오 렌더러 통합 디스패처 (ffmpeg 기본 / Remotion 선택 및 자동 폴백)"""
+    req_renderer = (renderer or default_renderer()).strip().lower()
+    bga = track_data.setdefault("bga", {})
+    bga["renderer_requested"] = req_renderer
+
+    if req_renderer == "remotion":
+        try:
+            if not remotion_available():
+                raise RuntimeError("Remotion 미설치")
+            # loop_unit.mp4 가 없으면 먼저 만들고, 폴백 대비 ffmpeg 렌더 선행
+            track_data = render_bga_loop(
+                track_data,
+                with_waveform=with_waveform,
+                upscale=upscale,
+                progress_cb=progress_cb,
+            )
+            track_data = render_bga_remotion(track_data, progress_cb=progress_cb)
+            track_data = _promote_remotion_output(track_data)
+            bga = track_data.setdefault("bga", {})
+            bga["renderer_used"] = "remotion"
+            bga.pop("fallback_reason", None)
+        except Exception as e:
+            # 클립 2개 미만 에러는 폴백하지 않고 그대로 전파
+            if "2개 미만" in str(e):
+                raise
+            bga = track_data.setdefault("bga", {})
+            bga["fallback_reason"] = f"{type(e).__name__}: {str(e)[:200]}"
+            track_data = render_bga_loop(
+                track_data,
+                with_waveform=with_waveform,
+                upscale=upscale,
+                progress_cb=progress_cb,
+            )
+            bga = track_data.setdefault("bga", {})
+            bga["renderer_used"] = "ffmpeg"
+    else:
+        track_data = render_bga_loop(
+            track_data,
+            with_waveform=with_waveform,
+            upscale=upscale,
+            progress_cb=progress_cb,
+        )
+        bga = track_data.setdefault("bga", {})
+        bga["renderer_used"] = "ffmpeg"
+        bga.pop("fallback_reason", None)
+
+    luna_engine.save_track(track_data)
+    return track_data
+
 

@@ -444,5 +444,195 @@ class BgaRealFfmpegRenderTests(unittest.TestCase):
         self.assertIn("2개 미만", str(cm.exception))
 
 
+class ChoonsikBgaDispatcherTests(unittest.TestCase):
+    """Phase C-1c: render_bga 디스패처, 폴백, 백업 및 API 테스트"""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+        self.lp = patch.object(luna_engine, "LUNA_DIR", self.tmp)
+        self.lp.start()
+        self.addCleanup(self.lp.stop)
+
+        self.client = TestClient(app.app)
+
+        self.t_dir = os.path.join(self.tmp, "track_disp")
+        os.makedirs(os.path.join(self.t_dir, "bga"), exist_ok=True)
+        self.audio = os.path.join(self.t_dir, "audio.mp3")
+        with open(self.audio, "wb") as f:
+            f.write(b"audio")
+
+        self.track = {
+            "track_id": "track_disp",
+            "title": "Dispatcher Track",
+            "audio_file": self.audio,
+            "bga": {
+                "clips": {
+                    "0": {"status": "done", "file": "c0.mp4"},
+                    "1": {"status": "done", "file": "c1.mp4"},
+                }
+            }
+        }
+        luna_engine.save_track(self.track)
+
+    def test_default_renderer(self):
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(choonsik_bga.default_renderer(), "ffmpeg")
+        with patch.dict(os.environ, {"BGA_RENDERER": "REMOTION"}):
+            self.assertEqual(choonsik_bga.default_renderer(), "remotion")
+        with patch.dict(os.environ, {"BGA_RENDERER": "foo"}):
+            self.assertEqual(choonsik_bga.default_renderer(), "ffmpeg")
+
+    def test_render_bga_ffmpeg(self):
+        def fake_loop(t, **kwargs):
+            t["video_file"] = "/path/video.mp4"
+            t["video_source"] = "bga"
+            return t
+
+        with patch.object(choonsik_bga, "render_bga_loop", side_effect=fake_loop) as mock_loop:
+            res = choonsik_bga.render_bga(self.track, renderer="ffmpeg")
+            mock_loop.assert_called_once()
+            self.assertEqual(res["bga"]["renderer_used"], "ffmpeg")
+            self.assertNotIn("fallback_reason", res["bga"])
+
+    def test_render_bga_remotion_success(self):
+        order = []
+
+        def fake_loop(t, **kwargs):
+            order.append("loop")
+            t["video_file"] = "/path/video.mp4"
+            t["video_source"] = "bga"
+            return t
+
+        def fake_remotion(t, **kwargs):
+            order.append("remotion")
+            t.setdefault("bga", {})["remotion"] = {"file": "/path/video_remotion.mp4"}
+            return t
+
+        def fake_promote(t):
+            order.append("promote")
+            t["video_source"] = "bga-remotion"
+            return t
+
+        with patch.object(choonsik_bga, "remotion_available", return_value=True), \
+             patch.object(choonsik_bga, "render_bga_loop", side_effect=fake_loop), \
+             patch.object(choonsik_bga, "render_bga_remotion", side_effect=fake_remotion), \
+             patch.object(choonsik_bga, "_promote_remotion_output", side_effect=fake_promote):
+            res = choonsik_bga.render_bga(self.track, renderer="remotion")
+            self.assertEqual(order, ["loop", "remotion", "promote"])
+            self.assertEqual(res["bga"]["renderer_used"], "remotion")
+            self.assertEqual(res["video_source"], "bga-remotion")
+            self.assertNotIn("fallback_reason", res["bga"])
+
+    def test_render_bga_remotion_fallback(self):
+        def fake_loop(t, **kwargs):
+            t["video_file"] = "/path/video.mp4"
+            t["video_source"] = "bga"
+            return t
+
+        def fake_remotion(t, **kwargs):
+            raise RuntimeError("Remotion 미설치 (테스트)")
+
+        with patch.object(choonsik_bga, "remotion_available", return_value=True), \
+             patch.object(choonsik_bga, "render_bga_loop", side_effect=fake_loop), \
+             patch.object(choonsik_bga, "render_bga_remotion", side_effect=fake_remotion):
+            res = choonsik_bga.render_bga(self.track, renderer="remotion")
+            self.assertEqual(res["bga"]["renderer_used"], "ffmpeg")
+            self.assertIn("미설치", res["bga"].get("fallback_reason", ""))
+
+    def test_remotion_available_false_falls_back_before_render_remotion(self):
+        def fake_loop(t, **kwargs):
+            t["video_file"] = "/path/video.mp4"
+            t["video_source"] = "bga"
+            return t
+
+        with patch.object(choonsik_bga, "remotion_available", return_value=False), \
+             patch.object(choonsik_bga, "render_bga_loop", side_effect=fake_loop), \
+             patch.object(choonsik_bga, "render_bga_remotion") as mock_remotion:
+            res = choonsik_bga.render_bga(self.track, renderer="remotion")
+            mock_remotion.assert_not_called()
+            self.assertEqual(res["bga"]["renderer_used"], "ffmpeg")
+            self.assertIn("미설치", res["bga"].get("fallback_reason", ""))
+
+    def test_insufficient_clips_raises_error_without_fallback(self):
+        def fake_loop(t, **kwargs):
+            raise RuntimeError("클립이 2개 미만입니다.")
+
+        with patch.object(choonsik_bga, "remotion_available", return_value=True), \
+             patch.object(choonsik_bga, "render_bga_loop", side_effect=fake_loop):
+            with self.assertRaises(RuntimeError) as cm:
+                choonsik_bga.render_bga(self.track, renderer="remotion")
+            self.assertIn("2개 미만", str(cm.exception))
+
+    def test_promote_remotion_output_backup(self):
+        rem_file = os.path.join(self.t_dir, "video_remotion.mp4")
+        with open(rem_file, "wb") as f:
+            f.write(b"remotion_bytes")
+
+        vid_file = os.path.join(self.t_dir, "video.mp4")
+        with open(vid_file, "wb") as f:
+            f.write(b"cover_bytes")
+
+        self.track["video_file"] = vid_file
+        self.track["video_source"] = "cover"
+        self.track["bga"]["remotion"] = {"file": rem_file}
+        luna_engine.save_track(self.track)
+
+        res = choonsik_bga._promote_remotion_output(self.track)
+        self.assertEqual(res["video_source"], "bga-remotion")
+
+        backup = os.path.join(self.t_dir, "video_cover_backup.mp4")
+        self.assertTrue(os.path.exists(backup))
+        with open(backup, "rb") as f:
+            self.assertEqual(f.read(), b"cover_bytes")
+        with open(vid_file, "rb") as f:
+            self.assertEqual(f.read(), b"remotion_bytes")
+        self.assertTrue(os.path.exists(rem_file), "원본 video_remotion.mp4 보존")
+
+        # 두 번째 승격 시 백업 덮어쓰지 않음
+        with open(rem_file, "wb") as f:
+            f.write(b"remotion_bytes_v2")
+        choonsik_bga._promote_remotion_output(self.track)
+        with open(backup, "rb") as f:
+            self.assertEqual(f.read(), b"cover_bytes")
+
+        # video_source 가 bga 면 백업하지 않음
+        os.remove(backup)
+        self.track["video_source"] = "bga"
+        choonsik_bga._promote_remotion_output(self.track)
+        self.assertFalse(os.path.exists(backup))
+
+    def test_api_render_validation_and_dispatch(self):
+        # 1. 지원하지 않는 렌더러 -> 400
+        resp = self.client.post("/api/luna/bga/render", json={"track_id": "track_disp", "renderer": "foo"})
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("지원하지 않는 렌더러", resp.text)
+
+        # 2. renderer="remotion" 이 render_bga 에 전달됨
+        def fake_render(track, renderer=None, **kwargs):
+            track["renderer_arg"] = renderer
+            return track
+
+        with patch.object(choonsik_bga, "render_bga", side_effect=fake_render):
+            resp2 = self.client.post("/api/luna/bga/render", json={"track_id": "track_disp", "renderer": "remotion"})
+            self.assertEqual(resp2.status_code, 200)
+            self.assertEqual(resp2.json().get("renderer_arg"), "remotion")
+
+    def test_api_usage_contains_remotion_info(self):
+        resp = self.client.get("/api/luna/bga/usage")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("remotion_available", data)
+        self.assertIn("default_renderer", data)
+
+    def test_bga_prompt_suffix_contains_clean_lens(self):
+        self.assertIn("clean lens", choonsik_bga.BGA_PROMPT_SUFFIX)
+        shots = choonsik_bga.plan_bga_shots(self.track)
+        for s in shots:
+            self.assertIn("clean lens", s["prompt"])
+
+
 if __name__ == "__main__":
     unittest.main()
+

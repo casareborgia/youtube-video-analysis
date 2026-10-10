@@ -1199,6 +1199,7 @@ class LunaBgaRenderRequest(BaseModel):
     track_id: str
     with_waveform: Optional[bool] = False
     upscale: Optional[bool] = True
+    renderer: Optional[str] = None
 
 class LunaBgaRenderRemotionRequest(BaseModel):
     track_id: str
@@ -1462,12 +1463,15 @@ async def generate_luna_bga(req: LunaBgaGenerateRequest):
 
 @app.post("/api/luna/bga/render")
 async def render_luna_bga(req: LunaBgaRenderRequest):
+    if req.renderer is not None and req.renderer.strip().lower() not in ("ffmpeg", "remotion"):
+        raise HTTPException(status_code=400, detail="지원하지 않는 렌더러입니다. ffmpeg 또는 remotion 을 지정하세요.")
     track = luna_engine.load_track(req.track_id)
     if not track:
         raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
     try:
-        updated = choonsik_bga.render_bga_loop(
+        updated = choonsik_bga.render_bga(
             track,
+            renderer=req.renderer,
             with_waveform=bool(req.with_waveform),
             upscale=True if req.upscale is None else bool(req.upscale),
         )
@@ -1487,6 +1491,8 @@ async def get_luna_bga_usage():
             "cap": choonsik_bga.daily_cap(),
             "rate_source": "secondary",
             "estimate_per_track": choonsik_bga.estimate_bga_cost(),
+            "remotion_available": choonsik_bga.remotion_available(),
+            "default_renderer": choonsik_bga.default_renderer(),
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"BGA 사용량 조회 실패: {e}")
