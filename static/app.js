@@ -2891,10 +2891,15 @@ document.addEventListener('DOMContentLoaded', () => {
         loadLunaHistory();
         if (lunaMasteringPromptInput) lunaMasteringPromptInput.value = '';   // 지시는 이 곡에 적용되어 소비됨
         if (track.is_ai_generated) {
-          const lyricsNotice = (track.has_lyrics || track.lyrics) ? ' (🎤 감성 가사 포함)' : '';
+          const lyricsNotice = (track.has_lyrics || track.lyrics) ? ' (🎤 감성 가사 포함 — 음원에 동일 가사 전달)' : '';
           showAlert(`🎵 '${track.title}' Lyria 3 Pro 고품질 AI 완곡 작곡 및 앨범아트가 완성되었습니다! (${track.ai_model || 'Lyria 3.5'})${lyricsNotice}`, 'success');
         } else {
-          showAlert(`⚠️ '${track.title}' 백업 음원으로 준비되었습니다. (${track.fallback_reason || '네트워크 지연'})`, 'warning');
+          const noVocalNote = (track.has_lyrics || track.lyrics) ? ' 백업 음원에는 보컬이 없어 설명란에 가사를 넣지 않습니다.' : '';
+          showAlert(`⚠️ '${track.title}' 백업 음원으로 준비되었습니다. (${track.fallback_reason || '네트워크 지연'})${noVocalNote}`, 'warning');
+        }
+        if (track.concept_source === 'fallback') {
+          // LLM 기획이 실패해 템플릿 콘셉트로 대체된 경우 — 레오 브리프가 제대로 반영되지 않았을 수 있다
+          showAlert(`⚠️ ${track.concept_warning || 'AI 기획 응답을 받지 못해 기본 템플릿 콘셉트로 대체됐습니다. 다시 생성해주세요.'}`, 'error');
         }
       } catch (err) {
         const msg = err.message || '';
@@ -3276,7 +3281,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (track.vocal_language === 'en') langLabel = ' (EN)';
         else if (track.vocal_language === 'ja') langLabel = ' (JA)';
         else if (track.vocal_language === 'ko') langLabel = ' (KR)';
-        lunaHasLyricsBadge.textContent = `📝 가사 포함${langLabel}`;
+        const notInAudio = track.audio_has_vocals === false ? ' · ⚠️ 음원 미반영' : '';
+        lunaHasLyricsBadge.textContent = `📝 가사 포함${langLabel}${notInAudio}`;
+        lunaHasLyricsBadge.title = track.audio_has_vocals === false
+          ? '이 음원은 백업 신스로 생성되어 보컬이 없습니다. 설명란에는 가사를 넣지 않습니다.'
+          : '이 가사 전문이 Lyria 작곡 입력에 그대로 전달되었습니다.';
         lunaHasLyricsBadge.style.display = 'inline-block';
       } else {
         lunaHasLyricsBadge.style.display = 'none';

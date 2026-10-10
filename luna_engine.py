@@ -246,6 +246,29 @@ def _sanitize_instrumental_lyria_prompt(prompt: str) -> str:
     return p
 
 
+def normalize_leo_brief(leo_brief) -> Optional[dict]:
+    """레오 음악 브리프의 필드명을 통일한다.
+
+    trend_scout 가 만드는 음악 브리프는 title_concept / topic / angle / target_audience / keywords 를 쓰고,
+    일반 트렌드 리포트는 audience_triggers 를 쓴다. 루나 프롬프트가 어느 쪽을 받아도 빠지는 정보가 없도록
+    한 가지 형태로 정리한다. dict 가 아니면 None.
+    """
+    if not isinstance(leo_brief, dict):
+        return None
+    kws = leo_brief.get("keywords") or []
+    if isinstance(kws, str):
+        kws = [k.strip() for k in re.split(r"[,/#\n]", kws) if k.strip()]
+    return {
+        "title_concept": str(leo_brief.get("title_concept") or "").strip(),
+        "topic": str(leo_brief.get("topic") or "").strip(),
+        "angle": str(leo_brief.get("angle") or "").strip(),
+        "audience": str(leo_brief.get("target_audience") or leo_brief.get("audience_triggers") or "").strip(),
+        "keywords": [str(k).strip() for k in kws if str(k).strip()],
+        "genre": str(leo_brief.get("genre") or "").strip(),
+        "mood": str(leo_brief.get("mood") or "").strip(),
+    }
+
+
 # ── 1. 음악 콘셉트 및 프롬프트 동적 AI 기획 ─────────────────────────────
 
 def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief=None, vocal_mode="auto"):
@@ -311,15 +334,20 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
     # 레오의 트렌드 브리프 정보 결합
     trend_context = ""
     trend_brief_applied = False
-    if leo_brief and isinstance(leo_brief, dict):
+    brief = normalize_leo_brief(leo_brief)
+    if brief:
         trend_brief_applied = True
+        title_line = (
+            f"- 레오가 제안한 곡 제목 컨셉: {brief['title_concept']}  ← title 은 이 컨셉의 핵심 이미지·단어를 유지한 채 다듬어 쓸 것 (완전히 다른 제목 금지)\n"
+            if brief["title_concept"] else ""
+        )
         trend_context = f"""
-[★ 에이전트 레오(Leo)의 유튜브 실시간 음악 트렌드 분석 브리프 (곡 사운드에 필수 반영)]
-- 트렌드 핵심 테마: {leo_brief.get('topic', '')}
-- 시청자 심리 및 반응 트리거: {leo_brief.get('audience_triggers', '')}
-- 추천 후킹 음악적 앵글: {leo_brief.get('angle', '')}
-- 핵심 트렌드 키워드: {', '.join(leo_brief.get('keywords', []))}
-※ 위 트렌드 브리프의 정서와 키워드가 곡의 편곡, 리드 악기, 템포 선택, 가사/보컬 스타일에 직접적으로 뚜렷하게 반영되어야 합니다.
+[★ 에이전트 레오(Leo)의 유튜브 실시간 음악 트렌드 분석 브리프 (이 곡의 기획 원본 — 반드시 그대로 따를 것)]
+{title_line}- 곡 테마 & 감성 스토리라인: {brief['topic']}  ← story 는 이 서사를 그대로 구체화할 것 (다른 소재로 바꾸지 말 것)
+- 30초 도입부 후킹 앵글: {brief['angle']}  ← lyria_prompt 의 시그니처 리드 악기·인트로 전개는 이 앵글을 그대로 구현할 것
+- 타깃 리스너 / 시청자 반응 트리거: {brief['audience']}
+- 핵심 트렌드 키워드: {', '.join(brief['keywords'])}
+※ 위 브리프는 영감이 아니라 '기획서'입니다. 제목·서사·리드 악기·가사 소재가 브리프와 어긋나면 실패한 결과물로 간주됩니다.
 """
 
     vocal_style_hint = genre_spec.get("vocal_style_hint", "")
@@ -420,6 +448,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
 3. 에이전트 레오의 트렌드 브리프(테마, 시청자 반응, 추천 앵글)의 정서를 악기 선택과 리듬 편곡(그루브)에 직접 녹여내어 독창적인 곡으로 완성하세요.
 4. 곡 제목(title): 장르와 무드의 정서를 압축한 감각적인 '영문 제목 (한글 부제)' 형식.
    - 흔해 빠진 클리셰 단어(Starlight, Midnight, Cafe 등)의 기계적 반복을 금지하고 독창적인 단어를 선택할 것.
+   - 레오의 브리프에 '곡 제목 컨셉'이 있으면 그 컨셉을 기반으로 다듬을 것 (브리프의 핵심 이미지가 제목에 남아 있어야 함).
 5. 앨범 커버 프롬프트(visual_prompt): 나노바나나/Imagen 생성용 영문 프롬프트 (16:9 와이드, 8k, no text, no watermark).
 6. 연관 태그(tags): 장르, 무드, 리스닝 상황을 아우르는 8개 태그 배열.
 
@@ -433,9 +462,12 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
 
     concept = None
     try:
-        parsed, raw = llm_client.call_llm_json(messages, max_tokens=4096, temperature=0.75)
+        # 3분 완곡 가사 8섹션 + 영문 프롬프트를 한 번에 돌려받으므로 4096 으로는 응답이 잘려 JSON 파싱이 실패하고
+        # (Gemini 는 thinking 토큰도 max_output_tokens 에 포함) 브리프와 무관한 폴백 콘셉트가 조용히 쓰이는 사고가 있었다.
+        parsed, raw = llm_client.call_llm_json(messages, max_tokens=8192, temperature=0.75)
         if isinstance(parsed, dict) and parsed.get("title"):
             concept = parsed
+            concept["concept_source"] = "llm"
             # 판정이 확정된 경우(명시 모드·키워드·affinity) LLM 응답이 이를 덮어쓰지 못한다.
             # optional(None) 일 때만 LLM 의 has_lyrics 를 신뢰한다.
             if should_have_lyrics is None:
@@ -461,9 +493,17 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
             "piano": ("Whispering Raindrops (빗방울의 속삭임)", "창가를 두드리는 빗방울 하나하나가 건반 위에 내려앉아, 가슴속 깊이 묻어둔 아련한 기억들을 깨웁니다."),
             "citypop": ("Midnight Expressway (심야의 고속도로)", "차창을 내리고 밤공기를 들이마시면 도시의 불빛들이 별처럼 쏟아져 내립니다. 어디론가 떠나고 싶은 밤의 설렘."),
             "acoustic": ("Forest Whispers (숲의 속삭임)", "나뭇잎 사이로 스며드는 따스한 오후 햇살처럼, 지친 마음에 조용히 스며드는 포근한 통기타 선율."),
-            "rnb-chill": ("Purple Moonlight (보랏빛 달빛)", "어둠이 내려앉은 도심의 루프탑, 감미로운 선율 속에 오늘 하루의 무게를 가만히 내려놓습니다.")
+            "rnb-chill": ("Purple Moonlight (보랏빛 달빛)", "어둠이 내려앉은 도심의 루프탑, 감미로운 선율 속에 오늘 하루의 무게를 가만히 내려놓습니다."),
+            "dark-ambient": ("Abyssal Stillness (심연의 정적)", "빛이 닿지 않는 심해의 바닥, 아주 느린 저음의 맥동만이 남아 모든 잡념을 가라앉히는 깊은 몰입의 시간.")
         }
         f_title, f_story = fallback_titles.get(genre_key, fallback_titles["lofi"])
+        # 레오 브리프가 있으면 하드코딩 제목·서사 대신 브리프의 제목 컨셉과 테마를 쓴다.
+        # (LLM 이 죽었을 때 브리프와 전혀 무관한 곡이 조용히 만들어지는 것을 막는다)
+        if brief:
+            if brief["title_concept"]:
+                f_title = brief["title_concept"]
+            if brief["topic"]:
+                f_story = brief["topic"]
 
         # Fallback 보컬/가사 정의
         fallback_lyrics_map = {
@@ -503,6 +543,10 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
         else:
             lyria_p = f"Masterpiece {genre_spec['name']} with {genre_spec['instruments']}, {genre_spec['bpm_range']}, {genre_spec['sound_texture']}, purely instrumental, no vocals, studio mastering quality"
 
+        if brief and (brief["topic"] or brief["angle"]):
+            # 브리프의 테마·앵글을 Lyria 지시문에도 넣어 폴백 음원이 최소한 기획 방향은 따르게 한다
+            lyria_p = f"{lyria_p}. Theme: {brief['topic'][:200]}. Intro hook: {brief['angle'][:200]}"
+
         concept = {
             "title": f_title,
             "genre": genre_spec["name"],
@@ -514,7 +558,17 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
             "lyrics": fb_lyrics,
             "lyria_prompt": lyria_p,
             "visual_prompt": genre_spec["visual_style"],
-            "tags": ["에이전트루나", "AgentLuna", "AI음악", genre_key, mood_info["name"].split(" ")[0], "BGM", "힐링음악"] + (["가사", "노래", f"{genre_key.replace('-', '').capitalize()}Vocal"] if should_have_lyrics else ["순수연주곡", "몰입음악"])
+            "tags": ["에이전트루나", "AgentLuna", "AI음악", genre_key, mood_info["name"].split(" ")[0], "BGM", "힐링음악"]
+                    + (["가사", "노래", f"{genre_key.replace('-', '').capitalize()}Vocal"] if should_have_lyrics else ["순수연주곡", "몰입음악"])
+                    + (brief["keywords"][:3] if brief else []),
+            # LLM 기획이 실패해 템플릿으로 대체됐음을 UI·이력에 남긴다 (사용자가 재생성 여부를 판단할 수 있도록)
+            "concept_source": "fallback",
+            "concept_warning": (
+                "AI 기획(LLM) 응답을 받지 못해 기본 템플릿 콘셉트로 대체됐습니다. "
+                + ("레오 브리프의 제목·테마는 유지했지만 " if brief else "")
+                + ("가사는 장르 기본 가사입니다. " if should_have_lyrics else "")
+                + "결과가 기대와 다르면 LLM 연결을 확인한 뒤 다시 생성해주세요."
+            ),
         }
 
     if concept:
@@ -559,11 +613,13 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
 
             concept["lyria_prompt"] = lp
 
-        if trend_brief_applied and isinstance(leo_brief, dict):
+        if trend_brief_applied and brief:
             concept["trend_brief"] = {
-                "topic": leo_brief.get("topic", ""),
-                "angle": leo_brief.get("angle", ""),
-                "audience_triggers": leo_brief.get("audience_triggers", "")
+                "title_concept": brief["title_concept"],
+                "topic": brief["topic"],
+                "angle": brief["angle"],
+                "audience_triggers": brief["audience"],
+                "keywords": brief["keywords"],
             }
 
     return concept
@@ -583,9 +639,11 @@ def _sanitize_lyria_prompt(prompt: str) -> str:
         (r'\bkill\b', 'end'),
         (r'\bdead\b', 'still'),
         (r'\bbullet\b', 'fast note'),
-        (r'\battack\b', 'crescendo'),
+        # 'percussive attack', 'soft attack' 같은 음악 용어(어택)는 유지한다
+        (r'(?<!percussive )(?<!soft )(?<!slow )(?<!gentle )(?<!sharp )(?<!transient )\battack\b', 'crescendo'),
         (r'\bweapon\b', 'acoustic instrument'),
-        (r'\bdark\b', 'deep night'),
+        # 'dark ambient' / 'dark atmospheric' 는 장르명이므로 유지한다 (바꾸면 장르 자체가 달라진다)
+        (r'\bdark\b(?! ambient\b)(?! atmospheric\b)', 'deep night'),
     ]
     cleaned = prompt
     for pattern, replacement in replacements:
@@ -640,6 +698,33 @@ def _ensure_audio_duration(audio_path: str, target_seconds: int = 180) -> float:
 
 # ── 2. Lyria 3 완곡 음원 생성 ──────────────────────────────────────────
 
+_LYRIA_LANG_NAMES = {"ko": "Korean", "en": "English", "ja": "Japanese"}
+
+
+def build_lyria_input(track_data) -> str:
+    """Lyria Interactions API 에 보낼 최종 입력 텍스트를 만든다.
+
+    Lyria 3 는 가사를 별도 필드가 아니라 입력 텍스트 안에서 받는다 (음악 지시문 아래에 [Verse]/[Chorus] 태그 가사).
+    가사를 넘기지 않으면 모델이 프롬프트 언어(영문)로 즉흥 가사를 지어 부르기 때문에, 설명란에 올라가는 텍스트 가사와
+    실제 음원의 노랫말이 전혀 달라지는 사고가 났다. 보컬 곡이면 지시문 뒤에 가사 전문을 그대로 붙이고,
+    연주곡이면 가사를 절대 포함하지 않는다. 지시문만 안전 순화(_sanitize_lyria_prompt)하고 가사 본문은 손대지 않는다.
+    """
+    raw_prompt = (track_data.get("lyria_prompt") or "").strip() or "Cozy melodic lofi ambient music, purely instrumental, 8k"
+    direction = _sanitize_lyria_prompt(raw_prompt)
+    lyrics = (track_data.get("lyrics") or "").strip()
+    has_lyrics = bool(track_data.get("has_lyrics")) and bool(lyrics)
+    if not has_lyrics:
+        return direction
+    lang = _LYRIA_LANG_NAMES.get(str(track_data.get("vocal_language") or "").lower(), "")
+    lang_note = f" in {lang}" if lang else ""
+    return (
+        f"{direction.rstrip('.')}.\n\n"
+        f"Sing exactly the following lyrics{lang_note}, in order, without changing, translating or adding words. "
+        f"Follow the section tags for the song structure.\n\n"
+        f"{lyrics}"
+    )
+
+
 def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None, master_audio=True, mastering_prompt=""):
     """
     Google GenAI SDK의 Lyria 3 Pro 모델을 호출하여 완곡 음원을 생성합니다.
@@ -656,8 +741,10 @@ def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None, mast
     os.makedirs(t_dir, exist_ok=True)
     audio_path = os.path.join(t_dir, "audio.mp3")
 
-    raw_lyria_prompt = track_data.get("lyria_prompt") or "Cozy melodic lofi ambient music, purely instrumental, 8k"
-    safe_lyria_prompt = _sanitize_lyria_prompt(raw_lyria_prompt)
+    # 지시문 + (보컬 곡이면) 가사 전문. 실제로 무엇을 보냈는지 추적할 수 있게 트랙에 남긴다.
+    safe_lyria_prompt = build_lyria_input(track_data)
+    track_data["lyria_input"] = safe_lyria_prompt
+    wants_vocals = bool(track_data.get("has_lyrics")) and bool((track_data.get("lyrics") or "").strip())
     key = producer.gemini_key()
 
     step(15, f"Lyria 3 Pro 음악 생성 준비 중 (목표 길이: {duration_seconds}초)...")
@@ -666,13 +753,14 @@ def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None, mast
     lyria_success = False
     used_model = None
     last_err = ""
+    lyria_output_text = ""
 
     if key:
         step(35, "Google GenAI Lyria 엔진에 작곡 요청 전송 중...")
         for model_name in LYRIA_MODELS:
             try:
                 step(40, f"Lyria 작곡 요청 중 ({model_name})...")
-                _lyria_generate(key, model_name, safe_lyria_prompt, duration_seconds, audio_path)
+                lyria_output_text = _lyria_generate(key, model_name, safe_lyria_prompt, duration_seconds, audio_path) or ""
                 lyria_success = True
                 used_model = model_name
                 step(80, f"Lyria 고음질 오디오 수신 완료! ({model_name})")
@@ -703,6 +791,12 @@ def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None, mast
     track_data["duration_seconds"] = int(actual_duration)
     track_data["is_ai_generated"] = bool(lyria_success)
     track_data["ai_model"] = used_model or "Local Synth"
+    # 실제 음원에 보컬(가사)이 들어갔는지. 로컬 신스 폴백은 보컬이 없으므로 가사가 있어도 False 다.
+    # build_luna_metadata 가 이 값을 보고 설명란에 가사 전문을 넣을지 결정한다.
+    track_data["audio_has_vocals"] = bool(lyria_success and wants_vocals)
+    track_data["lyrics_in_audio"] = bool(lyria_success and wants_vocals)
+    if lyria_output_text:
+        track_data["lyria_output_text"] = lyria_output_text[:6000]
     if not lyria_success:
         track_data["fallback_reason"] = last_err
 
@@ -772,6 +866,37 @@ def _lyria_generate(api_key, model_name, prompt, duration_seconds, out_path):
 
     if not os.path.exists(out_path) or os.path.getsize(out_path) < 1000:
         raise RuntimeError("저장된 오디오가 비어 있음")
+    return _find_output_text(r)
+
+
+def _find_output_text(obj) -> str:
+    """Lyria 응답의 output_text(모델이 실제로 부른 가사·구조 설명)를 찾는다. 없으면 빈 문자열."""
+    if obj is None:
+        return ""
+    if isinstance(obj, dict):
+        for key in ("output_text", "outputText"):
+            v = obj.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+        for key in ("outputs", "output", "steps", "content", "contents", "parts"):
+            v = obj.get(key)
+            items = v if isinstance(v, list) else ([v] if isinstance(v, dict) else [])
+            for it in items:
+                if isinstance(it, dict) and it.get("type") == "text" and isinstance(it.get("text"), str) and it["text"].strip():
+                    return it["text"].strip()
+                hit = _find_output_text(it)
+                if hit:
+                    return hit
+        return ""
+    ot = getattr(obj, "output_text", None)
+    if isinstance(ot, str) and ot.strip():
+        return ot.strip()
+    for it in (getattr(obj, "outputs", None) or []):
+        if getattr(it, "type", None) == "text":
+            t = getattr(it, "text", None)
+            if isinstance(t, str) and t.strip():
+                return t.strip()
+    return ""
 
 
 def _find_audio_block(obj):
@@ -1235,7 +1360,14 @@ def build_luna_shorts_metadata(track_data, base_meta):
     yt_title = title[: 100 - len(suffix)].rstrip() + suffix
 
     base_desc = base_meta.get("youtube_description") or track_data.get("story") or ""
-    paragraphs = [p.strip() for p in base_desc.split("\n\n") if p.strip() and not p.strip().startswith("[Lyrics") and not p.strip().startswith("#")]
+    paragraphs = [
+        p.strip() for p in base_desc.split("\n\n")
+        if p.strip()
+        and not p.strip().startswith("[Lyrics")
+        and not p.strip().startswith("#")
+        and not _LYRIC_SECTION_TAG_RE.match(p.strip())   # 가사 본문 문단([Verse 1]…)이 숏폼 설명에 새지 않도록
+        and LYRICS_PLACEHOLDER not in p
+    ]
     genre_tag = re.sub(r"[^0-9A-Za-z가-힣]", "", (track_data.get("genre") or "").split("/")[0]) or "Music"
     desc = "\n\n".join(
         [f"🎧 3분 풀버전 👉 {LONGFORM_URL_PLACEHOLDER}"] + paragraphs[:2] + [f"#Shorts #AgentLuna #{genre_tag} #에이전트루나 #AI음악"]
@@ -1268,6 +1400,75 @@ def _shift_publish_at(publish_at, minutes=10):
         return publish_at
 
 
+LYRICS_PLACEHOLDER = "{{LYRICS}}"
+YOUTUBE_DESCRIPTION_MAX = 5000
+_LYRIC_SECTION_TAG_RE = re.compile(
+    r"^\[(verse|pre-chorus|chorus|bridge|final chorus|outro|intro|hook|refrain|interlude|post-chorus)\b", re.IGNORECASE
+)
+# 가사 섹션 머리말: '[Lyrics / 가사]', '[가사]', 'Lyrics:', '가사 :' 형태만. "가사 한 줄이…" 같은 서사 문장은 건드리지 않는다.
+_LYRICS_HEADER_RE = re.compile(r"^\s*(?:\[\s*(?:lyrics|가사)\b|(?:lyrics|가사)\s*[:：/])", re.IGNORECASE)
+
+
+def _strip_llm_lyrics_section(desc: str) -> str:
+    """LLM 이 설명란에 직접 써 넣은 가사 섹션('[Lyrics / 가사]' 머리말부터 다음 비가사 섹션 전까지)을 제거한다.
+
+    LLM 이 가사를 옮겨 쓰면 요약·오탈자·번역이 섞이기 때문에, 그 자리에 코드가 원문을 다시 넣기 위한 전처리다.
+    가사 섹션이 없으면 그대로 돌려준다.
+    """
+    if not desc:
+        return desc or ""
+    lines = desc.split("\n")
+    out = []
+    i = 0
+    while i < len(lines):
+        ln = lines[i]
+        if _LYRICS_HEADER_RE.match(ln) and LYRICS_PLACEHOLDER not in ln:
+            # 머리말 다음부터 가사 태그/본문을 건너뛰고, 비가사 섹션([Timeline], 해시태그, 구독 안내 등)에서 멈춘다
+            j = i + 1
+            while j < len(lines):
+                cur = lines[j].strip()
+                if not cur or _LYRIC_SECTION_TAG_RE.match(cur):
+                    j += 1
+                    continue
+                if cur.startswith("[") or cur.startswith("#") or "구독" in cur or "👉" in cur or cur.startswith("✨"):
+                    break
+                j += 1
+            out.append(LYRICS_PLACEHOLDER)
+            i = j
+            continue
+        out.append(ln)
+        i += 1
+    text = "\n".join(out)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
+def _insert_exact_lyrics(desc: str, lyrics: str) -> str:
+    """설명란에 가사 원문 블록을 정확히 한 번 넣는다. 플레이스홀더 → [Timeline] 앞 → 말미 순으로 위치를 정한다."""
+    block = f"[Lyrics / 가사]\n{lyrics.strip()}"
+    desc = desc or ""
+    if LYRICS_PLACEHOLDER in desc:
+        first, *rest = desc.split(LYRICS_PLACEHOLDER)
+        desc = first + block + "".join(rest)
+    elif "[Timeline]" in desc:
+        desc = desc.replace("[Timeline]", f"{block}\n\n[Timeline]", 1)
+    else:
+        desc = f"{desc.rstrip()}\n\n{block}"
+    return re.sub(r"\n{3,}", "\n\n", desc).strip()
+
+
+def _cap_youtube_description(desc: str, limit: int = YOUTUBE_DESCRIPTION_MAX) -> str:
+    """유튜브 설명란 5000자 제한을 넘으면 업로드가 거절되므로 줄 단위로 잘라 맞춘다."""
+    desc = desc or ""
+    if len(desc) <= limit:
+        return desc
+    cut = desc[: limit - 2]
+    nl = cut.rfind("\n")
+    if nl > limit // 2:
+        cut = cut[:nl]
+    print(f"[LunaEngine] 설명란이 {len(desc)}자로 유튜브 한도({limit})를 넘어 {len(cut)}자로 잘랐습니다.")
+    return cut.rstrip() + "\n…"
+
+
 def build_luna_metadata(track_data):
     """
     에이전트 레오의 유튜브 알고리즘 최적화 공식을 결합하여,
@@ -1280,17 +1481,24 @@ def build_luna_metadata(track_data):
     duration_sec = int(track_data.get("duration_seconds") or 180)
     duration_str = time.strftime('%M:%S', time.gmtime(duration_sec))
 
-    lyrics = track_data.get("lyrics")
+    lyrics = (track_data.get("lyrics") or "").strip() or None
     vocal_style = track_data.get("vocal_style")
     has_lyrics = bool(lyrics or track_data.get("has_lyrics"))
+    # 음원에 실제로 보컬이 없으면(로컬 신스 폴백 등) 설명란에 가사·보컬 크레딧을 넣지 않는다.
+    # 구 트랙(audio_has_vocals 미기록)은 기존처럼 가사가 있으면 넣는다.
+    audio_has_vocals = track_data.get("audio_has_vocals")
+    if audio_has_vocals is False:
+        has_lyrics = False
+    include_lyrics = bool(has_lyrics and lyrics)
 
     lyrics_context = ""
-    if has_lyrics and lyrics:
+    if include_lyrics:
+        preview_lines = [ln for ln in lyrics.splitlines() if ln.strip()][:10]
         lyrics_context = f"""
 [보컬 & 가사 정보]
 - 보컬 스타일: {vocal_style or '감성 보컬'}
-- 노랫말(Lyrics):
-{lyrics}
+- 가사 발췌 (분위기 참고용 — 설명란에 가사를 직접 옮겨 쓰지 말 것):
+{chr(10).join(preview_lines)}
 """
 
     pinned_cta = (
@@ -1300,8 +1508,9 @@ def build_luna_metadata(track_data):
     )
 
     lyrics_guideline = (
-        "- 3) [중요: 가사 전문 포함] '[Lyrics / 가사]' 소제목 아래에 가사 전문을 줄바꿈을 살려 그대로 배치할 것\n"
-        if (has_lyrics and lyrics) else ""
+        f"   - 3) 가사 자리: 가사를 직접 쓰지 말고, 가사가 들어갈 위치에 '{LYRICS_PLACEHOLDER}' 한 줄만 넣을 것 "
+        "(시스템이 원문 가사를 그대로 삽입함. 가사를 요약·수정·번역하면 안 됨)\n"
+        if include_lyrics else ""
     )
 
     # Gemini를 활용하여 레오의 감성 + 알고리즘 최적화 카피 동적 생성
@@ -1355,19 +1564,18 @@ def build_luna_metadata(track_data):
         pinned_comment = meta_llm.get("pinned_comment") or f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? 0:00 {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 ({pinned_cta})"
         yt_desc = meta_llm.get("youtube_description") or ""
 
-        # LLM 응답 설명란에 가사가 누락되었을 경우 안전 보충
-        if has_lyrics and lyrics and "[Lyrics" not in yt_desc and "[가사" not in yt_desc:
-            insert_marker = "[Timeline]"
-            if insert_marker in yt_desc:
-                yt_desc = yt_desc.replace(insert_marker, f"[Lyrics / 가사]\n{lyrics}\n\n{insert_marker}")
-            else:
-                yt_desc = f"{yt_desc}\n\n[Lyrics / 가사]\n{lyrics}"
+        # 가사는 LLM 산출물을 신뢰하지 않고 코드가 원문을 그대로 넣는다 (LLM 이 가사를 요약·변형·누락하던 문제 차단)
+        yt_desc = _strip_llm_lyrics_section(yt_desc)
+        if include_lyrics:
+            yt_desc = _insert_exact_lyrics(yt_desc, lyrics)
+        else:
+            yt_desc = yt_desc.replace(LYRICS_PLACEHOLDER, "").strip()
     else:
         # 안전 Fallback
         yt_title = f"에이전트 루나 (Agent Luna) - {title} | {mood} {genre}"[:100]
         pinned_comment = f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 ({pinned_cta})"
 
-        lyrics_block = f"\n\n[Lyrics / 가사]\n{lyrics}\n" if (has_lyrics and lyrics) else ""
+        lyrics_block = f"\n\n[Lyrics / 가사]\n{lyrics}\n" if include_lyrics else ""
         vocal_credit = f"\n보컬: 에이전트 루나 ({vocal_style or 'AI 감성 보컬'})" if has_lyrics else ""
 
         yt_desc = f"""{story}
@@ -1389,6 +1597,7 @@ def build_luna_metadata(track_data):
 
     # 고정 댓글 문장 완결성 및 안전 정제
     pinned_comment = sanitize_pinned_comment(pinned_comment, default_cta=pinned_cta)
+    yt_desc = _cap_youtube_description(yt_desc)
 
     base_tags = ["에이전트 루나", "Agent Luna", "에이전트 레오", "AI음악", "Lyria 3", "BGM", "힐링음악"]
     if has_lyrics:
@@ -1467,6 +1676,11 @@ def list_tracks():
                 # 보컬 판정 근거 (A-3). 구 트랙에는 없으므로 None 그대로 내려준다
                 "vocal_mode": d.get("vocal_mode"),
                 "vocal_decision": d.get("vocal_decision"),
+                "vocal_language": d.get("vocal_language"),
+                # 기획 출처(llm/fallback)와 음원 보컬 반영 여부 — 보관함에서도 경고를 보여주기 위함
+                "concept_source": d.get("concept_source"),
+                "concept_warning": d.get("concept_warning"),
+                "audio_has_vocals": d.get("audio_has_vocals"),
                 # 하이라이트 숏폼 상태 (Phase B)
                 "shorts": d.get("shorts"),
                 "bga": d.get("bga"),
