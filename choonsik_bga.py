@@ -479,3 +479,96 @@ def render_bga_loop(track_data: dict, with_waveform: bool = False, upscale: bool
     luna_engine.save_track(track_data)
     step(100, "BGA 루프 비디오 렌더링 완료!")
     return track_data
+
+
+REMOTION_DIR = os.path.join(luna_engine.BASE_DIR, "remotion")
+
+
+def render_bga_remotion(track_data: dict, progress_cb=None, timeout: int = 1800, runner=subprocess.run) -> dict:
+    def step(pct, msg):
+        if progress_cb:
+            progress_cb("bga_remotion", msg, pct)
+        print(f"[{pct}%] [RemotionBGA] {msg}")
+
+    # 1. 전제 검사
+    node_modules_dir = os.path.join(REMOTION_DIR, "node_modules")
+    if not os.path.exists(node_modules_dir):
+        raise RuntimeError("Remotion 미설치: cd remotion && npm ci")
+
+    track_id = track_data.get("track_id")
+    if not track_id:
+        raise ValueError("유효한 트랙 ID가 없습니다.")
+
+    t_dir = os.path.join(luna_engine.LUNA_DIR, track_id)
+    bga = dict(track_data.get("bga") or {})
+    loop_unit_path = bga.get("loop_unit_file") or os.path.join(t_dir, BGA_DIR_NAME, "loop_unit.mp4")
+    if not os.path.exists(loop_unit_path):
+        raise RuntimeError("loop_unit.mp4 없음 — render_bga_loop 를 먼저 실행")
+
+    audio_file = track_data.get("audio_file") or os.path.join(t_dir, "audio.mp3")
+    if not os.path.exists(audio_file):
+        raise FileNotFoundError(f"오디오 파일이 없습니다: {audio_file}")
+    # 베가 마스터본(track["audio_file"], 보통 audio_mastered.wav)을 그대로 쓴다. audio.mp3 는 마스터링 전 원본이다.
+    # Remotion 은 public/luna → data/luna_music 심볼릭 링크로만 파일을 읽으므로 트랙 폴더 밖이면 안으로 복사한다.
+    if os.path.dirname(os.path.abspath(audio_file)) != os.path.abspath(t_dir):
+        copied = os.path.join(t_dir, "audio_remotion_src" + os.path.splitext(audio_file)[1])
+        shutil.copy(audio_file, copied)
+        audio_file = copied
+    audio_rel = f"luna/{track_id}/{os.path.basename(audio_file)}"
+
+    # 2. 메타데이터 및 props 준비
+    title_full = (track_data.get("title") or "Agent Luna").strip()
+    if "(" in title_full:
+        parts = title_full.split("(", 1)
+        title_clean = parts[0].strip()
+        sub_part = parts[1].rstrip(")").strip()
+    else:
+        title_clean = title_full
+        sub_part = ""
+
+    genre_name = track_data.get("genre") or ""
+    subtitle_clean = f"{sub_part} · {genre_name}".strip(" ·") if sub_part else genre_name
+
+    loop_unit_sec = float(producer.audio_duration(loop_unit_path) or 22.0)
+    audio_dur = float(producer.audio_duration(audio_file) or track_data.get("duration_seconds") or 180.0)
+
+    props = {
+        "trackId": track_id,
+        "loopUnit": f"luna/{track_id}/bga/loop_unit.mp4",
+        "loopUnitSeconds": loop_unit_sec,
+        "audio": audio_rel,
+        "durationSeconds": audio_dur,
+        "title": title_clean,
+        "subtitle": subtitle_clean,
+        "accent": "#a5b4fc",
+        "spectrum": True,
+    }
+
+    out_file = os.path.join(t_dir, "video_remotion.mp4")
+
+    # 3. 렌더 실행 (video.mp4 를 절대 덮지 않음)
+    step(20, f"Remotion 렌더 시작 (약 {audio_dur:.1f}초, LunaBga)...")
+    cmd = [
+        "npx", "remotion", "render", "src/index.ts", "LunaBga",
+        out_file, "--props", json.dumps(props), "--log", "error"
+    ]
+
+    start_time = time.time()
+    proc = runner(cmd, cwd=REMOTION_DIR, timeout=timeout, capture_output=True, text=True)
+    if proc.returncode != 0:
+        err_msg = (proc.stderr or proc.stdout or "")[-300:]
+        raise RuntimeError(f"Remotion 렌더 실패: {err_msg}")
+
+    elapsed = time.time() - start_time
+    bga["remotion"] = {
+        "file": out_file,
+        "url": f"/data/luna_music/{track_id}/video_remotion.mp4",
+        "elapsed_sec": round(elapsed, 2),
+        "rendered_at": time.time(),
+    }
+    track_data["bga"] = bga
+    luna_engine.save_track(track_data)
+
+    step(100, f"Remotion 비디오 렌더링 완료 ({elapsed:.1f}초) -> {out_file}")
+    return track_data
+
