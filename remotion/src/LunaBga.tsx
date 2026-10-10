@@ -83,7 +83,9 @@ export const LunaBga: React.FC<LunaBgaProps> = ({
       for (let b = lo; b < Math.min(hi, rawVisual.length); b++) {
         peak = Math.max(peak, rawVisual[b]);
       }
-      visualization.push(Math.pow(Math.max(0, peak), 0.7));
+      // 선형 진폭은 고역이 1e-3 수준이라 그대로 그리면 바닥에 붙는다 → dB 스케일(-60~0 dB → 0~1)
+      const db = 20 * Math.log10(Math.max(peak, 1e-6));
+      visualization.push(Math.min(1, Math.max(0, (db + 60) / 60)));
     }
   }
 
