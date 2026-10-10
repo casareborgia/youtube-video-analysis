@@ -1120,6 +1120,27 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
 
 # ── 5. 레오 ✕ 루나 알고리즘 SEO & 인게이지먼트 메타데이터 패키징 ─────────────
 
+YT_TITLE_MAX = 100
+
+
+def truncate_title(title: str, max_len: int = YT_TITLE_MAX, suffix: str = "") -> str:
+    """유튜브 제목을 max_len 안에서 단어 경계로 자른다. suffix 는 항상 보존한다.
+
+    단어 중간("Emotional Pi")에서 끊기지 않도록 마지막 공백·구분자(| · - ( ) 에서 자르고, 끝에 남는 구분 기호는 떼어낸다.
+    자를 자리가 너무 앞(절반 이전)이면 그냥 글자 수로 자른다.
+    """
+    title = (title or "").strip()
+    budget = max_len - len(suffix)
+    if len(title) <= budget:
+        return title + suffix
+    head = title[:budget]
+    cut = max(head.rfind(" "), head.rfind("|"), head.rfind("("))
+    if cut >= budget // 2:
+        head = head[:cut]
+    head = head.rstrip(" |·-–—,(:")
+    return head + suffix
+
+
 def sanitize_pinned_comment(comment_text: str, default_cta: str = "가장 좋았던 멜로디 순간(타임스탬프)을 남겨주시면 루나가 답글을 전합니다 🌙") -> str:
     """
     유튜브 자동 고정 댓글이 중간에 잘리거나 불완전하게 끝나는 현상을 100% 방지하고,
@@ -1381,7 +1402,7 @@ def build_luna_shorts_metadata(track_data, base_meta):
     """숏폼용 제목·설명·태그·고정 댓글. 롱폼 링크는 업로드 시점에 플레이스홀더를 치환한다."""
     title = (track_data.get("title") or "Agent Luna").strip()
     suffix = " (Highlight) #Shorts"
-    yt_title = title[: 100 - len(suffix)].rstrip() + suffix
+    yt_title = truncate_title(title, suffix=suffix)
 
     base_desc = base_meta.get("youtube_description") or track_data.get("story") or ""
     paragraphs = [
@@ -1584,7 +1605,7 @@ def build_luna_metadata(track_data):
         print(f"[LunaEngine] Leo metadata LLM generation error: {e}")
 
     if meta_llm:
-        yt_title = meta_llm.get("youtube_title")[:100]
+        yt_title = truncate_title(meta_llm.get("youtube_title"))
         pinned_comment = meta_llm.get("pinned_comment") or f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? 0:00 {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 ({pinned_cta})"
         yt_desc = meta_llm.get("youtube_description") or ""
 
@@ -1596,7 +1617,7 @@ def build_luna_metadata(track_data):
             yt_desc = yt_desc.replace(LYRICS_PLACEHOLDER, "").strip()
     else:
         # 안전 Fallback
-        yt_title = f"에이전트 루나 (Agent Luna) - {title} | {mood} {genre}"[:100]
+        yt_title = truncate_title(f"에이전트 루나 (Agent Luna) - {title} | {mood} {genre}")
         pinned_comment = f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 ({pinned_cta})"
 
         lyrics_block = f"\n\n[Lyrics / 가사]\n{lyrics}\n" if include_lyrics else ""
