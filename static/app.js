@@ -3353,6 +3353,34 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    const lunaVideoSourceBadge = document.getElementById('lunaVideoSourceBadge');
+    if (lunaVideoSourceBadge) {
+      if (track.video_url) {
+        lunaVideoSourceBadge.style.display = 'inline-block';
+        if (track.video_source === 'bga-remotion') {
+          lunaVideoSourceBadge.className = 'badge';
+          lunaVideoSourceBadge.style.background = 'rgba(192, 132, 252, 0.2)';
+          lunaVideoSourceBadge.style.color = '#c084fc';
+          lunaVideoSourceBadge.style.border = '1px solid rgba(192, 132, 252, 0.4)';
+          lunaVideoSourceBadge.textContent = '🎬 BGA (Remotion)';
+        } else if (track.video_source === 'bga') {
+          lunaVideoSourceBadge.className = 'badge';
+          lunaVideoSourceBadge.style.background = 'rgba(99, 102, 241, 0.2)';
+          lunaVideoSourceBadge.style.color = '#818cf8';
+          lunaVideoSourceBadge.style.border = '1px solid rgba(99, 102, 241, 0.4)';
+          lunaVideoSourceBadge.textContent = '🎬 BGA (ffmpeg)';
+        } else {
+          lunaVideoSourceBadge.className = 'badge badge-subtle';
+          lunaVideoSourceBadge.style.background = '';
+          lunaVideoSourceBadge.style.color = '';
+          lunaVideoSourceBadge.style.border = '';
+          lunaVideoSourceBadge.textContent = '커버 켄번즈';
+        }
+      } else {
+        lunaVideoSourceBadge.style.display = 'none';
+      }
+    }
+
     if (lunaUploadResultBadge) {
       if (track.uploaded_video_id) {
         lunaUploadResultBadge.style.display = 'block';
@@ -3389,6 +3417,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // AI 플레이리스트 추천 업데이트
     updateLunaPlaylistRecommendation(track);
     renderLunaShortsPanel(track);
+    renderLunaBgaPanel(track);
   }
 
   // ── 3.5단계: 하이라이트 숏폼 (Phase B) ──
@@ -3527,6 +3556,290 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // ── 3.7단계: 춘식 BGA (Veo 루프 배경 영상) 패널 (Phase C-1c) ──
+  const lunaBgaPanel = document.getElementById('lunaBgaPanel');
+  const lunaBgaUsage = document.getElementById('lunaBgaUsage');
+  const btnLunaBgaPlan = document.getElementById('btnLunaBgaPlan');
+  const btnLunaBgaGenerate = document.getElementById('btnLunaBgaGenerate');
+  const lunaBgaGenStatus = document.getElementById('lunaBgaGenStatus');
+  const lunaBgaShots = document.getElementById('lunaBgaShots');
+  const lunaBgaClips = document.getElementById('lunaBgaClips');
+  const lunaBgaRendererSelect = document.getElementById('lunaBgaRendererSelect');
+  const lunaBgaWaveformCheck = document.getElementById('lunaBgaWaveformCheck');
+  const btnLunaBgaRender = document.getElementById('btnLunaBgaRender');
+  const lunaBgaRenderNote = document.getElementById('lunaBgaRenderNote');
+
+  async function updateLunaBgaUsage() {
+    if (!lunaBgaUsage) return;
+    try {
+      const res = await fetch('/api/luna/bga/usage');
+      if (!res.ok) return;
+      const data = await res.json();
+      const perTrack = data.estimate_per_track && data.estimate_per_track.usd != null ? data.estimate_per_track.usd : 1.92;
+      lunaBgaUsage.dataset.perTrackUsd = String(perTrack);
+      lunaBgaUsage.textContent = `오늘 ${data.today}/${data.cap} · 트랙당 ≈ $${perTrack}`;
+      if (lunaBgaRendererSelect) {
+        const remOpt = lunaBgaRendererSelect.querySelector('option[value="remotion"]');
+        if (remOpt) {
+          if (data.remotion_available === false) {
+            remOpt.disabled = true;
+            remOpt.textContent = 'Remotion (미설치)';
+          } else {
+            remOpt.disabled = false;
+            remOpt.textContent = 'Remotion (타이포·스펙트럼, 약 2분)';
+          }
+        }
+        if (!localStorage.getItem('luna_bga_renderer')) {
+          lunaBgaRendererSelect.value = data.default_renderer || 'ffmpeg';
+        }
+      }
+    } catch (_) {}
+  }
+
+  function renderLunaBgaPanel(track) {
+    if (!lunaBgaPanel) return;
+    const hasAudio = !!(track && (track.audio_url || track.audio_file));
+    lunaBgaPanel.style.display = hasAudio ? 'block' : 'none';
+    if (!hasAudio) return;
+
+    updateLunaBgaUsage();
+
+    const bga = track.bga || {};
+    const shots = bga.shots || [];
+    // generate_bga_clips 는 clips 를 {"0": {...}, "1": {...}} 딕셔너리로 저장한다 → 인덱스 순 배열로 정규화
+    const rawClips = bga.clips || {};
+    const clips = Array.isArray(rawClips)
+      ? rawClips
+      : Object.keys(rawClips).sort((a, b) => Number(a) - Number(b)).map(k => rawClips[k]);
+
+    // 샷 기획 목록
+    if (lunaBgaShots) {
+      if (shots.length > 0) {
+        lunaBgaShots.style.display = 'block';
+        lunaBgaShots.innerHTML = `
+          <div style="font-weight:600; margin-bottom:4px; color:#c084fc; display:flex; justify-content:space-between; align-items:center;">
+            <span><i class="fa-solid fa-list-ol"></i> 샷 기획 (${shots.length}개)</span>
+            <span style="font-size:0.72rem; color:var(--text-muted); cursor:pointer;" onclick="const el=this.parentElement.nextElementSibling; if(el){ el.style.display=el.style.display==='none'?'block':'none'; this.textContent=el.style.display==='none'?'펼치기 ▼':'접기 ▲'; }">펼치기 ▼</span>
+          </div>
+          <div style="display:none; margin-top:4px;">
+            ${shots.map((s, idx) => `
+              <div style="margin-bottom:4px; padding:4px 6px; background:rgba(255,255,255,0.03); border-radius:4px;">
+                <strong style="color:#e9d5ff;">샷 ${idx + 1} (${escapeHtml(s.camera || '')})</strong>:
+                <span style="color:var(--text-secondary);">${escapeHtml(s.prompt || '')}</span>
+              </div>
+            `).join('')}
+          </div>
+        `;
+        if (btnLunaBgaGenerate) btnLunaBgaGenerate.disabled = false;
+      } else {
+        lunaBgaShots.style.display = 'none';
+        lunaBgaShots.innerHTML = '';
+        if (btnLunaBgaGenerate) btnLunaBgaGenerate.disabled = true;
+      }
+    }
+
+    // Veo 클립 목록
+    let doneClipsCount = 0;
+    if (lunaBgaClips) {
+      if (clips.length > 0) {
+        lunaBgaClips.style.display = 'flex';
+        lunaBgaClips.innerHTML = clips.map((c, idx) => {
+          const isDone = c.status === 'done';
+          if (isDone) doneClipsCount++;
+          const badgeClass = isDone ? 'badge-success' : 'badge-accent';
+          const badgeText = isDone ? '완료' : (c.error ? `실패: ${escapeHtml(c.error)}` : escapeHtml(c.status || '대기'));
+          const videoHtml = (isDone && c.url)
+            ? `<video width="240" src="${c.url}" muted controls style="border-radius:4px; background:#000; border:1px solid var(--border-color);"></video>`
+            : `<div style="width:240px; height:135px; background:rgba(0,0,0,0.3); border-radius:4px; display:flex; align-items:center; justify-content:center; color:var(--text-muted); font-size:0.75rem;">클립 미생성</div>`;
+          return `
+            <div style="flex-shrink:0; text-align:center;">
+              ${videoHtml}
+              <div style="margin-top:4px; display:flex; justify-content:space-between; align-items:center; font-size:0.72rem;">
+                <span>클립 ${idx + 1}</span>
+                <span class="badge ${badgeClass}" style="font-size:10px;">${badgeText}</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      } else {
+        lunaBgaClips.style.display = 'none';
+        lunaBgaClips.innerHTML = '';
+      }
+    }
+
+    // 루프 렌더 버튼 활성화 (완료 클립 2개 이상)
+    if (btnLunaBgaRender) {
+      btnLunaBgaRender.disabled = doneClipsCount < 2;
+    }
+
+    // 렌더링 결과 노트
+    if (lunaBgaRenderNote) {
+      if (bga.fallback_reason) {
+        lunaBgaRenderNote.textContent = `Remotion 실패 → ffmpeg 로 렌더됨: ${bga.fallback_reason}`;
+        lunaBgaRenderNote.style.color = '#f59e0b';
+      } else if (bga.renderer_used === 'remotion') {
+        lunaBgaRenderNote.textContent = 'Remotion 렌더 채택됨';
+        lunaBgaRenderNote.style.color = '#c084fc';
+      } else if (bga.renderer_used === 'ffmpeg') {
+        lunaBgaRenderNote.textContent = 'ffmpeg 렌더 채택됨';
+        lunaBgaRenderNote.style.color = '#818cf8';
+      } else {
+        lunaBgaRenderNote.textContent = '';
+      }
+    }
+  }
+
+  if (btnLunaBgaPlan) {
+    btnLunaBgaPlan.addEventListener('click', async () => {
+      if (!currentLunaTrack || !currentLunaTrack.track_id) {
+        showAlert('먼저 트랙을 선택하거나 생성해주세요.', 'error');
+        return;
+      }
+      btnLunaBgaPlan.disabled = true;
+      btnLunaBgaPlan.querySelector('.btn-text').style.display = 'none';
+      btnLunaBgaPlan.querySelector('.spinner').style.display = 'inline-block';
+      try {
+        const res = await fetch('/api/luna/bga/plan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ track_id: currentLunaTrack.track_id })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'BGA 샷 기획 실패');
+        }
+        const data = await res.json();
+        currentLunaTrack.bga = { ...(currentLunaTrack.bga || {}), shots: data.shots };
+        renderLunaBgaPanel(currentLunaTrack);
+        showAlert(`BGA 샷 ${data.shots.length}개가 기획되었습니다. (예상 비용 $${data.estimate?.usd || 1.92})`, 'success');
+      } catch (err) {
+        showAlert('샷 기획 오류: ' + err.message, 'error');
+      } finally {
+        btnLunaBgaPlan.disabled = false;
+        btnLunaBgaPlan.querySelector('.btn-text').style.display = 'inline-block';
+        btnLunaBgaPlan.querySelector('.spinner').style.display = 'none';
+      }
+    });
+  }
+
+  if (btnLunaBgaGenerate) {
+    btnLunaBgaGenerate.addEventListener('click', async () => {
+      if (!currentLunaTrack || !currentLunaTrack.track_id) {
+        showAlert('먼저 트랙을 선택하거나 생성해주세요.', 'error');
+        return;
+      }
+      const bga = currentLunaTrack.bga || {};
+      const shots = bga.shots || [];
+      const n = shots.length || 3;
+      const perTrackUsd = parseFloat(lunaBgaUsage?.dataset?.perTrackUsd || '1.92');
+      const usd = (perTrackUsd * n / 3).toFixed(2);
+      let usageInfo = '오늘 0/12';
+      try {
+        const ures = await fetch('/api/luna/bga/usage');
+        if (ures.ok) {
+          const udata = await ures.json();
+          usageInfo = `오늘 ${udata.today}/${udata.cap}`;
+        }
+      } catch (_) {}
+
+      const ok = window.confirm(`Veo 클립 ${n}개를 생성합니다. 예상 비용 $${usd} (${usageInfo}). 진행할까요?`);
+      if (!ok) return;
+
+      btnLunaBgaGenerate.disabled = true;
+      btnLunaBgaGenerate.querySelector('.btn-text').style.display = 'none';
+      btnLunaBgaGenerate.querySelector('.spinner').style.display = 'inline-block';
+      if (lunaBgaGenStatus) lunaBgaGenStatus.textContent = '생성 중 (샷당 약 1분)…';
+
+      try {
+        const res = await fetch('/api/luna/bga/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ track_id: currentLunaTrack.track_id, confirm: true })
+        });
+        if (!res.ok) {
+          if (res.status === 429) {
+            throw new Error('오늘 상한 도달: 일일 Veo 생성 상한을 초과했습니다.');
+          }
+          const err = await res.json();
+          throw new Error(err.detail || 'BGA 생성 실패');
+        }
+        const updated = await res.json();
+        currentLunaTrack = updated;
+        renderLunaTrackView(updated);
+        loadLunaHistory();
+        showAlert('Veo BGA 클립 생성이 완료되었습니다!', 'success');
+      } catch (err) {
+        showAlert('BGA 생성 오류: ' + err.message, 'error');
+      } finally {
+        btnLunaBgaGenerate.disabled = false;
+        btnLunaBgaGenerate.querySelector('.btn-text').style.display = 'inline-block';
+        btnLunaBgaGenerate.querySelector('.spinner').style.display = 'none';
+        if (lunaBgaGenStatus) lunaBgaGenStatus.textContent = '';
+      }
+    });
+  }
+
+  if (btnLunaBgaRender) {
+    btnLunaBgaRender.addEventListener('click', async () => {
+      if (!currentLunaTrack || !currentLunaTrack.track_id) {
+        showAlert('먼저 트랙을 선택하거나 생성해주세요.', 'error');
+        return;
+      }
+      btnLunaBgaRender.disabled = true;
+      btnLunaBgaRender.querySelector('.btn-text').style.display = 'none';
+      btnLunaBgaRender.querySelector('.spinner').style.display = 'inline-block';
+
+      const renderer = lunaBgaRendererSelect ? lunaBgaRendererSelect.value : 'ffmpeg';
+      const withWaveform = lunaBgaWaveformCheck ? lunaBgaWaveformCheck.checked : false;
+
+      try {
+        const res = await fetch('/api/luna/bga/render', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            track_id: currentLunaTrack.track_id,
+            renderer: renderer,
+            with_waveform: withWaveform,
+            upscale: true
+          })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'BGA 루프 렌더 실패');
+        }
+        const updated = await res.json();
+        currentLunaTrack = updated;
+        renderLunaTrackView(updated);
+        if (lunaVideoPlayer && updated.video_url) {
+          lunaVideoPlayer.src = `${updated.video_url}?t=${updated.rendered_at || Date.now()}`;
+          lunaVideoPlayer.load();
+        }
+        loadLunaHistory();
+        showAlert(`BGA 루프 비디오 렌더링 완료! (${updated.bga?.renderer_used || renderer})`, 'success');
+      } catch (err) {
+        showAlert('루프 렌더 오류: ' + err.message, 'error');
+      } finally {
+        btnLunaBgaRender.disabled = false;
+        btnLunaBgaRender.querySelector('.btn-text').style.display = 'inline-block';
+        btnLunaBgaRender.querySelector('.spinner').style.display = 'none';
+      }
+    });
+  }
+
+  if (lunaBgaRendererSelect) {
+    const savedRenderer = localStorage.getItem('luna_bga_renderer');
+    if (savedRenderer) lunaBgaRendererSelect.value = savedRenderer;
+    lunaBgaRendererSelect.addEventListener('change', (e) => {
+      localStorage.setItem('luna_bga_renderer', e.target.value);
+    });
+  }
+  if (lunaBgaWaveformCheck) {
+    lunaBgaWaveformCheck.checked = localStorage.getItem('luna_bga_waveform') === 'true';
+    lunaBgaWaveformCheck.addEventListener('change', (e) => {
+      localStorage.setItem('luna_bga_waveform', e.target.checked ? 'true' : 'false');
+    });
+  }
+
   // 3. 루나 채널 유튜브 업로드 (즉시/예약 공개 & 재생목록 자동 배정)
   if (btnUploadLunaYt) {
     btnUploadLunaYt.addEventListener('click', async () => {
@@ -3652,6 +3965,7 @@ document.addEventListener('DOMContentLoaded', () => {
       lunaHistoryList.innerHTML = tracks.map(t => {
         const isRendered = !!t.video_url;
         const isUploaded = !!t.uploaded_video_id;
+        const isBga = t.video_source === 'bga' || t.video_source === 'bga-remotion';
         const hasLyrics = Boolean(t.has_lyrics || t.lyrics);
         // 보컬 판정 근거 — 구 트랙(vocal_mode 없음)은 '—' 로 표시
         const vocalModeLabel = { auto: '자동', lyrics: '보컬 지정', instrumental: '연주곡 지정' }[t.vocal_mode] || '—';
@@ -3668,6 +3982,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <div style="display:flex; gap:6px; align-items:center; flex-shrink:0;">
               ${hasLyrics ? '<span class="badge" style="font-size:10px; background:rgba(168,85,247,0.18); color:#d8b4fe; border:1px solid rgba(168,85,247,0.3);"><i class="fa-solid fa-microphone-lines"></i> 가사</span>' : ''}
               ${isUploaded ? '<span class="badge badge-success" style="font-size:10px;"><i class="fa-brands fa-youtube"></i> 업로드됨</span>' : ''}
+              ${isBga ? '<span class="badge" style="font-size:10px; background:rgba(192,132,252,0.18); color:#c084fc; border:1px solid rgba(192,132,252,0.3);"><i class="fa-solid fa-clapperboard"></i> 🎬 BGA</span>' : ''}
               ${isRendered ? '<span class="badge badge-accent" style="font-size:10px;"><i class="fa-solid fa-film"></i> 영상완료</span>' : '<span class="badge badge-subtle" style="font-size:10px;">음원만</span>'}
               <button class="btn btn-xs btn-outline btn-load-luna-track" data-id="${escapeHtml(t.track_id)}"><i class="fa-solid fa-play"></i></button>
             </div>
