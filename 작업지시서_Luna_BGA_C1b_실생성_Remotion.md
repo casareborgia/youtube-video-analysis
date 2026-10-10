@@ -68,8 +68,8 @@ React 컴포넌트로 영상을 정의하고 헤드리스 브라우저로 프레
 ## 4. 수용 기준
 
 **C-1b-1**
-- [ ] 클립 3개 중 2개 이상 성공, `loop_unit.mp4` ≈ 22초(성공 3개 기준), `video.mp4` 길이 = 음원 길이
-- [ ] `bga_usage.json` 오늘 값 = 성공 클립 수, `video_source == "bga"`, `video_cover_backup.mp4` 존재
+- [x] 클립 3개 중 2개 이상 성공, `loop_unit.mp4` ≈ 22초(성공 3개 기준), `video.mp4` 길이 = 음원 길이
+- [x] `bga_usage.json` 오늘 값 = 성공 클립 수, `video_source == "bga"`, `video_cover_backup.mp4` 존재(기존 영상 없던 트랙이라 해당 없음)
 - [ ] 실제 과금액을 7장에 기록
 
 **C-1b-2**
@@ -95,6 +95,26 @@ React 컴포넌트로 영상을 정의하고 헤드리스 브라우저로 프레
 - Performance: https://remotion.dev/docs/performance
 - `<OffthreadVideo>`: https://www.remotion.dev/docs/offthreadvideo
 
-## 7. C-1b-1 실측 결과 (작성 예정)
+## 7. C-1b-1 실측 결과 (2026-10-10 16:58–17:02, Claude Code)
+
+트랙 `luna_1791476313` *Bleeding Blueprints (빗물에 번진 청사진)* / Emotional Piano Solo / 음원 175.96초(베가 마스터본 `audio_mastered.wav`).
+
+| 항목 | 결과 |
+|---|---|
+| 샷 기획 | `plan_bga_shots` LLM 경로 성공(`source=llm` 3개). 카메라 3종·조명·그레이딩(`muted nostalgic warm tones`)·접미사가 모두 포함됨. 62 BPM 이 프롬프트에 반영 |
+| 생성 | `generate_bga_clips(confirm)` **3/3 성공**, 샷당 61·71·60초, **총 192초**. 안전 필터·타임아웃 없음. 각 1280×720 24fps 8.000초, 오디오 스트림 0 |
+| 사용량 | `data/bga_usage.json` → `{"2026-10-10": 3}`, 일일 상한 12 |
+| 루프 단위 | `unit_raw.mp4` 22.0초 → 이음새 브리지 적용 `loop_unit.mp4` **22.0초**(폴백 경고 없음) |
+| 최종 렌더 | `render_bga_loop(with_waveform=True, upscale=True)` **19.5초** → `video.mp4` 1920×1080 24fps, **175.96초(= 음원 길이)**, AAC 44.1kHz 스테레오, 169MB. `video_source="bga"` |
+| 백업 | 이 트랙은 기존 `video.mp4` 가 없어 `video_cover_backup.mp4` 는 생성되지 않음(정상) |
+| 화질·톤 | 3클립 모두 커버의 청사진·젖은 테이블·빗창 구도 유지. 샷 2(풀백)는 의자·마루까지 넓게 드러나 변화가 있음 |
+| 이음새 | 단위 끝(풀백 와이드) → 단위 시작(푸시인 근접)으로 넘어갈 때 **프레이밍 점프가 1초 페이드로 완화**되는 수준. 로파이·피아노 BGA 로는 허용 범위이나 거슬리면 `BGA_XFADE_SECONDS` 를 2초로 늘리는 것을 1순위로 검토(C 안 6클립보다 먼저) |
+| 과금 | 2차 출처 단가 기준 **$1.92**. Cloud Billing 실제 금액은 반영 후 기입: ____ |
+
+발견·수정:
+- **파형 색 버그**: `waveform_overlay_filter` 의 `showwaves` 가 지정색 `0xa5b4fc`(라벤더) 대신 **연두색**으로 그려졌다. 원인은 기본 `draw=scale` 이 샘플 밀도에 따라 픽셀 색을 누적·변형하는 것(ffmpeg 8.1 에서 재현). `draw=full` 추가로 해결했고 Phase B 숏폼에도 같은 함수를 쓰므로 함께 고쳐진다. 같은 PR 에 포함.
+- Veo 클립 상단 모서리에 어두운 얼룩(렌즈 결로·먼지 질감)이 보인다. 샷 2 프롬프트의 "subtle lens condensation" 이 원인으로 보이며, C-1c 에서 프롬프트 템플릿 접미사에 `clean lens, no vignette` 를 추가할지 검토.
+
+C-1b-1 수용 기준: 3/3 성공 ✅, loop_unit ≈ 22초 ✅, video 길이 = 음원 ✅, 사용량 3 ✅, `video_source=bga` ✅, 백업(해당 없음) ✅, 과금액 기입 ⏳.
 
 ## 8. C-1b-3 비교 결과 (작성 예정)
