@@ -176,6 +176,59 @@ class LyriaInputTests(unittest.TestCase):
         self.assertTrue(t["has_lyrics"])   # 가사 텍스트 자체는 남겨 UI 에서 볼 수 있다
 
 
+# ── Lyria 3.5 입력 필터 확률적 차단 → 같은 모델 재시도 ────────────────────
+class LyriaInputBlockRetryTests(unittest.TestCase):
+    BLOCK = RuntimeError("Error code: 400 - {'error': {'message': \"Input blocked: The prompt could not be submitted. The prompt contains sensitive words that violate Google's Generative AI Prohibited Use policy\"}}")
+
+    def _run(self, side_effect):
+        track = {"track_id": "luna_retry", "lyria_prompt": "City pop, 108 BPM", "has_lyrics": True, "lyrics": LYRICS_KO, "vocal_language": "ko"}
+        calls = []
+
+        def fake_gen(key, model, prompt, dur, out_path):
+            calls.append(model)
+            r = side_effect(len(calls))
+            if isinstance(r, Exception):
+                raise r
+            with open(out_path, "wb") as f:
+                f.write(b"\x00" * 5000)
+            return ""
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(luna_engine, "LUNA_DIR", tmp), \
+             patch.object(luna_engine, "LYRIA_INPUT_BLOCK_RETRY_DELAY", 0), \
+             patch.object(producer, "gemini_key", return_value="k"), \
+             patch.object(luna_engine, "_lyria_generate", side_effect=fake_gen), \
+             patch.object(luna_engine, "_ensure_audio_duration", return_value=180.0), \
+             patch.object(luna_engine.vega_engine, "master_track", return_value=None):
+            t = luna_engine.generate_luna_audio(track, duration_seconds=180, master_audio=False)
+        return t, calls
+
+    def test_is_block_error_detector(self):
+        self.assertTrue(luna_engine._is_lyria_input_block_error(self.BLOCK))
+        self.assertFalse(luna_engine._is_lyria_input_block_error(RuntimeError("status=failed internal error")))
+
+    def test_block_then_pass_stays_on_lyria_35(self):
+        t, calls = self._run(lambda n: self.BLOCK if n == 1 else None)
+        self.assertEqual(calls, ["lyria-3.5", "lyria-3.5"])
+        self.assertEqual(t["ai_model"], "lyria-3.5")
+        self.assertEqual(t["lyria_block_retries"], 1)
+
+    def test_block_twice_falls_to_next_model(self):
+        t, calls = self._run(lambda n: self.BLOCK if n <= 2 else None)
+        self.assertEqual(calls, ["lyria-3.5", "lyria-3.5", "lyria-3-pro-preview"])
+        self.assertEqual(t["ai_model"], "lyria-3-pro-preview")
+        self.assertNotIn("lyria_block_retries", t)
+
+    def test_non_block_error_does_not_retry_same_model(self):
+        t, calls = self._run(lambda n: RuntimeError("status=failed internal") if n == 1 else None)
+        self.assertEqual(calls, ["lyria-3.5", "lyria-3-pro-preview"])
+
+    def test_quota_error_still_raises_immediately(self):
+        with self.assertRaises(RuntimeError) as cm:
+            self._run(lambda n: RuntimeError("429 RESOURCE_EXHAUSTED spending cap"))
+        self.assertIn("지출 한도", str(cm.exception))
+
+
 # ── 버그 2: 설명란 가사는 원문 그대로 ────────────────────────────────────
 class DescriptionLyricsTests(unittest.TestCase):
     def _track(self, **kw):
