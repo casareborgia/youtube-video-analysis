@@ -1255,7 +1255,8 @@ async def generate_luna_track(req: LunaTrackGenerateRequest):
     레오의 트렌드 브리프와 장르 독립 스펙을 결합하여
     음원 콘셉트 기획, 가사 생성(필요시), Lyria 3 Pro 완곡 음원, Imagen 앨범아트, 레오의 고정댓글 메타데이터까지 자동 생성
     """
-    try:
+    # Lyria 작곡·마스터링·커버까지 수 분이 걸리는 동기 작업 — 이벤트 루프를 막지 않도록 스레드에서 실행
+    def _run():
         concept = luna_engine.generate_music_concept(
             genre=req.genre,
             mood=req.mood,
@@ -1268,7 +1269,7 @@ async def generate_luna_track(req: LunaTrackGenerateRequest):
         concept["created_at"] = time.time()
         if req.leo_brief:
             concept["leo_brief"] = req.leo_brief
-        
+
         # 음원 생성 (Lyria 3 Pro / 오토 신스)
         track_with_audio = luna_engine.generate_luna_audio(
             concept,
@@ -1276,16 +1277,19 @@ async def generate_luna_track(req: LunaTrackGenerateRequest):
             master_audio=(req.master_audio if req.master_audio is not None else True),
             mastering_prompt=req.mastering_prompt or "",
         )
-        
+
         # 앨범 커버 생성 (나노바나나)
         full_track = luna_engine.generate_luna_cover(track_with_audio)
-        
+
         # 레오의 4단계 알고리즘 메타데이터 생성 (고정댓글 포함) 및 저장
         meta = luna_engine.build_luna_metadata(full_track)
         full_track["metadata"] = meta
         luna_engine.save_track(full_track)
-        
         return full_track
+
+    try:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, _run)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"루나 트랙 생성 실패: {e}")
 
@@ -1395,7 +1399,10 @@ async def extract_luna_shorts_highlight(req: LunaShortsExtractRequest):
     if not track:
         raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
     try:
-        return luna_engine.extract_audio_highlight(track, duration=req.duration or 45, start_override=req.start_override)
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, lambda: luna_engine.extract_audio_highlight(track, duration=req.duration or 45, start_override=req.start_override)
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"하이라이트 추출 실패: {e}")
 
@@ -1452,7 +1459,8 @@ async def generate_luna_bga(req: LunaBgaGenerateRequest):
     if not track:
         raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
     try:
-        updated = choonsik_bga.generate_bga_clips(track, dry_run=bool(req.dry_run))
+        loop = asyncio.get_event_loop()
+        updated = await loop.run_in_executor(None, lambda: choonsik_bga.generate_bga_clips(track, dry_run=bool(req.dry_run)))
         return updated
     except RuntimeError as e:
         if "상한" in str(e):
@@ -1469,12 +1477,13 @@ async def render_luna_bga(req: LunaBgaRenderRequest):
     if not track:
         raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
     try:
-        updated = choonsik_bga.render_bga(
+        loop = asyncio.get_event_loop()
+        updated = await loop.run_in_executor(None, lambda: choonsik_bga.render_bga(
             track,
             renderer=req.renderer,
             with_waveform=bool(req.with_waveform),
             upscale=True if req.upscale is None else bool(req.upscale),
-        )
+        ))
         return updated
     except RuntimeError as e:
         if "2개 미만" in str(e):
@@ -1503,7 +1512,8 @@ async def render_luna_bga_remotion(req: LunaBgaRenderRemotionRequest):
     if not track:
         raise HTTPException(status_code=404, detail="해당 트랙을 찾을 수 없습니다.")
     try:
-        updated = choonsik_bga.render_bga_remotion(track)
+        loop = asyncio.get_event_loop()
+        updated = await loop.run_in_executor(None, lambda: choonsik_bga.render_bga_remotion(track))
         return updated
     except RuntimeError as e:
         msg = str(e)
