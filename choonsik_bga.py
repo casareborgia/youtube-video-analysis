@@ -441,11 +441,12 @@ def render_bga_loop(track_data: dict, with_waveform: bool = False, upscale: bool
     fade_out_start = max(0.0, audio_dur - 3.0)
 
     if with_waveform:
-        wave_filter = luna_engine.waveform_overlay_filter(target_w, 180)
+        wave_h = luna_engine.WAVEFORM_HEIGHT_LONGFORM
+        wave_filter = luna_engine.waveform_overlay_filter(target_w, wave_h)
         final_filter = (
             f"[0:v]{scale_part},fade=in:st=0:d=2,fade=out:st={fade_out_start:.3f}:d=3[bg];"
             f"[1:a]{wave_filter}[wave];"
-            f"[bg][wave]overlay=0:H-180[vfinal]"
+            f"[bg][wave]overlay=0:H-{wave_h}[vfinal]"
         )
         map_v = "[vfinal]"
     else:

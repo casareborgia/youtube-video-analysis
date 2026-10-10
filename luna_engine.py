@@ -1313,7 +1313,11 @@ def extract_audio_highlight(track_data, duration=SHORTS_DEFAULT_DURATION, start_
     return track_data
 
 
-def waveform_overlay_filter(width, height, color="0xa5b4fc@0.85"):
+WAVEFORM_HEIGHT_LONGFORM = 80     # 1080p 기준. 운영 피드백(2026-10-11): 파형이 눈에 띄어 높이·투명도를 크게 낮춤
+WAVEFORM_HEIGHT_SHORTS = 110      # 1920 세로 기준
+
+
+def waveform_overlay_filter(width, height, color="0xa5b4fc@0.35"):
     """오디오 파형 바 필터 조각. 숏폼이 쓰고, 롱폼에도 같은 모양으로 붙일 수 있게 분리해 둔다.
     draw=full 이 필요하다: 기본 draw=scale 은 샘플 밀도에 따라 색을 누적해 지정색(라벤더)이 연두색으로 변한다 (ffmpeg 8.1 확인).
     """
@@ -1330,7 +1334,7 @@ def _shorts_filter_graph(title_safe, clip_len, with_text=True, with_wave=True):
     ]
     last = "base"
     if with_wave:
-        parts.append(f"[1:a]{waveform_overlay_filter(w, 180)}[wave]")
+        parts.append(f"[1:a]{waveform_overlay_filter(w, WAVEFORM_HEIGHT_SHORTS)}[wave]")
         parts.append(f"[{last}][wave]overlay=0:H-h-170[wv]")
         last = "wv"
     if with_text:

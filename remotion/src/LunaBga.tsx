@@ -200,10 +200,10 @@ export const LunaBga: React.FC<LunaBgaProps> = ({
         <div
           style={{
             position: "absolute",
-            bottom: 60,
+            bottom: 48,
             left: 200,
             right: 200,
-            height: 180,
+            height: 110,
             display: "flex",
             alignItems: "flex-end",
             justifyContent: "space-between",
@@ -211,7 +211,7 @@ export const LunaBga: React.FC<LunaBgaProps> = ({
           }}
         >
           {visualization.map((val, idx) => {
-            const barHeight = Math.min(180, Math.max(4, val * 180));
+            const barHeight = Math.min(110, Math.max(3, val * 110));
             return (
               <div
                 key={idx}
@@ -219,7 +219,7 @@ export const LunaBga: React.FC<LunaBgaProps> = ({
                   flex: 1,
                   height: barHeight,
                   backgroundColor: accent,
-                  opacity: 0.75,
+                  opacity: 0.45,
                   borderRadius: "3px 3px 0 0",
                   boxShadow: `0 0 10px ${accent}66`,
                 }}
