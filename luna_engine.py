@@ -1144,8 +1144,10 @@ def extract_audio_highlight(track_data, duration=SHORTS_DEFAULT_DURATION, start_
 
 
 def waveform_overlay_filter(width, height, color="0xa5b4fc@0.85"):
-    """오디오 파형 바 필터 조각. 숏폼이 쓰고, 롱폼에도 같은 모양으로 붙일 수 있게 분리해 둔다."""
-    return f"showwaves=s={width}x{height}:mode=cline:colors={color}:scale=sqrt:rate=25"
+    """오디오 파형 바 필터 조각. 숏폼이 쓰고, 롱폼에도 같은 모양으로 붙일 수 있게 분리해 둔다.
+    draw=full 이 필요하다: 기본 draw=scale 은 샘플 밀도에 따라 색을 누적해 지정색(라벤더)이 연두색으로 변한다 (ffmpeg 8.1 확인).
+    """
+    return f"showwaves=s={width}x{height}:mode=cline:colors={color}:scale=sqrt:rate=25:draw=full"
 
 
 def _shorts_filter_graph(title_safe, clip_len, with_text=True, with_wave=True):
