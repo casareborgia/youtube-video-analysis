@@ -21,7 +21,7 @@ BGA_DEFAULT_DAILY_CAP = 12                # env BGA_MAX_CLIPS_PER_DAY 로 덮어
 BGA_XFADE_SECONDS = 1.0
 BGA_POLL_INTERVAL = 10                    # 초
 BGA_POLL_TIMEOUT = 300                    # 초
-BGA_RATE_PER_SEC = {"720p": 0.08, "1080p": 0.10}   # USD, 무오디오, 2차 출처 — 공식 단가 아님
+BGA_RATE_PER_SEC = {"720p": 0.08, "1080p": 0.10}   # USD, 무오디오. 720p 는 2026-10 Cloud Billing 실측 ₩108.7/초(≈$0.079) 로 확인, 1080p 는 2차 출처
 BGA_USAGE_FILE = os.path.join(luna_engine.DATA_DIR, "bga_usage.json")
 
 BGA_CAMERA_MOVES = [
