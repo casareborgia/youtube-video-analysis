@@ -758,20 +758,32 @@ def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None, mast
     if key:
         step(35, "Google GenAI Lyria 엔진에 작곡 요청 전송 중...")
         for model_name in LYRIA_MODELS:
-            try:
-                step(40, f"Lyria 작곡 요청 중 ({model_name})...")
-                lyria_output_text = _lyria_generate(key, model_name, safe_lyria_prompt, duration_seconds, audio_path) or ""
-                lyria_success = True
-                used_model = model_name
-                step(80, f"Lyria 고음질 오디오 수신 완료! ({model_name})")
+            attempts = 1 + max(LYRIA_INPUT_BLOCK_RETRIES, 0)
+            for attempt in range(1, attempts + 1):
+                try:
+                    step(40, f"Lyria 작곡 요청 중 ({model_name}{f', 재시도 {attempt - 1}' if attempt > 1 else ''})...")
+                    lyria_output_text = _lyria_generate(key, model_name, safe_lyria_prompt, duration_seconds, audio_path) or ""
+                    lyria_success = True
+                    used_model = model_name
+                    if attempt > 1:
+                        track_data["lyria_block_retries"] = attempt - 1
+                    step(80, f"Lyria 고음질 오디오 수신 완료! ({model_name})")
+                    break
+                except Exception as e:
+                    last_err = f"{model_name}: {str(e)[:180]}"
+                    print(f"[LunaEngine] Lyria 실패 -> {last_err}")
+                    # 지출 한도 초과(429) 또는 할당량 소진 시 즉각 사용자 안내 예외 발생
+                    err_lower = str(e).lower()
+                    if "429" in str(e) or "spending cap" in err_lower or "resource_exhausted" in err_lower:
+                        raise RuntimeError("Google AI Studio 월간 지출 한도 초과(429) 또는 크레딧 소진으로 AI 작곡이 차단되었습니다. AI Studio(https://ai.studio/spend)에서 한도를 늘려주세요.") from e
+                    # 입력 필터 거절은 확률적이므로 같은 모델로 한 번 더 시도한다. 다른 오류는 바로 다음 모델로.
+                    if _is_lyria_input_block_error(e) and attempt < attempts:
+                        print(f"[LunaEngine] {model_name} 입력 필터 거절(확률적) -> {LYRIA_INPUT_BLOCK_RETRY_DELAY:.0f}초 후 같은 모델 재시도")
+                        time.sleep(LYRIA_INPUT_BLOCK_RETRY_DELAY)
+                        continue
+                    break
+            if lyria_success:
                 break
-            except Exception as e:
-                last_err = f"{model_name}: {str(e)[:180]}"
-                print(f"[LunaEngine] Lyria 실패 -> {last_err}")
-                # 지출 한도 초과(429) 또는 할당량 소진 시 즉각 사용자 안내 예외 발생
-                err_lower = str(e).lower()
-                if "429" in str(e) or "spending cap" in err_lower or "resource_exhausted" in err_lower:
-                    raise RuntimeError("Google AI Studio 월간 지출 한도 초과(429) 또는 크레딧 소진으로 AI 작곡이 차단되었습니다. AI Studio(https://ai.studio/spend)에서 한도를 늘려주세요.") from e
 
         if not lyria_success:
             print(f"[LunaEngine] 모든 Lyria 모델 실패({last_err}) -> 고음질 오토 신스 백업 엔진 가동")
@@ -822,6 +834,18 @@ def _vega_auto_master_enabled() -> bool:
 # 계정/티어에 따라 사용 가능한 모델이 다르므로 앞에서부터 순서대로 시도한다.
 # (producer.py 의 FALLBACK_IMAGE_MODELS 와 동일한 패턴)
 LYRIA_MODELS = ["lyria-3.5", "lyria-3-pro-preview", "lyria-3-clip-preview"]
+
+# Lyria 3.5 의 입력 안전 필터는 확률적으로 동작해 같은 입력이 간헐적으로 "Input blocked" 로 거절된다
+# (동일 입력 7회 재전송 전부 통과로 확인, 2026-10-10). 차단된 요청은 생성이 일어나지 않아 과금되지 않으므로
+# 구형 모델로 내려가기 전에 같은 모델로 짧게 재시도한다.
+LYRIA_INPUT_BLOCK_RETRIES = int(os.environ.get("LYRIA_INPUT_BLOCK_RETRIES", "1"))
+LYRIA_INPUT_BLOCK_RETRY_DELAY = float(os.environ.get("LYRIA_INPUT_BLOCK_RETRY_DELAY", "2"))
+
+
+def _is_lyria_input_block_error(err) -> bool:
+    """Lyria 입력 안전 필터 거절(400 Input blocked / sensitive words / prohibited use)인지 판별한다."""
+    m = str(err).lower()
+    return "input blocked" in m or "sensitive words" in m or "prohibited use" in m
 
 
 def _lyria_generate(api_key, model_name, prompt, duration_seconds, out_path):
