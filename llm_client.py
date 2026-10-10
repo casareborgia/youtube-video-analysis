@@ -24,6 +24,9 @@ from pathlib import Path
 LMSTUDIO_URL = "http://127.0.0.1:1234"
 OLLAMA_URL = "http://127.0.0.1:11434"
 DEFAULT_GEMINI_MODEL = "gemini-3.8-flash"
+# Gemini 텍스트 생성 요청 타임아웃(초). SDK 기본값은 무제한이라 네트워크가 멈추면 생성 요청 전체가 무한 대기했다
+# (2026-10-10 실생성 중 기획 호출이 10분 이상 응답 없이 멈춘 사례). 초과 시 예외가 나고 call_llm 이 로컬 LLM 폴백을 시도한다.
+GEMINI_TEXT_TIMEOUT_SECONDS = float(os.environ.get("GEMINI_TEXT_TIMEOUT_SECONDS", "180"))
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -327,6 +330,8 @@ def call_gemini(
     config = {
         "temperature": temperature,
         "max_output_tokens": max_tokens,
+        # 요청 단위 타임아웃(밀리초). 0 이하면 지정하지 않는다(SDK 기본 = 무제한).
+        **({"http_options": {"timeout": int(GEMINI_TEXT_TIMEOUT_SECONDS * 1000)}} if GEMINI_TEXT_TIMEOUT_SECONDS > 0 else {}),
     }
     if system_text:
         config["system_instruction"] = system_text.strip()
