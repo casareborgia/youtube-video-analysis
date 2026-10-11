@@ -116,6 +116,11 @@ def plan_bga_shots(track_data: dict, n_shots: int = BGA_N_SHOTS) -> list:
     system_prompt = (
         "You are an expert cinematic visual director specializing in generating seamless background video (BGA) prompts for Veo 3.1.\n"
         f"You must create exactly {n_shots} sequential shots for ambient looping music videos.\n"
+        "CRITICAL ANIMATION RULES FOR LOFI MASCOT & ENVIRONMENT:\n"
+        "- The scene follows a cozy 2D lofi anime / Studio Ghibli illustration aesthetic.\n"
+        "- If a sleeping calico cat is present: the cat MUST NEVER wake up, stand, or change position. ONLY depict subtle, peaceful rhythmic breathing motion (its back and belly gently rising and falling in a soft slow loop).\n"
+        "- Include gentle ambient micro-motions: delicate steam rising smoothly from the cup, faint raindrops tracing down the window pane, and subtle warm amber lamp glow.\n"
+        "- The camera movements must be ultra-slow, peaceful, and hypnotic, strictly avoiding any jarring shifts or quick pans.\n"
         "Return ONLY a valid JSON object in the format:\n"
         '{"shots": [{"camera": "<camera move description>", "prompt": "<detailed visual prompt for Veo 3.1>"}]}'
     )

@@ -48,7 +48,7 @@ GENRE_SPECS = {
         "bpm_range": "70-85 BPM",
         "instruments": "warm Fender Rhodes chords, dusty vinyl crackle, gentle acoustic bass, relaxed 75 bpm swing drums, mellow night jazz guitar licks",
         "sound_texture": "warm analog tape saturation, cozy nostalgic bedroom ambience, relaxed chillhop swing",
-        "visual_style": "aesthetic Lo-Fi anime room at rainy night, cozy warm desk lamp, steaming cup of coffee next to glowing vintage radio, blurry city lights, Studio Ghibli inspired, ultra-detailed 8k, no text",
+        "visual_style": "A cozy 16:9 lofi anime illustration of a midnight wooden study desk, a cute calico cat sleeping peacefully curled up next to a glowing green banker desk lamp, an open vintage notebook and sheet music on the desk, a warm ceramic mug with gentle steam rising, soft rain falling outside the large window overlooking blurred night city bokeh, warm amber and cozy brown tones, peaceful and comforting ambiance, Studio Ghibli inspired, hand-drawn feel, highly detailed, no text, no watermark, 8k",
         "vocal_affinity": "optional",
         "vocal_style_hint": "soft whispered chillhop vocals, melodic mumbles, or dreamy vocal chops"
     },
@@ -57,7 +57,7 @@ GENRE_SPECS = {
         "bpm_range": "50-65 BPM or beatless",
         "instruments": "lush evolving synthesizer pads, 432Hz harmonic soundscape, deep sub drone, shimmering ethereal reverb textures, subtle calm atmospheric breeze",
         "sound_texture": "vast cosmic space, deep meditative stillness, healing ethereal overtones, no harsh beats, purely transcendent",
-        "visual_style": "cinematic vast cosmic nebula, calm starry mountain lake under glowing aurora borealis, solitary silhouette gazing at infinity, ethereal and breathtaking, 8k, no text",
+        "visual_style": "A cozy 16:9 lofi anime illustration of a peaceful bedroom corner at deep midnight, a large circular window showing a gentle crescent moon and starry night sky, a cute calico cat sleeping curled up on a fluffy blanket beside a small warm bedside nightlight, steaming cup of herbal tea resting on a wooden stool, deep indigo and soft warm gold palette, extreme serenity, sleepy and tranquil mood, Studio Ghibli inspired, hand-drawn feel, highly detailed, no text, no watermark, 8k",
         "vocal_affinity": "none",
         "vocal_style_hint": "purely instrumental or wordless ethereal pad textures, zero spoken lyrics"
     },
@@ -66,7 +66,7 @@ GENRE_SPECS = {
         "bpm_range": "110-128 BPM",
         "instruments": "vintage analog synthesizers (Juno-106, Moog bassline), driving 16th-note arpeggios, gated reverb 80s LinnDrum snare, punchy cybernetic kick, retro neon synth lead",
         "sound_texture": "80s retro-futuristic night drive, high dynamic energy, pulsing highway groove, analog warmth with modern punch",
-        "visual_style": "cyberpunk neon-lit highway at midnight, sleek retro sports car speeding towards glowing wireframe grid horizon, vibrant magenta and cyan lighting, aesthetic 80s synthwave wallpaper, 8k, no text",
+        "visual_style": "A cozy 16:9 lofi anime illustration of a retro synth studio desk at midnight, a cute calico cat sleeping peacefully on top of a warm analog synthesizer, subtle neon city skyline glowing outside the window, soft warm purple and amber accents, Studio Ghibli inspired, 8k, no text, no watermark",
         "vocal_affinity": "optional",
         "vocal_style_hint": "80s retro synth-pop vocals, driving and nostalgic, emotive retro chorus"
     },
@@ -75,7 +75,7 @@ GENRE_SPECS = {
         "bpm_range": "45-55 BPM or beatless",
         "instruments": "432Hz and 528Hz healing delta-theta brainwave tones, ultra-soft Tibetan singing bowl whispers, warm oceanic ambient pad swell, gentle bedtime rain soundscape, peaceful harp touches",
         "sound_texture": "deep restorative relaxation, zero percussive attack, profound tranquility, anxiety-melting acoustic cocoon",
-        "visual_style": "deep indigo twilight sky, silver crescent moon illuminating calm tranquil ocean ripples, floating soft clouds, dreamlike peaceful oasis, 8k, no text",
+        "visual_style": "A cozy 16:9 lofi anime illustration of a dreamy midnight sanctuary, a fluffy bed beside a moonlit window, a cute calico cat sleeping deeply curled in a soft nest of blankets, gentle starlight, soothing warm nightlight, deep indigo and lavender hues, tranquil bedtime ambiance, Studio Ghibli inspired, hand-drawn feel, highly detailed, no text, no watermark, 8k",
         "vocal_affinity": "none",
         "vocal_style_hint": "purely instrumental, zero vocal distractions for deep sleep and meditation"
     },
@@ -84,7 +84,7 @@ GENRE_SPECS = {
         "bpm_range": "65-80 BPM",
         "instruments": "warm grand piano chords with lyrical improvisation, walking acoustic double bass, brushed jazz snare drum and ride cymbal, muted brass accents",
         "sound_texture": "smoky midnight jazz club, authentic live acoustic ensemble feel, sophisticated soulfulness, intimate cafe warmth",
-        "visual_style": "dimly lit vintage late-night jazz cafe, amber warm lighting, wooden grand piano with warm brass reflections, rain-slicked cobblestone street outside the window, cinematic mood, 8k, no text",
+        "visual_style": "A cozy 16:9 lofi anime illustration of a dimly lit midnight jazz cafe corner, warm amber lighting, an acoustic upright piano, a cute calico cat napping peacefully on a plush armchair, gentle rain outside the cafe window, Studio Ghibli inspired, hand-drawn feel, 8k, no text, no watermark",
         "vocal_affinity": "optional",
         "vocal_style_hint": "intimate smoky late-night jazz cafe vocals, warm velvety tone"
     },
@@ -93,7 +93,7 @@ GENRE_SPECS = {
         "bpm_range": "55-75 BPM",
         "instruments": "solo concert grand piano with felt damping intimacy, expressive acoustic hammer and pedal resonance, subtle cinematic string quartet swell in background",
         "sound_texture": "deeply emotional cinematic storytelling, expressive dynamic touch from pianissimo to forte, poignant and heart-touching melody",
-        "visual_style": "minimalist grand piano standing beside floor-to-ceiling glass window, soft golden hour sunlight breaking through mist, fallen autumn leaves, poetic elegance, cinematic depth of field, 8k, no text",
+        "visual_style": "A cozy 16:9 lofi anime illustration of a vintage dark wooden upright piano resting beside a rain-spattered window at midnight, a small brass desk lamp glowing warmly on top of the piano illuminating open yellowed sheet music, a cute calico cat sleeping curled up soundly on a soft velvet cushion next to the piano pedals, blue moonlight and water droplets on the glass, nostalgic warm storybook aesthetic, gentle tranquility, Studio Ghibli inspired, hand-drawn feel, highly detailed, no text, no watermark, 8k",
         "vocal_affinity": "none",
         "vocal_style_hint": "purely instrumental solo piano, no vocals"
     },
@@ -102,7 +102,7 @@ GENRE_SPECS = {
         "bpm_range": "100-118 BPM",
         "instruments": "vintage DX7 electric piano, punchy slap bassline, warm 80s brass synth stabs, crisp disco-funk drum groove, shimmering chorus guitar",
         "sound_texture": "retro metropolitan evening drive, sparkling city nightscape, nostalgic upbeat breeze, stylish analog warmth",
-        "visual_style": "retro anime aesthetic city night drive, neon reflections on car window, retro metropolitan skyline twilight, palm tree silhouettes against pastel sunset sky, ultra-detailed, 8k, no text",
+        "visual_style": "A cozy 16:9 retro anime illustration of an aesthetic 80s room balcony at twilight, a cute calico cat sleeping curled on a rattan chair, retro city skyline and soft sunset pastel colors outside, Studio Ghibli inspired, 8k, no text, no watermark",
         "vocal_affinity": "high",
         "vocal_style_hint": "clear, upbeat, nostalgic and sparkling melodic hook with effortless emotional depth"
     },
@@ -111,7 +111,7 @@ GENRE_SPECS = {
         "bpm_range": "68-85 BPM",
         "instruments": "warm fingerstyle steel-string acoustic guitar, gentle wooden cello resonance, soft shaker and tambourine, subtle ambient birdsong and wind chimes",
         "sound_texture": "sunlit wooden cabin, organic earthiness, soothing emotional comfort, intimate acoustic storytelling",
-        "visual_style": "sun-drenched rustic wooden porch surrounded by autumn forest, warm golden afternoon light, steaming cup of herbal tea on wooden table, cinematic nature landscape, 8k, no text",
+        "visual_style": "A cozy 16:9 lofi anime illustration of a warm wooden attic study corner with an acoustic guitar leaning on a bookshelf, a cute calico cat sleeping peacefully in a patch of golden afternoon sunlight on a woven rug, warm nostalgic storybook feel, Studio Ghibli inspired, hand-drawn feel, 8k, no text, no watermark",
         "vocal_affinity": "high",
         "vocal_style_hint": "warm emotional indie folk singer-songwriter vocals, heartfelt acoustic storytelling"
     },
@@ -120,7 +120,7 @@ GENRE_SPECS = {
         "bpm_range": "65-80 BPM",
         "instruments": "mellow neo-soul electric keyboard, deep warm 808 sub bass, laid-back trap-soul rimshot and hi-hats, distant filtered vocal ambient chops",
         "sound_texture": "late night rooftop breeze, sensual velvety warmth, slow seductive groove, deep emotional resonance",
-        "visual_style": "modern urban penthouse balcony overlooking glowing city lights at purple dusk, warm fairy lights, relaxed chill atmosphere, cinematic bokeh, 8k, no text",
+        "visual_style": "A cozy 16:9 lofi anime illustration of a warm midnight study balcony overlooking soft city lights, fairy lights glowing gently, a cute calico cat sleeping peacefully on a soft outdoor lounger cushion, warm purple and amber tones, Studio Ghibli inspired, 8k, no text, no watermark",
         "vocal_affinity": "high",
         "vocal_style_hint": "silky smooth contemporary R&B chillout vocals, emotive falsetto, laid-back modern urban groove"
     },
@@ -129,7 +129,7 @@ GENRE_SPECS = {
         "bpm_range": "40-60 BPM or beatless",
         "instruments": "deep resonant sub-bass drone, atmospheric modular synthesis textures, binaural field recordings of deep ocean caves, ethereal reverb trails",
         "sound_texture": "mysterious abyss, zero distraction, ultimate hyper-focus cocoon, profound cinematic depth",
-        "visual_style": "mysterious deep ocean trench bioluminescence, glowing ancient underwater ruins, silent cosmic abyss, dark teal and obsidian palette, cinematic minimalism, 8k, no text",
+        "visual_style": "A cozy 16:9 lofi anime illustration of a silent moonlit study library at 3 AM, towering dark wooden bookshelves, a cute calico cat sleeping soundly beside an old glowing brass lantern on a massive oak desk, tranquil midnight silence, deep shadows and warm amber focal point, Studio Ghibli inspired, 8k, no text, no watermark",
         "vocal_affinity": "none",
         "vocal_style_hint": "purely instrumental deep focus drone, zero vocals"
     }
@@ -456,6 +456,11 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
    - 흔해 빠진 클리셰 단어(Starlight, Midnight, Cafe 등)의 기계적 반복을 금지하고 독창적인 단어를 선택할 것.
    - 레오의 브리프에 '곡 제목 컨셉'이 있으면 그 컨셉을 기반으로 다듬을 것 (브리프의 핵심 이미지가 제목에 남아 있어야 함).
 5. 앨범 커버 프롬프트(visual_prompt): 나노바나나/Imagen 생성용 영문 프롬프트 (16:9 와이드, 8k, no text, no watermark).
+   - [★ 채널 시각적 정체성 절대 원칙 (필독)]:
+     * 배너 및 프로필의 상징인 '잠자는 삼색 고양이(cute calico cat sleeping peacefully)'와 '따뜻한 심야 서재'를 100% 포함할 것!
+     * 화풍은 반드시 'Cozy anime aesthetic, warm 2D lofi illustration, soft storybook style, Studio Ghibli inspired'를 따를 것.
+     * [절대 금지]: photorealistic, real photo, hyperrealistic, 3D render, real person 등 실사/3D 키워드는 절대 쓰지 마세요.
+     * 구도 가이드: Lo-Fi는 배너 책상 위, Piano는 창가 피아노 옆 방석, Ambient/Sleep은 달밤 침대/창가 코너에서 고양이가 곤히 자고 있는 씬을 묘사할 것.
 6. 연관 태그(tags): 장르, 무드, 리스닝 상황을 아우르는 8개 태그 배열.
 
 [반환 형식 — 반드시 순수 JSON만 출력하세요]
