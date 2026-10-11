@@ -20,6 +20,17 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 LUNA_DIR = DATA_DIR / "luna_music"
 DEFAULT_OUT_DIR = DATA_DIR / "luna_compilations"
+BGA_ASSETS_DIR = DATA_DIR / "bga_assets"
+
+# 장르별 3대 시그니처 룸 BGA 루프 파일 매핑
+BGA_SIGNATURE_FILES = {
+    "lofi": BGA_ASSETS_DIR / "bga_lofi_study.mp4",
+    "piano": BGA_ASSETS_DIR / "bga_piano_moonlight.mp4",
+    "ambient": BGA_ASSETS_DIR / "bga_ambient_bedroom.mp4",
+    "sleep": BGA_ASSETS_DIR / "bga_ambient_bedroom.mp4",
+    "all_relax": BGA_ASSETS_DIR / "bga_lofi_study.mp4",
+    "all_sleep": BGA_ASSETS_DIR / "bga_piano_moonlight.mp4"
+}
 
 
 def get_audio_duration(file_path: Path) -> float:
@@ -49,7 +60,8 @@ def scan_available_tracks(genre_filter: str = "lofi") -> List[Dict[str, Any]]:
         "piano": ["piano", "피아노"],
         "ambient": ["ambient", "cinematic ambient"],
         "sleep": ["sleep", "meditation", "delta"],
-        "all_relax": ["lo-fi", "lofi", "chillhop", "piano", "피아노", "ambient", "sleep"]
+        "all_relax": ["lo-fi", "lofi", "chillhop", "piano", "피아노", "ambient", "sleep"],
+        "all_sleep": ["piano", "피아노", "ambient", "sleep", "meditation", "delta"]
     }.get(genre_filter.lower(), [genre_filter.lower()])
 
     for track_dir in sorted(LUNA_DIR.glob("luna_*")):
@@ -111,6 +123,7 @@ GENRE_TITLE_LABELS = {
     "ambient": ("앰비언트 모음", "#앰비언트 #힐링음악 #AmbientPlaylist"),
     "sleep": ("수면 음악 모음", "#수면음악 #SleepBGM #DeepSleep"),
     "all_relax": ("휴식 음악 모음", "#로파이 #새벽피아노 #힐링음악"),
+    "all_sleep": ("수면 피아노 & 앰비언트 모음", "#수면음악 #새벽피아노 #SleepBGM #DeepSleep")
 }
 
 
@@ -180,30 +193,51 @@ def assemble_compilation(
 
     actual_duration = get_audio_duration(out_audio)
 
-    # 2. 비디오 렌더링 (대표 커버 또는 첫 트랙 커버 이미지 활용)
+    # 2. 비디오 렌더링 (3대 시그니처 룸 BGA 루프 비디오 우선, 없으면 커버 이미지 스틸 폴백)
     out_video = output_dir / "compilation_video.mp4"
-    cover_image = None
-    for p in playlist:
-        if p.get("cover_file") and os.path.exists(p["cover_file"]):
-            cover_image = p["cover_file"]
-            break
+    bga_video = BGA_SIGNATURE_FILES.get(genre_filter)
+    video_rendered = False
 
-    if render_video and cover_image:
-        print(f"[*] 1080p 롱폼 비디오 렌더링 시작 (커버: {os.path.basename(cover_image)})...")
-        # 정지 이미지 기반 초고효율 비디오 렌더링 (단일 프레임 루프)
-        cmd_video = [
-            ffmpeg, "-y",
-            "-loop", "1", "-framerate", "2", "-i", str(cover_image),
-            "-i", str(out_audio),
-            "-c:v", "libx264", "-tune", "stillimage", "-preset", "ultrafast",
-            "-crf", "22", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "320k",
-            # -shortest 만으로는 저프레임(2fps) 루프 입력에서 수 초 넘치므로 오디오 길이로 정확히 자른다
-            "-t", f"{actual_duration:.3f}", "-shortest",
-            str(out_video)
-        ]
-        subprocess.run(cmd_video, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        print(f"[+] 비디오 생성 완료: {out_video}")
+    if render_video:
+        if bga_video and bga_video.exists():
+            print(f"[*] 3대 시그니처 룸 BGA 무한 루프 합성 시작 -> {bga_video.name}")
+            cmd_video = [
+                ffmpeg, "-y",
+                "-stream_loop", "-1", "-i", str(bga_video),
+                "-i", str(out_audio),
+                "-map", "0:v:0", "-map", "1:a:0",
+                "-c:v", "libx264", "-preset", "ultrafast",
+                "-crf", "20", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-b:a", "320k",
+                "-t", f"{actual_duration:.3f}", "-shortest",
+                str(out_video)
+            ]
+            subprocess.run(cmd_video, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f"[+] 시그니처 룸 BGA 무한 루프 비디오 생성 완료: {out_video}")
+            video_rendered = True
+        else:
+            # 커버 이미지 기반 stillimage 루프 폴백
+            cover_image = None
+            for p in playlist:
+                if p.get("cover_file") and os.path.exists(p["cover_file"]):
+                    cover_image = p["cover_file"]
+                    break
+
+            if cover_image:
+                print(f"[*] 1080p 스틸 롱폼 비디오 렌더링 시작 (커버: {os.path.basename(cover_image)})...")
+                cmd_video = [
+                    ffmpeg, "-y",
+                    "-loop", "1", "-framerate", "2", "-i", str(cover_image),
+                    "-i", str(out_audio),
+                    "-c:v", "libx264", "-tune", "stillimage", "-preset", "ultrafast",
+                    "-crf", "22", "-pix_fmt", "yuv420p",
+                    "-c:a", "aac", "-b:a", "320k",
+                    "-t", f"{actual_duration:.3f}", "-shortest",
+                    str(out_video)
+                ]
+                subprocess.run(cmd_video, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f"[+] 스틸 커버 비디오 생성 완료: {out_video}")
+                video_rendered = True
 
     # 3. 유튜브 메타데이터 생성 (모바일 최적화 제목 및 타임라인 설명)
     timeline_text = "\n".join(timeline_entries)
@@ -238,7 +272,7 @@ def assemble_compilation(
     return {
         "status": "success",
         "audio_file": str(out_audio),
-        "video_file": str(out_video) if render_video and cover_image else None,
+        "video_file": str(out_video) if video_rendered else None,
         "metadata_file": str(meta_txt_file),
         "total_tracks": len(playlist),
         "duration_seconds": actual_duration,
@@ -248,7 +282,7 @@ def assemble_compilation(
 
 def main():
     parser = argparse.ArgumentParser(description="에이전트 루나 롱폼 컴필레이션 플레이리스트 생성기")
-    parser.add_argument("--genre", type=str, default="lofi", choices=["lofi", "piano", "ambient", "sleep", "all_relax"],
+    parser.add_argument("--genre", type=str, default="lofi", choices=["lofi", "piano", "ambient", "sleep", "all_relax", "all_sleep"],
                         help="필터링할 장르 (기본: lofi)")
     parser.add_argument("--minutes", type=int, default=60, help="목표 재생 시간(분) (기본: 60)")
     parser.add_argument("--title", type=str, default="Cozy Midnight Lo-Fi Room", help="컴필레이션 테마 제목")

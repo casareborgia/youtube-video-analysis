@@ -422,22 +422,22 @@ recommended_topics 는 서로 다른 소재로 반드시 3개를 채워주세요
 
 # ── 레오의 음악 트렌드 스카우터 & 루나 기획 브리프 연동 ─────────────────
 
-# ── 핵심 타깃 장르 개편 (Lo-Fi / Piano 중심 락인, 비수면/자극적 장르 배제) ────
-CORE_LUNA_GENRES = ["lofi", "piano"]
-SECONDARY_LUNA_GENRES = ["ambient", "sleep"]
+# ── 3대 코어 장르 완전 잠금 (Tri-Core Lock: Lo-Fi, Piano, Ambient/Sleep 외 전면 차단) ────
+CORE_LUNA_GENRES = ["lofi", "piano", "ambient", "sleep"]
+SECONDARY_LUNA_GENRES = []
 
-# 장르 가중치 (Lo-Fi, Piano 집중 배정, synthwave/citypop 등 밤 휴식과 맞지 않는 장르는 0.0으로 배제)
+# 장르 가중치 (3대 수면/집중 코어만 활성화, 어쿠스틱/재즈/신스웨이브 등은 0.0으로 완전 잠금)
 GENRE_BASE_WEIGHTS = {
-    "lofi": 3.0,            # 최우선 핵심: Lo-Fi / Chillhop
-    "piano": 2.5,           # 최우선 핵심: Neoclassical Piano Solo
-    "ambient": 1.0,         # 서브 보조: Cinematic Ambient
-    "sleep": 0.8,           # 서브 보조: Deep Sleep / Delta Wave
-    "jazz": 0.2,            # 제한적
-    "acoustic": 0.2,        # 제한적
-    "rnb-chill": 0.0,       # 개편으로 배제
-    "synthwave": 0.0,       # 개편으로 배제 (자극적 신스음)
-    "citypop": 0.0,         # 개편으로 배제 (빠른 템포)
-    "dark-ambient": 0.0     # 개편으로 배제
+    "lofi": 3.0,            # 코어 1: Lo-Fi / Chillhop (공부/코딩/책상 서재)
+    "piano": 2.5,           # 코어 2: Neoclassical Piano Solo (새벽 감성/사색)
+    "ambient": 2.0,         # 코어 3: Cinematic Ambient (깊은 이완/공간감)
+    "sleep": 1.5,           # 코어 3: Deep Sleep / Delta Wave (완전 수면)
+    "jazz": 0.0,            # (완전 잠금: 롱폼 제작 집중)
+    "acoustic": 0.0,        # (완전 잠금: 어택감 배제 및 수면 보호)
+    "rnb-chill": 0.0,       # (완전 잠금)
+    "synthwave": 0.0,       # (완전 잠금)
+    "citypop": 0.0,         # (완전 잠금)
+    "dark-ambient": 0.0     # (완전 잠금)
 }
 
 
@@ -577,8 +577,8 @@ def analyze_music_trends_for_luna(region_code: str = "KR", force_refresh: bool =
     allowed_moods_str = ", ".join(f'"{k}"({v})' for k, v in LUNA_MOODS.items())
 
     system_prompt = f"""당신은 유튜브 알고리즘 및 글로벌 음악 트렌드 분석 전문가 '에이전트 레오(Agent Leo)'입니다.
-'루나의 심야 서재' 채널의 공식 음악 정체성은 밤의 안식과 휴식을 위한 **Lo-Fi Chillhop & Neoclassical Piano** 중심 채널입니다.
-현재 실시간 유튜브 음악 급상승 차트를 분석하여 대중의 심리적 갈증과 감정선을 포착하되, 우리 채널의 핵심 장르(Lo-Fi / Piano 중심)에 완벽히 녹여낸 [음악 기획 브리프 3선]을 도출해야 합니다.
+'루나의 심야 서재' 채널의 공식 음악 정체성은 밤의 안식과 수면, 깊은 집중을 위한 **Lo-Fi Chillhop, Neoclassical Piano, Deep Ambient & Sleep** 3대 코어 장르 전문 채널입니다.
+현재 실시간 유튜브 음악 급상승 차트를 분석하여 대중의 심리적 갈증과 감정선을 포착하되, 우리 채널의 3대 코어 장르(Lo-Fi / Piano / Ambient·Sleep)에 완벽히 녹여낸 [음악 기획 브리프 3선]을 도출해야 합니다.
 
 [장르 및 무드 배정 지침 (필수 준수)]
 1. **브리프 1 배정**:

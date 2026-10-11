@@ -99,6 +99,7 @@ data/channels/*
 data/youtube/*
 data/luna_music/*
 data/luna_compilations/*
+data/bga_assets/*.mp4
 
 # Credentials & Secrets
 .env
