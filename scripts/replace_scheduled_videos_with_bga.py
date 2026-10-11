@@ -6,6 +6,10 @@
 1. 1080p 시그니처 룸 BGA(잠자는 삼색 고양이) 무손실 루프 비디오 렌더링
 2. 신규 영상 유튜브 업로드 (기존과 동일한 예약 일시)
 3. 신규 업로드 성공 확인 즉시 기존 구형 영상 안전 삭제
+
+※ 2026-10-11 16:24~16:26 KST 에 6/6건 실행 완료 (구 영상 삭제됨). 기본 실행은 dry-run 이며,
+   이미 교체된 트랙(meta.bga_updated_at 존재 또는 구 영상 없음)은 --execute 를 줘도 건너뛴다.
+   업로드 1건 = 쿼터 약 1,600 이므로 하루 6건이 상한에 가깝다.
 """
 
 import os
@@ -25,7 +29,12 @@ CHANNEL_ID = "UCowTfbpKpXDBF3Mc50H4iGQ"
 DATA_DIR = BASE_DIR / "data"
 LUNA_DIR = DATA_DIR / "luna_music"
 BGA_DIR = DATA_DIR / "bga_assets"
-ARTIFACT_DIR = Path("/Users/leeseungjun/.gemini/antigravity-ide/brain/c3482952-7e3d-4c3d-adb4-8833764d9230")
+# 썸네일 소스는 저장소 사본(data/bga_assets/thumb_*.jpg) 을 쓴다. brain 디렉터리는 세션 캐시라 사라질 수 있다.
+THUMB_FILES = {
+    "lofi_cat_banner_sync_1791700806507.jpg": BGA_DIR / "thumb_lofi_cat.jpg",
+    "piano_cat_banner_sync_1791700829563.jpg": BGA_DIR / "thumb_piano_cat.jpg",
+    "ambient_cat_banner_sync_1791700850279.jpg": BGA_DIR / "thumb_ambient_cat.jpg",
+}
 
 TARGETS = [
     {
@@ -90,9 +99,10 @@ TARGETS = [
     },
 ]
 
+# 채널 정책: 'AgentLuna', 'AI음악' 등 기계적 수식어는 공개 메타데이터에 넣지 않는다
 CLEAN_TAGS = [
     "루나의심야서재", "로파이", "수면음악", "새벽피아노", "공부할때듣는음악",
-    "힐링BGM", "Chillhop", "Piano", "Ambient", "AgentLuna"
+    "힐링BGM", "Chillhop", "Piano", "Ambient", "SleepBGM"
 ]
 
 
@@ -148,9 +158,11 @@ def render_track_bga_video(track_dir: Path, bga_file: Path) -> Path:
             "-i", str(audio_file),
             "-map", "0:v:0",
             "-map", "1:a:0",
+            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
             "-c:v", "libx264",
             "-preset", "veryfast",
             "-crf", "20",
+            "-pix_fmt", "yuv420p",
             "-c:a", "aac",
             "-b:a", "320k",
             "-t", f"{duration:.3f}",
@@ -172,9 +184,9 @@ def build_description(title: str, story: str, genre_tag: str) -> str:
 불을 끄고 침대에서, 혹은 깊은 공부와 작업 몰입에 함께하세요.
 
 [Credits]
-- 작곡 & 연주: 에이전트 루나 (Agent Luna) - 루나의 심야 서재
+- 음악: 루나의 심야 서재 (Luna's Midnight Room)
 - 기획 & 큐레이션: 에이전트 레오 (Agent Leo)
-- 사운드 마스터링: 베가 (Vega Engine) -16 LUFS True-Peak Mastered
+- 사운드 마스터링: 베가 (Vega) -16 LUFS True-Peak Mastered
 
 채널 구독으로 루나의 따뜻한 서재에 매일 밤 머물러보세요 🐾
 https://www.youtube.com/channel/UCowTfbpKpXDBF3Mc50H4iGQ?sub_confirmation=1
@@ -183,14 +195,19 @@ https://www.youtube.com/channel/UCowTfbpKpXDBF3Mc50H4iGQ?sub_confirmation=1
 
 
 def main():
+    execute = "--execute" in sys.argv[1:]
     print("=" * 65)
-    print("🐾 [루나의 심야 서재] 10/11~10/16 예약 영상 6편 시그니처 BGA 안전 교체")
+    print(f"🐾 [루나의 심야 서재] 10/11~10/16 예약 영상 6편 시그니처 BGA 안전 교체 {'(실행)' if execute else '(dry-run)'}")
     print("=" * 65)
 
     creds = uploader._creds(CHANNEL_ID)
     if not creds:
         raise RuntimeError("유튜브 인증 정보가 없습니다.")
     srv = uploader._service(creds)
+
+    # 구 영상 존재 여부 1회 조회 (이미 삭제됐으면 교체 완료로 간주)
+    old_ids = [t["old_video_id"] for t in TARGETS]
+    existing = {it["id"] for it in srv.videos().list(part="id", id=",".join(old_ids)).execute().get("items", [])}
 
     results = []
 
@@ -201,7 +218,25 @@ def main():
 
         track_dir = LUNA_DIR / t["track_id"]
         bga_path = BGA_DIR / t["bga_file"]
-        thumb_path = ARTIFACT_DIR / t["thumb_file"]
+        thumb_path = THUMB_FILES.get(t["thumb_file"], BGA_DIR / t["thumb_file"])
+
+        # 0. 재실행 가드: 이미 교체된 트랙은 건너뜀 (중복 업로드·쿼터 소모 방지)
+        meta_p = track_dir / "meta.json"
+        meta = {}
+        if meta_p.exists():
+            try:
+                meta = json.load(open(meta_p, encoding="utf-8"))
+            except Exception:
+                meta = {}
+        if meta.get("bga_updated_at") or t["old_video_id"] not in existing:
+            print(f"  [=] 이미 교체 완료 (현재 영상: {meta.get('uploaded_video_id')}) → 건너뜀")
+            continue
+        if not bga_path.exists():
+            print(f"  [!] BGA 에셋 없음: {bga_path} → 건너뜀 (scripts/generate_signature_bga_assets.py 먼저 실행)")
+            continue
+        if not execute:
+            print(f"  [dry-run] 렌더 → 업로드(publish_at {t['publish_at']}) → 구 영상 삭제 예정. --execute 로 실행.")
+            continue
 
         # 1. BGA 비디오 렌더링
         print(f"  [*] 1080p 시그니처 BGA({t['bga_file']}) 비디오 렌더링...")
@@ -237,17 +272,20 @@ def main():
         except Exception as e:
             print(f"  [!] 구 영상 삭제 오류 (수동 확인 필요): {e}")
 
-        # 4. meta.json 갱신
-        meta_p = track_dir / "meta.json"
+        # 4. meta.json 갱신 — 앱(app.py/luna_engine/static)이 읽는 키는 uploaded_video_id/uploaded_url 이다.
+        #    (youtube_video_id 만 바꾸면 UI 와 숏폼 '3분 풀버전' 링크가 삭제된 구 영상을 가리킨다)
         if meta_p.exists():
             try:
-                m_data = json.load(open(meta_p))
+                m_data = json.load(open(meta_p, encoding="utf-8"))
+                m_data["replaced_video_id"] = old_vid
+                m_data["uploaded_video_id"] = new_vid
+                m_data["uploaded_url"] = new_url
                 m_data["youtube_video_id"] = new_vid
                 m_data["youtube_url"] = new_url
                 m_data["bga_updated_at"] = time.time()
-                json.dump(m_data, open(meta_p, "w"), ensure_ascii=False, indent=2)
-            except Exception:
-                pass
+                json.dump(m_data, open(meta_p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+            except Exception as e:
+                print(f"  [!] meta.json 갱신 실패 (수동 확인 필요): {e}")
 
         results.append({
             "title": t["title"],
@@ -260,7 +298,7 @@ def main():
         time.sleep(2)  # API 안정성 딜레이
 
     print("\n" + "=" * 65)
-    print("🎉 10/11 ~ 10/16 예약 영상 6편 시그니처 BGA 교체 전원 성공!")
+    print(f"🎉 시그니처 BGA 교체 완료: {len(results)}건 처리" if results else "처리할 항목이 없습니다 (전부 교체 완료 또는 dry-run)")
     print("=" * 65)
     for r in results:
         print(f"- {r['publish_at'][:10]} | {r['title'][:40]}... -> {r['new_url']}")
