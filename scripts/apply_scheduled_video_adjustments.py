@@ -2,6 +2,11 @@
 """
 예약 공개 유튜브 영상 11건의 메타데이터(제목, 설명란, 태그, 예약일시)를
 개편된 채널 컨셉(Lo-Fi & Piano 중심 락인, 모바일 훅 전면 배치, AI 흔적 세탁)에 맞추어 일괄 업데이트합니다.
+
+※ 2026-10-11 실제 채널에 1회 적용 완료(11/11건). 재실행하면 같은 값으로 다시 덮어쓰며
+   videos.update 는 건당 50 쿼터를 소모하므로, 확인 용도라면 --dry-run 으로 실행하세요.
+
+    python scripts/apply_scheduled_video_adjustments.py --dry-run
 """
 
 import sys
@@ -100,8 +105,8 @@ CLEAN_TAGS = [
 ]
 
 
-def update_scheduled_videos():
-    print(f"=== [루나의 심야 서재] 예약 영상 11건 일괄 개편 시작 ===")
+def update_scheduled_videos(dry_run: bool = False):
+    print(f"=== [루나의 심야 서재] 예약 영상 11건 일괄 개편 {'점검(dry-run)' if dry_run else '시작'} ===")
     creds = uploader._creds(CHANNEL_ID)
     if not creds:
         print("[오류] 채널 OAuth 토큰을 가져올 수 없습니다.")
@@ -126,6 +131,8 @@ def update_scheduled_videos():
 
             old_title = snippet["title"]
             new_title = adj["title"]
+            snippet_before_desc = snippet.get("description", "")
+            tags_before = snippet.get("tags") or []
 
             print(f"  - 기존 제목: {old_title}")
             print(f"  - 변경 제목: {new_title}")
@@ -166,6 +173,14 @@ def update_scheduled_videos():
                 print(f"  - 예약 시각 이동: {adj['new_publish_at']}")
 
             # 5. API 실행
+            if dry_run:
+                # 유튜브는 설명 끝 개행을 떼어 저장하므로 strip 기준으로 비교
+                changed = (old_title != new_title
+                           or snippet_before_desc.strip() != new_desc.strip()
+                           or sorted(tags_before) != sorted(CLEAN_TAGS))
+                print(f"  [dry-run] 변경 필요: {'예' if changed else '아니오(이미 적용됨)'}")
+                success_count += 1
+                continue
             svc.videos().update(
                 part=",".join(body_parts),
                 body=req_body
@@ -179,9 +194,9 @@ def update_scheduled_videos():
             print(f"  [오류] 비디오 {vid} 업데이트 실패: {e}")
 
     print(f"\n==================================================")
-    print(f"[완료] 총 {len(ADJUSTMENTS)}건 중 {success_count}건 개편 완료!")
+    print(f"[완료] 총 {len(ADJUSTMENTS)}건 중 {success_count}건 {'점검' if dry_run else '개편'} 완료!")
     print(f"==================================================")
 
 
 if __name__ == "__main__":
-    update_scheduled_videos()
+    update_scheduled_videos(dry_run="--dry-run" in sys.argv[1:])

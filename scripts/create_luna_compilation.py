@@ -10,8 +10,6 @@
 import os
 import sys
 import json
-import glob
-import random
 import shutil
 import argparse
 import subprocess
@@ -106,6 +104,16 @@ def scan_available_tracks(genre_filter: str = "lofi") -> List[Dict[str, Any]]:
     return tracks
 
 
+# 장르 필터 → (제목 라벨, 설명란 장르 해시태그)
+GENRE_TITLE_LABELS = {
+    "lofi": ("로파이 모음", "#로파이 #Chillhop #LoFiPlaylist"),
+    "piano": ("새벽 피아노 모음", "#새벽피아노 #피아노연주곡 #PianoPlaylist"),
+    "ambient": ("앰비언트 모음", "#앰비언트 #힐링음악 #AmbientPlaylist"),
+    "sleep": ("수면 음악 모음", "#수면음악 #SleepBGM #DeepSleep"),
+    "all_relax": ("휴식 음악 모음", "#로파이 #새벽피아노 #힐링음악"),
+}
+
+
 def format_timestamp(seconds: float) -> str:
     """초를 MM:SS 또는 HH:MM:SS 타임라인 형식으로 변환합니다."""
     hrs = int(seconds // 3600)
@@ -121,7 +129,8 @@ def assemble_compilation(
     target_seconds: float = 3600.0,
     output_dir: Path = DEFAULT_OUT_DIR,
     compilation_title: str = "Lo-Fi Midnight Study",
-    render_video: bool = True
+    render_video: bool = True,
+    genre_filter: str = "lofi",
 ) -> Dict[str, Any]:
     """선별된 트랙들을 묶어 롱폼 오디오/비디오 및 유튜브 메타데이터를 생성합니다."""
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -144,25 +153,27 @@ def assemble_compilation(
 
     print(f"[*] 총 {len(playlist)}개 트랙 배치 (총 예상 재생시간: {int(accumulated_time // 60)}분 {int(accumulated_time % 60)}초)")
 
-    # 1. Concat 파일 목록 생성
-    concat_txt = output_dir / "concat_list.txt"
+    # 1. 타임라인 계산 + 입력 목록
     timeline_entries = []
     current_time = 0.0
-
-    with open(concat_txt, "w", encoding="utf-8") as f:
-        for idx, item in enumerate(playlist, 1):
-            ts_str = format_timestamp(current_time)
-            timeline_entries.append(f"{ts_str} {item['title']}")
-            # ffmpeg concat을 위한 절대경로 쓰기
-            f.write(f"file '{os.path.abspath(item['audio_file'])}'\n")
-            current_time += item["duration"]
+    for item in playlist:
+        timeline_entries.append(f"{format_timestamp(current_time)} {item['title']}")
+        current_time += item["duration"]
 
     out_audio = output_dir / "compilation_audio.mp3"
     print(f"[*] 오디오 스트림 Concat 진행 중 -> {out_audio}")
 
-    # 재인코딩을 통한 안전 결합 (샘플레이트 통일 44.1kHz, 320k)
-    cmd_audio = [
-        ffmpeg, "-y", "-f", "concat", "-safe", "0", "-i", str(concat_txt),
+    # 트랙마다 포맷이 다를 수 있다(audio_mastered.wav 48k / audio.mp3 44.1k 혼재).
+    # concat demuxer 는 코덱·샘플레이트가 같아야 해서 섞이면 깨지므로, 입력별로 44.1kHz 스테레오로
+    # 리샘플한 뒤 filter_complex concat 으로 묶는다 (경로 인용 문제도 없음).
+    cmd_audio = [ffmpeg, "-y"]
+    for item in playlist:
+        cmd_audio += ["-i", os.path.abspath(item["audio_file"])]
+    n = len(playlist)
+    filter_parts = [f"[{i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a{i}]" for i in range(n)]
+    filter_parts.append("".join(f"[a{i}]" for i in range(n)) + f"concat=n={n}:v=0:a=1[out]")
+    cmd_audio += [
+        "-filter_complex", ";".join(filter_parts), "-map", "[out]",
         "-c:a", "libmp3lame", "-b:a", "320k", "-ar", "44100", str(out_audio)
     ]
     subprocess.run(cmd_audio, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -186,8 +197,9 @@ def assemble_compilation(
             "-i", str(out_audio),
             "-c:v", "libx264", "-tune", "stillimage", "-preset", "ultrafast",
             "-crf", "22", "-pix_fmt", "yuv420p",
-            "-c:a", "copy",
-            "-shortest",
+            "-c:a", "aac", "-b:a", "320k",
+            # -shortest 만으로는 저프레임(2fps) 루프 입력에서 수 초 넘치므로 오디오 길이로 정확히 자른다
+            "-t", f"{actual_duration:.3f}", "-shortest",
             str(out_video)
         ]
         subprocess.run(cmd_video, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -196,9 +208,13 @@ def assemble_compilation(
     # 3. 유튜브 메타데이터 생성 (모바일 최적화 제목 및 타임라인 설명)
     timeline_text = "\n".join(timeline_entries)
     hours_int = int(actual_duration // 3600)
-    duration_label = f"[{hours_int} Hours Playlist]" if hours_int >= 1 else f"[{int(actual_duration // 60)} Min Playlist]"
-    
-    yt_title = f"{duration_label} 오늘 밤 생각 비우고 푹 쉬고 싶을 때 듣는 로파이 모음 🌧️ | {compilation_title}"
+    if hours_int >= 1:
+        duration_label = f"[{hours_int} Hour Playlist]" if hours_int == 1 else f"[{hours_int} Hours Playlist]"
+    else:
+        duration_label = f"[{int(actual_duration // 60)} Min Playlist]"
+
+    genre_label, genre_hashtags = GENRE_TITLE_LABELS.get(genre_filter, GENRE_TITLE_LABELS["lofi"])
+    yt_title = f"{duration_label} 오늘 밤 생각 비우고 푹 쉬고 싶을 때 듣는 {genre_label} 🌧️ | {compilation_title}"
     yt_description = f"""지친 하루의 끝, 조용한 위로와 온전한 쉼이 필요할 때 틀어두는 루나의 심야 서재 플레이리스트입니다. 🌙
 불을 끄고 침대에서, 혹은 깊은 공부와 작업 몰입에 함께하세요.
 
@@ -209,7 +225,7 @@ def assemble_compilation(
 기획 & 큐레이션: 에이전트 레오 (Agent Leo)
 사운드 마스터링: 베가 (Vega)
 
-#루나의심야서재 #로파이 #플레이리스트 #수면음악 #공부할때듣는음악 #Chillhop #LoFiPlaylist #새벽감성
+#루나의심야서재 #플레이리스트 #수면음악 #공부할때듣는음악 #새벽감성 {genre_hashtags}
 """
 
     meta_txt_file = output_dir / "youtube_metadata.txt"
@@ -245,11 +261,13 @@ def main():
     print(f"- 장르 필터: {args.genre}")
     print(f"- 목표 시간: {args.minutes}분 ({args.minutes * 60}초)")
 
+    used_genre = args.genre
     tracks = scan_available_tracks(args.genre)
     print(f"- 사용 가능한 매칭 트랙 수: {len(tracks)}곡")
 
     if not tracks:
         print(f"[경고] {args.genre} 장르와 일치하는 트랙이 없습니다. all_relax 로 재시도합니다.")
+        used_genre = "all_relax"
         tracks = scan_available_tracks("all_relax")
         print(f"- all_relax 대체 매칭 트랙 수: {len(tracks)}곡")
 
@@ -262,7 +280,8 @@ def main():
         target_seconds=args.minutes * 60.0,
         output_dir=Path(args.out_dir),
         compilation_title=args.title,
-        render_video=not args.no_video
+        render_video=not args.no_video,
+        genre_filter=used_genre,
     )
 
     print(f"\n[완료] 롱폼 컴필레이션 생성이 성공적으로 끝났습니다!")
