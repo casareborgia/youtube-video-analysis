@@ -33,6 +33,14 @@ BGA_SIGNATURE_FILES = {
 }
 
 
+def run_ffmpeg(cmd: List[str], label: str) -> None:
+    """ffmpeg 실행. 실패 시 stderr 마지막 줄들을 담아 예외를 던진다 (DEVNULL 로 묻히면 원인 추적 불가)."""
+    res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+    if res.returncode != 0:
+        tail = "\n".join((res.stderr or "").strip().splitlines()[-8:])
+        raise RuntimeError(f"ffmpeg {label} 실패 (code {res.returncode}):\n{tail}")
+
+
 def get_audio_duration(file_path: Path) -> float:
     """ffprobe를 이용해 오디오 재생 길이(초)를 정밀 측정합니다."""
     ffprobe = shutil.which("ffprobe")
@@ -189,7 +197,7 @@ def assemble_compilation(
         "-filter_complex", ";".join(filter_parts), "-map", "[out]",
         "-c:a", "libmp3lame", "-b:a", "320k", "-ar", "44100", str(out_audio)
     ]
-    subprocess.run(cmd_audio, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    run_ffmpeg(cmd_audio, "오디오 concat")
 
     actual_duration = get_audio_duration(out_audio)
 
@@ -201,19 +209,25 @@ def assemble_compilation(
     if render_video:
         if bga_video and bga_video.exists():
             print(f"[*] 3대 시그니처 룸 BGA 무한 루프 합성 시작 -> {bga_video.name}")
-            cmd_video = [
-                ffmpeg, "-y",
-                "-stream_loop", "-1", "-i", str(bga_video),
-                "-i", str(out_audio),
-                "-map", "0:v:0", "-map", "1:a:0",
-                "-c:v", "libx264", "-preset", "ultrafast",
-                "-crf", "20", "-pix_fmt", "yuv420p",
-                "-c:a", "aac", "-b:a", "320k",
-                "-t", f"{actual_duration:.3f}", "-shortest",
-                str(out_video)
-            ]
-            subprocess.run(cmd_video, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print(f"[+] 시그니처 룸 BGA 무한 루프 비디오 생성 완료: {out_video}")
+            common_head = [ffmpeg, "-y", "-stream_loop", "-1", "-i", str(bga_video), "-i", str(out_audio),
+                           "-map", "0:v:0", "-map", "1:a:0"]
+            common_tail = ["-c:a", "aac", "-b:a", "320k", "-t", f"{actual_duration:.3f}", "-shortest",
+                           "-movflags", "+faststart", str(out_video)]
+            # 1차: 비디오 스트림 복사 (재인코딩 없음 → 화질 손실 0, 1~2시간도 수 분 내 조립)
+            try:
+                run_ffmpeg(common_head + ["-c:v", "copy"] + common_tail, "BGA 루프(stream copy)")
+                print(f"[+] 시그니처 룸 BGA 무한 루프 비디오 생성 완료 (무손실 복사): {out_video}")
+            except RuntimeError as e:
+                # 2차: 컨테이너/코덱 호환이 안 되는 에셋이면 1080p 로 재인코딩 (4K 에셋도 1080p 로 맞춤)
+                print(f"[!] 스트림 복사 불가 → 1080p 재인코딩으로 전환\n    {e}")
+                run_ffmpeg(
+                    common_head + [
+                        "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p",
+                    ] + common_tail,
+                    "BGA 루프(재인코딩)",
+                )
+                print(f"[+] 시그니처 룸 BGA 무한 루프 비디오 생성 완료 (재인코딩): {out_video}")
             video_rendered = True
         else:
             # 커버 이미지 기반 stillimage 루프 폴백
@@ -235,7 +249,7 @@ def assemble_compilation(
                     "-t", f"{actual_duration:.3f}", "-shortest",
                     str(out_video)
                 ]
-                subprocess.run(cmd_video, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                run_ffmpeg(cmd_video, "스틸 커버 비디오")
                 print(f"[+] 스틸 커버 비디오 생성 완료: {out_video}")
                 video_rendered = True
 

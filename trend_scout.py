@@ -480,7 +480,7 @@ def active_luna_genres() -> List[str]:
 
 def pick_balanced_genres(count: int = 2, stats: Optional[Dict[str, int]] = None) -> List[str]:
     """
-    채널 고정 장르 정책(Lo-Fi / Piano 중심)에 따라,
+    채널 3대 코어 장르 잠금(Lo-Fi / Piano / Ambient·Sleep)에 따라,
     가중치가 유효한 후보 중에서 최근 제작 빈도의 역가중치를 적용하여 선별합니다.
     """
     if stats is None:
