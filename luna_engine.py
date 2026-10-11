@@ -22,18 +22,18 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 LUNA_DIR = os.path.join(DATA_DIR, "luna_music")
 os.makedirs(LUNA_DIR, exist_ok=True)
 
-# ── 장르 및 무드 독립 스펙 (하드코딩 닻내림 방지 & 완전 분리) ───────────────
+# ── 장르 및 무드 독립 스펙 (Lo-Fi & Piano 중심 채널 개편) ───────────────
 GENRE_PRESETS = [
-    {"id": "lofi", "name": "Lo-Fi / Chillhop", "desc": "따뜻한 바이닐 노이즈와 칠한 비트, 공부/코딩/휴식용"},
+    {"id": "lofi", "name": "Lo-Fi / Chillhop", "desc": "따뜻한 바이닐 노이즈와 칠한 비트, 공부/코딩/휴식용 (핵심 주력)"},
+    {"id": "piano", "name": "Emotional Piano Solo", "desc": "한 편의 영화 같은 서정적이고 감동적인 피아노 멜로디 (핵심 주력)"},
     {"id": "ambient", "name": "Cinematic Ambient", "desc": "깊은 공간감과 서정적인 패드 사운드, 명상/수면용"},
-    {"id": "synthwave", "name": "Synthwave / Cyberpunk", "desc": "80년대 레트로 아날로그 신디사이저와 드라이브 비트"},
     {"id": "sleep", "name": "Deep Sleep / Meditation", "desc": "432Hz 델타파 기반의 극도의 이완과 힐링 사운드스케이프"},
     {"id": "jazz", "name": "Late Night Jazz Cafe", "desc": "감미로운 피아노 트리오와 잔잔한 콘트라베이스"},
-    {"id": "piano", "name": "Emotional Piano Solo", "desc": "한 편의 영화 같은 서정적이고 감동적인 피아노 멜로디"},
-    {"id": "citypop", "name": "Nostalgic City Pop", "desc": "80s 레트로 신스 브라스와 경쾌한 슬랩 베이스, 도심 드라이브 감성"},
     {"id": "acoustic", "name": "Warm Acoustic / Folk", "desc": "따스한 핑거스타일 어쿠스틱 기타와 서정적 첼로 선율, 힐링 포크"},
-    {"id": "rnb-chill", "name": "Slow R&B Chillout", "desc": "몽환적인 808 서브 베이스와 세련된 어번 네오소울 건반 그루브"},
-    {"id": "dark-ambient", "name": "Dark Atmospheric Ambient", "desc": "심해와 우주의 신비로운 초저역 펄스, 극도의 딥워크 집중용"}
+    {"id": "dark-ambient", "name": "Dark Atmospheric Ambient", "desc": "심해와 우주의 신비로운 초저역 펄스, 극도의 딥워크 집중용"},
+    {"id": "synthwave", "name": "Synthwave / Cyberpunk", "desc": "80년대 레트로 아날로그 신디사이저와 드라이브 비트 (보관)"},
+    {"id": "citypop", "name": "Nostalgic City Pop", "desc": "80s 레트로 신스 브라스와 경쾌한 슬랩 베이스, 도심 드라이브 감성 (보관)"},
+    {"id": "rnb-chill", "name": "Slow R&B Chillout", "desc": "몽환적인 808 서브 베이스와 세련된 어번 네오소울 건반 그루브 (보관)"}
 ]
 
 GENRE_SPECS = {
@@ -1576,10 +1576,12 @@ def build_luna_metadata(track_data):
 
 [작성 요구사항]
 1. 유튜브 제목(youtube_title):
-   - '[Playlist] [감성/상황 후킹 문구] 🌙 | {title} ({genre})' 형식 (최대 90자).
-   - '에이전트 루나'나 'AI음악' 같은 기계적인 수식어를 절대 넣지 말고, 밤에 불 끄고 휴식/수면/독서하러 온 청자의 감정을 어루만지는 후킹 제목을 작성하세요.
-   - 예: [Playlist] 지친 하루 끝, 조용한 위로가 필요할 때 🌙 | {title} ({genre})
-   - 예: [Sleep BGM] 불 끄고 침대에서 듣는 따뜻한 온기 🕯️ | {title} ({genre})
+   - '[{{장르태그}}] {{감성/상황 핵심 후킹 문구}} 🌙 {{부제/안식 카피}} ({title})' 형식 (최대 70자 이내).
+   - [★ 모바일 피드 가독성 최우선 규칙]: 모바일 화면에서는 앞 20~25자만 보이므로, 반드시 맨 앞에 대괄호 장르 태그(예: [Lo-Fi], [Piano], [Sleep], [Ambient])와 감성을 파고드는 상황 후킹 문구를 배치하세요!
+   - '에이전트 루나', 'AI음악' 같은 기계적인 수식어는 절대 금지합니다.
+   - 예: [Lo-Fi] 차가운 밤을 감싸는 온기 🌙 지친 마음에 건네는 안식 ({title})
+   - 예: [Piano] 비 내리는 새벽, 생각 비우기 🌧️ 조용한 위로의 선율 ({title})
+   - 예: [Sleep] 불 끄고 침대에서 듣는 따뜻한 온기 🕯️ 깊은 밤 포근한 잠 ({title})
 2. 레오의 고정 댓글(pinned_comment):
    - 시청자가 영상을 끝까지 듣고 댓글을 달고 싶게 만드는 따뜻하고 도발적인 질문 (2~3문장).
    - 반드시 완전한 문장으로 종결하고, "{pinned_cta}"로 문장을 끝맺을 것.
@@ -1610,6 +1612,21 @@ def build_luna_metadata(track_data):
     except Exception as e:
         print(f"[LunaEngine] Leo metadata LLM generation error: {e}")
 
+    # 장르 태그 표준화 (모바일 전면 배치용)
+    genre_lower = (genre or "").lower()
+    if "lofi" in genre_lower or "chillhop" in genre_lower:
+        fallback_genre_tag = "Lo-Fi"
+    elif "piano" in genre_lower:
+        fallback_genre_tag = "Piano"
+    elif "sleep" in genre_lower or "delta" in genre_lower or "meditation" in genre_lower:
+        fallback_genre_tag = "Sleep"
+    elif "ambient" in genre_lower:
+        fallback_genre_tag = "Ambient"
+    elif "jazz" in genre_lower:
+        fallback_genre_tag = "Jazz"
+    else:
+        fallback_genre_tag = "Lo-Fi"
+
     if meta_llm:
         yt_title = truncate_title(meta_llm.get("youtube_title"))
         pinned_comment = meta_llm.get("pinned_comment") or f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? 0:00 {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 ({pinned_cta})"
@@ -1622,8 +1639,8 @@ def build_luna_metadata(track_data):
         else:
             yt_desc = yt_desc.replace(LYRICS_PLACEHOLDER, "").strip()
     else:
-        # 안전 Fallback
-        yt_title = truncate_title(f"[Playlist] {title} | 지친 밤을 위한 {mood} {genre} 🌙")
+        # 안전 Fallback: [장르] 감성 문구 🌙 서브 문구 (곡명)
+        yt_title = truncate_title(f"[{fallback_genre_tag}] {mood} 🌙 지친 밤을 위한 따뜻한 안식 ({title})")
         pinned_comment = f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 ({pinned_cta})"
 
         lyrics_block = f"\n\n[Lyrics / 가사]\n{lyrics}\n" if include_lyrics else ""

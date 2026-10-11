@@ -98,6 +98,7 @@ data/scene_plans/*
 data/channels/*
 data/youtube/*
 data/luna_music/*
+data/luna_compilations/*
 
 # Credentials & Secrets
 .env

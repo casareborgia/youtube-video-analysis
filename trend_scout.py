@@ -422,18 +422,22 @@ recommended_topics 는 서로 다른 소재로 반드시 3개를 채워주세요
 
 # ── 레오의 음악 트렌드 스카우터 & 루나 기획 브리프 연동 ─────────────────
 
-# 기본 장르 가중치 (루나 채널 성향 반영: 대중적 감성 보컬/멜로디 1.0, 무보컬 특수 장르 0.4)
+# ── 핵심 타깃 장르 개편 (Lo-Fi / Piano 중심 락인, 비수면/자극적 장르 배제) ────
+CORE_LUNA_GENRES = ["lofi", "piano"]
+SECONDARY_LUNA_GENRES = ["ambient", "sleep"]
+
+# 장르 가중치 (Lo-Fi, Piano 집중 배정, synthwave/citypop 등 밤 휴식과 맞지 않는 장르는 0.0으로 배제)
 GENRE_BASE_WEIGHTS = {
-    "lofi": 1.0,
-    "ambient": 1.0,
-    "synthwave": 1.0,
-    "sleep": 0.4,           # 무보컬 수면 델타파 (특수 목적)
-    "jazz": 1.0,
-    "piano": 1.0,
-    "citypop": 1.0,
-    "acoustic": 1.0,
-    "rnb-chill": 1.0,
-    "dark-ambient": 0.4     # 무보컬 다크 앰비언트 (특수 목적)
+    "lofi": 3.0,            # 최우선 핵심: Lo-Fi / Chillhop
+    "piano": 2.5,           # 최우선 핵심: Neoclassical Piano Solo
+    "ambient": 1.0,         # 서브 보조: Cinematic Ambient
+    "sleep": 0.8,           # 서브 보조: Deep Sleep / Delta Wave
+    "jazz": 0.2,            # 제한적
+    "acoustic": 0.2,        # 제한적
+    "rnb-chill": 0.0,       # 개편으로 배제
+    "synthwave": 0.0,       # 개편으로 배제 (자극적 신스음)
+    "citypop": 0.0,         # 개편으로 배제 (빠른 템포)
+    "dark-ambient": 0.0     # 개편으로 배제
 }
 
 
@@ -470,20 +474,24 @@ def get_production_genre_stats(limit: int = 30) -> Dict[str, int]:
 
 def pick_balanced_genres(count: int = 2, stats: Optional[Dict[str, int]] = None) -> List[str]:
     """
-    최근 실제 제작 빈도의 역가중치를 적용하여,
-    가장 덜 생성된 장르들을 우선적으로 가중 랜덤 선별합니다 (중복 없음).
+    채널 고정 장르 정책(Lo-Fi / Piano 중심)에 따라,
+    가중치가 유효한 후보 중에서 최근 제작 빈도의 역가중치를 적용하여 선별합니다.
     """
     if stats is None:
         stats = get_production_genre_stats(limit=30)
 
-    candidates = list(LUNA_GENRES.keys())
+    # 가중치가 0보다 큰 활성 후보만 추출
+    candidates = [g for g in LUNA_GENRES.keys() if GENRE_BASE_WEIGHTS.get(g, 0.0) > 0.0]
+    if not candidates:
+        candidates = list(CORE_LUNA_GENRES)
+
     weights = []
     for g in candidates:
         base = GENRE_BASE_WEIGHTS.get(g, 1.0)
         recent_cnt = stats.get(g, 0)
-        # 출현 빈도가 높을수록 급격히 감점 (1 / (1 + n * 1.5))
+        # 출현 빈도가 높을수록 감점 (1 / (1 + n * 1.5))
         w = base / (1.0 + recent_cnt * 1.5)
-        weights.append(w)
+        weights.append(max(w, 0.001))
 
     selected = []
     cand_pool = list(candidates)
@@ -560,11 +568,13 @@ def analyze_music_trends_for_luna(region_code: str = "KR", force_refresh: bool =
     g1_name, g2_name = LUNA_GENRES[g1], LUNA_GENRES[g2]
     m1_name, m2_name = LUNA_MOODS[m1], LUNA_MOODS[m2]
 
-    allowed_genres_str = ", ".join(f'"{k}"({v})' for k, v in LUNA_GENRES.items())
+    active_genres_map = {k: v for k, v in LUNA_GENRES.items() if GENRE_BASE_WEIGHTS.get(k, 0.0) > 0.0}
+    allowed_genres_str = ", ".join(f'"{k}"({v})' for k, v in active_genres_map.items())
     allowed_moods_str = ", ".join(f'"{k}"({v})' for k, v in LUNA_MOODS.items())
 
     system_prompt = f"""당신은 유튜브 알고리즘 및 글로벌 음악 트렌드 분석 전문가 '에이전트 레오(Agent Leo)'입니다.
-현재 실시간 유튜브 음악 급상승 차트를 분석하여, AI 음악 아티스트 '에이전트 루나(Agent Luna)'가 즉시 제작할 수 있는 [음악 기획 브리프 3선]을 도출해야 합니다.
+'루나의 심야 서재' 채널의 공식 음악 정체성은 밤의 안식과 휴식을 위한 **Lo-Fi Chillhop & Neoclassical Piano** 중심 채널입니다.
+현재 실시간 유튜브 음악 급상승 차트를 분석하여 대중의 심리적 갈증과 감정선을 포착하되, 우리 채널의 핵심 장르(Lo-Fi / Piano 중심)에 완벽히 녹여낸 [음악 기획 브리프 3선]을 도출해야 합니다.
 
 [장르 및 무드 배정 지침 (필수 준수)]
 1. **브리프 1 배정**:
@@ -576,11 +586,11 @@ def analyze_music_trends_for_luna(region_code: str = "KR", force_refresh: bool =
    - 무드: 반드시 '{m2}' ({m2_name})
    - 브리프 1과 완전히 대조되는 차별화된 스토리라인과 타깃 리스너를 설정하세요.
 3. **브리프 3 자율 선정**:
-   - 장르: 현재 급상승 차트의 최신 정서와 가장 잘 어울리는 장르를 자유롭게 선정하세요.
-   - 단, 1번('{g1}')과 2번('{g2}')에서 사용한 장르는 절대 중복 선택할 수 없으며, 반드시 서로 다른 제3의 장르를 골라야 합니다.
+   - 장르: 아래 [허용 장르 풀] 중에서 현재 급상승 차트의 최신 정서와 가장 잘 어울리는 장르를 자유롭게 선정하세요.
+   - 단, 1번('{g1}')과 2번('{g2}')에서 사용한 장르는 중복 선택할 수 없으며, 반드시 서로 다른 제3의 장르를 골라야 합니다.
    - 무드 역시 1번('{m1}'), 2번('{m2}')과 다른 무드를 선정하세요.
 
-[허용 장르 및 무드 풀]
+[허용 장르 및 무드 풀 (채널 고정 장르)]
 - 허용 장르: {allowed_genres_str}
 - 허용 무드: {allowed_moods_str}
 
