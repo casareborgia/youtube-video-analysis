@@ -1101,13 +1101,14 @@ def resolve_signature_bga(genre: str) -> dict:
         key = "lofi"
     elif "piano" in g:
         key = "piano"
-    elif "sleep" in g or "delta" in g:
+    elif "sleep" in g or "delta" in g or "meditation" in g:
         key = "sleep"
     elif "ambient" in g:
         key = "ambient"
     elif "jazz" in g:
         key = "jazz"
-    elif "chill" in g or "rnb" in g:
+    elif "chill" in g or "rnb" in g or "synth" in g or "city" in g:
+        # R&B Chill 과 보관 장르(synthwave·citypop)는 도심 야경 발코니 룸으로 (lofi 책상 서재보다 정서가 맞음)
         key = "chill"
     elif "acoustic" in g or "folk" in g:
         key = "acoustic"
@@ -1152,18 +1153,29 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
     sig = resolve_signature_bga(genre)
     if sig["video_path"] and os.path.exists(sig["video_path"]):
         step(20, f"루나의 심야 서재 대표 BGA({sig['room_name']}) 심리스 루프 합성 시작 ({duration:.1f}초)...")
-        cmd_bga = [
-            "ffmpeg", "-y",
-            "-stream_loop", "-1", "-i", sig["video_path"],
-            "-i", audio_path,
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
-            "-c:a", "aac", "-b:a", "192k", "-pix_fmt", "yuv420p",
-            "-shortest",
-            "-movflags", "+faststart",
-            video_path
-        ]
-        proc = subprocess.run(cmd_bga, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-        if proc.returncode == 0:
+        res_map = {"1080p": (1920, 1080), "720p": (1280, 720), "360p": (640, 360)}
+        w, h = res_map.get(quality, (1920, 1080))
+        # BGA 에셋에 오디오 스트림이 있어도 음원만 쓰도록 스트림을 명시하고, -shortest 만으로는 수 프레임 넘칠 수 있어 -t 로 길이를 고정한다
+        head = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", sig["video_path"], "-i", audio_path,
+                "-map", "0:v:0", "-map", "1:a:0"]
+        tail = ["-c:a", "aac", "-b:a", "192k", "-t", f"{duration:.3f}", "-shortest",
+                "-movflags", "+faststart", video_path]
+        attempts = []
+        if quality == "1080p":
+            # 에셋이 이미 1080p H.264 라 재인코딩 없이 복사 → 화질 손실 0, 3분 곡도 수 초
+            attempts.append(("stream copy", head + ["-c:v", "copy"] + tail))
+        attempts.append(("재인코딩", head + [
+            "-vf", f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
+        ] + tail))
+        rendered = False
+        for label, cmd_bga in attempts:
+            proc = subprocess.run(cmd_bga, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            if proc.returncode == 0:
+                rendered = True
+                break
+            print(f"[LunaVideo] 대표 BGA {label} 실패 -> 다음 방법 시도: {(proc.stderr or '')[-200:].strip()}")
+        if rendered:
             track_data["video_file"] = video_path
             track_data["video_url"] = f"/data/luna_music/{track_id}/video.mp4"
             track_data.pop("video_stale", None)
@@ -1175,8 +1187,7 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
             save_track(track_data)
             step(100, f"대표 BGA({sig['room_name']}) 비디오 렌더링 완성!")
             return track_data
-        else:
-            print(f"[LunaVideo] 대표 BGA 렌더 실패 ({proc.stderr[:100]}) -> 앨범 커버 모드로 폴백")
+        print("[LunaVideo] 대표 BGA 렌더 전부 실패 -> 앨범 커버 모드로 폴백")
 
     # 2. 폴백: 앨범 커버 기반 켄번즈 렌더러
     if not os.path.exists(cover_path):
