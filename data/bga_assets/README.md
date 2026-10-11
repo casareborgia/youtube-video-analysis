@@ -31,3 +31,17 @@
 * **길이**: 15초 ~ 20초 (시작과 끝이 부드럽게 연결되는 Seamless Loop)
 * **비디오 코덱**: H.264 (libx264), yuv420p
 * **오디오 스트림**: 무음(Silent) 또는 오디오 트랙 없음
+
+---
+
+## 🖼️ 썸네일 / 루프 소스 이미지 (배너 싱크 삼색 고양이)
+* `thumb_lofi_cat.jpg` — Lo-Fi 서재 (bga_lofi_study.mp4 의 소스이자 Lo-Fi·Chill 영상 썸네일)
+* `thumb_piano_cat.jpg` — 달빛 피아노 (bga_piano_moonlight.mp4 소스, Piano 썸네일)
+* `thumb_ambient_cat.jpg` — 어두운 침실 (bga_ambient_bedroom.mp4 소스, Ambient/Sleep 썸네일)
+
+세 파일은 저장소에 커밋되어 있습니다(Antigravity brain 캐시 디렉터리는 세션이 끝나면 사라질 수 있으므로 원본 사본을 여기 둠).
+루프 mp4 는 `python scripts/generate_signature_bga_assets.py` 로 재생성(기존 파일은 건너뜀, `--force` 로 덮어쓰기).
+
+## 📋 운영 기록
+* 2026-10-11 16:00 — 3개 루프 에셋 생성(16s, 1080p30, zoompan 사인 줌 1.000→1.028→1.000)
+* 2026-10-11 16:24 — 10/11~10/16 예약 영상 6편을 시그니처 BGA 로 교체 업로드(구 영상 삭제) · 1시간 컴필레이션 HzfRkSiTyeI 업로드(10/11 22:00 KST)

@@ -90,6 +90,17 @@ ADJUSTMENTS = {
     }
 }
 
+# 2026-10-11 16:2x 시그니처 BGA 교체(scripts/replace_scheduled_videos_with_bga.py)로 삭제·재업로드된 영상.
+# 구 ID 는 더 이상 존재하지 않고, 신규 영상은 BGA 스크립트의 설명 템플릿을 쓰므로 이 스크립트가 덮어쓰지 않도록 건너뛴다.
+REPLACED_BY_BGA = {
+    "JwgbMsjLDRg": "qDWW10tvUsU",
+    "QXtK8pQeltk": "36KRU3_vYtU",
+    "Zj0T9Ey-qBc": "xBGzcWqMT5A",
+    "fVuhMfgNicY": "iuu4v2GFcfo",
+    "QUYW3_CLjsI": "6Bvupz7wtjM",
+    "XQJNhMOvC0c": "H55FAKD0hUU",
+}
+
 CLEAN_TAGS = [
     "루나의심야서재",
     "로파이",
@@ -117,6 +128,9 @@ def update_scheduled_videos(dry_run: bool = False):
 
     for vid, adj in ADJUSTMENTS.items():
         print(f"\n[*] 처리 중: {vid}")
+        if vid in REPLACED_BY_BGA:
+            print(f"  [=] BGA 교체로 삭제된 영상 (현재: {REPLACED_BY_BGA[vid]}) → 건너뜀")
+            continue
         try:
             # 1. 기존 영상 메타데이터 가져오기
             res = svc.videos().list(part="snippet,status", id=vid).execute()

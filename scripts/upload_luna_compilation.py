@@ -8,6 +8,8 @@
 
 import os
 import sys
+import json
+import argparse
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -17,9 +19,11 @@ import uploader
 
 CHANNEL_ID = "UCowTfbpKpXDBF3Mc50H4iGQ"
 VIDEO_PATH = BASE_DIR / "data" / "luna_compilations" / "compilation_video.mp4"
-THUMBNAIL_PATH = Path("/Users/leeseungjun/.gemini/antigravity-ide/brain/c3482952-7e3d-4c3d-adb4-8833764d9230/lofi_cat_banner_sync_1791700806507.jpg")
+THUMBNAIL_PATH = BASE_DIR / "data" / "bga_assets" / "thumb_lofi_cat.jpg"
+# 업로드 완료 마커: 같은 컴필레이션을 두 번 올리는 사고(1.8GB 재업로드 + 쿼터 1,600) 방지
+RESULT_FILE = BASE_DIR / "data" / "luna_compilations" / "upload_result.json"
 
-# 오늘 22:00 KST = 2026-10-11T22:00:00+09:00
+# 기본 예약 시각 (2026-10-11 22:00 KST 에 1회 업로드 완료: HzfRkSiTyeI). 재사용 시 --publish-at 으로 지정.
 PUBLISH_AT = "2026-10-11T22:00:00+09:00"
 
 TITLE = "[1 Hour Playlist] 오늘 밤 생각 비우고 푹 쉬고 싶을 때 듣는 로파이 🌧️ (미발표 선공개곡 포함) | 루나의 심야 서재"
@@ -55,18 +59,19 @@ DESCRIPTION = """지친 하루의 끝, 조용한 위로와 온전한 쉼이 필�
 58:12 Starlight Serenade (새벽)
 
 [Credits]
-음악: 에이전트 루나 (Agent Luna) - 루나의 심야 서재
+음악: 루나의 심야 서재 (Luna's Midnight Room)
 기획 & 큐레이션: 에이전트 레오 (Agent Leo)
-사운드 마스터링: 베가 (Vega Engine) -16 LUFS True-Peak Mastered
+사운드 마스터링: 베가 (Vega) -16 LUFS True-Peak Mastered
 
 채널 구독으로 루나의 따뜻한 서재에 매일 밤 머물러보세요 🐾
 https://www.youtube.com/channel/UCowTfbpKpXDBF3Mc50H4iGQ?sub_confirmation=1
 
-#루나의심야서재 #로파이 #플레이리스트 #수면음악 #공부할때듣는음악 #새벽감성 #Chillhop #LoFiPlaylist #AgentLuna"""
+#루나의심야서재 #로파이 #플레이리스트 #수면음악 #공부할때듣는음악 #새벽감성 #Chillhop #LoFiPlaylist #SleepBGM"""
 
+# 채널 정책: 'AgentLuna', 'AI음악' 등 기계적 수식어는 공개 메타데이터에 넣지 않는다 (luna_engine.build_luna_metadata 와 동일)
 TAGS = [
     "루나의심야서재", "로파이", "플레이리스트", "수면음악", "공부할때듣는음악",
-    "새벽감성", "Chillhop", "LoFiPlaylist", "AgentLuna", "BGM",
+    "새벽감성", "Chillhop", "LoFiPlaylist", "SleepBGM", "BGM",
     "힐링음악", "선공개", "미발표곡", "빗소리", "서재"
 ]
 
@@ -76,18 +81,35 @@ def progress_cb(step, msg, pct):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="루나 1시간 컴필레이션 예약 업로드")
+    parser.add_argument("--execute", action="store_true", help="실제 업로드 실행 (없으면 계획만 출력)")
+    parser.add_argument("--publish-at", default=PUBLISH_AT, help="예약 공개 일시 ISO 8601 (예: 2026-10-18T22:00:00+09:00)")
+    parser.add_argument("--force", action="store_true", help="이미 업로드 마커가 있어도 다시 업로드")
+    args = parser.parse_args()
+    publish_at = args.publish_at
+
     if not VIDEO_PATH.exists():
         print(f"[Error] 비디오 파일이 없습니다: {VIDEO_PATH}")
         sys.exit(1)
 
+    if RESULT_FILE.exists() and not args.force:
+        prev = json.load(open(RESULT_FILE, encoding="utf-8"))
+        print(f"[=] 이미 업로드된 컴필레이션입니다: {prev.get('url')} (publish_at {prev.get('publish_at')})")
+        print("    다시 올리려면 --force 를 주세요 (중복 영상 주의).")
+        sys.exit(0)
+
     print("=" * 65)
-    print("🚀 에이전트 루나 1시간 컴필레이션 유튜브 예약 업로드")
+    print("🚀 루나의 심야 서재 1시간 컴필레이션 유튜브 예약 업로드")
     print("=" * 65)
     print(f"- 영상 파일: {VIDEO_PATH} ({VIDEO_PATH.stat().st_size / (1024*1024*1024):.2f} GB)")
     print(f"- 썸네일: {THUMBNAIL_PATH}")
-    print(f"- 예약 일시: {PUBLISH_AT} (오늘 밤 10시 KST)")
+    print(f"- 예약 일시: {publish_at}")
     print(f"- 제목: {TITLE}")
     print("-" * 65)
+
+    if not args.execute:
+        print("[dry-run] 실제 업로드는 --execute 를 붙여 실행하세요.")
+        return
 
     res = uploader.upload_video(
         video_path=str(VIDEO_PATH),
@@ -95,12 +117,17 @@ def main():
         description=DESCRIPTION,
         tags=TAGS,
         privacy="private",
-        publish_at=PUBLISH_AT,
+        publish_at=publish_at,
         thumbnail_path=str(THUMBNAIL_PATH) if THUMBNAIL_PATH.exists() else None,
         category_id="10",
         channel_id=CHANNEL_ID,
         progress=progress_cb
     )
+
+    RESULT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    json.dump({"video_id": res.get("video_id"), "url": res.get("url"), "publish_at": publish_at,
+               "video_file": str(VIDEO_PATH), "title": TITLE},
+              open(RESULT_FILE, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
 
     print("\n[✔] 업로드 및 예약 설정 성공!")
     print(f"- Video ID: {res.get('video_id')}")

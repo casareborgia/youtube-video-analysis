@@ -19,11 +19,18 @@ DATA_DIR = BASE_DIR / "data"
 BGA_ASSETS_DIR = DATA_DIR / "bga_assets"
 BGA_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
-# 3대 코어 장르별 배너 싱크 삼색 고양이 일러스트 경로
+# 3대 코어 장르별 배너 싱크 삼색 고양이 일러스트 (저장소 data/bga_assets 에 보관)
+# ※ Antigravity brain 디렉터리는 세션 캐시라 언제든 비워질 수 있어 저장소 사본을 1순위로 쓰고, 없을 때만 폴백한다.
+_BRAIN_DIR = Path("/Users/leeseungjun/.gemini/antigravity-ide/brain/c3482952-7e3d-4c3d-adb4-8833764d9230")
 SOURCE_IMAGES = {
-    "lofi": Path("/Users/leeseungjun/.gemini/antigravity-ide/brain/c3482952-7e3d-4c3d-adb4-8833764d9230/lofi_cat_banner_sync_1791700806507.jpg"),
-    "piano": Path("/Users/leeseungjun/.gemini/antigravity-ide/brain/c3482952-7e3d-4c3d-adb4-8833764d9230/piano_cat_banner_sync_1791700829563.jpg"),
-    "ambient": Path("/Users/leeseungjun/.gemini/antigravity-ide/brain/c3482952-7e3d-4c3d-adb4-8833764d9230/ambient_cat_banner_sync_1791700850279.jpg")
+    "lofi": BGA_ASSETS_DIR / "thumb_lofi_cat.jpg",
+    "piano": BGA_ASSETS_DIR / "thumb_piano_cat.jpg",
+    "ambient": BGA_ASSETS_DIR / "thumb_ambient_cat.jpg",
+}
+_BRAIN_FALLBACK = {
+    "lofi": _BRAIN_DIR / "lofi_cat_banner_sync_1791700806507.jpg",
+    "piano": _BRAIN_DIR / "piano_cat_banner_sync_1791700829563.jpg",
+    "ambient": _BRAIN_DIR / "ambient_cat_banner_sync_1791700850279.jpg",
 }
 
 TARGET_FILES = {
@@ -59,8 +66,10 @@ def render_seamless_loop(img_path: Path, out_mp4: Path, duration_sec: int = 16, 
             f"scale=1920:1080:force_original_aspect_ratio=increase,"
             f"crop=1920:1080,"
             f"zoompan=z='{zoom_expr}':x='{x_expr}':y='{y_expr}':d={total_frames}:s=1920x1080:fps={fps},"
-            f"format=yuv420p"
+            # JPEG 입력은 full-range(yuvj) 라 그대로 두면 pc 레인지로 인코딩된다 → 영상 표준(limited/tv) 으로 변환
+            f"scale=in_range=full:out_range=limited,format=yuv420p"
         ),
+        "-color_range", "tv",
         "-c:v", "libx264",
         "-preset", "medium",
         "-crf", "18",
@@ -79,12 +88,23 @@ def render_seamless_loop(img_path: Path, out_mp4: Path, duration_sec: int = 16, 
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser(description="3대 시그니처 룸 BGA 루프 에셋 생성")
+    parser.add_argument("--force", action="store_true",
+                        help="이미 생성된 에셋도 다시 렌더링 (기본: 존재하면 건너뜀 — 업로드된 영상과 에셋이 달라지는 것을 방지)")
+    args = parser.parse_args()
+
     print("=" * 65)
-    print("🐾 에이전트 루나 3대 시그니처 룸 BGA 에셋 자동 생성")
+    print("🐾 루나의 심야 서재 3대 시그니처 룸 BGA 에셋 자동 생성")
     print("=" * 65)
 
     for genre, img_p in SOURCE_IMAGES.items():
         out_p = TARGET_FILES[genre]
+        if out_p.exists() and not args.force:
+            print(f"[=] {out_p.name} 이미 존재 → 건너뜀 (--force 로 재생성)")
+            continue
+        if not img_p.exists() and _BRAIN_FALLBACK[genre].exists():
+            img_p = _BRAIN_FALLBACK[genre]
         render_seamless_loop(img_p, out_p, duration_sec=16, fps=30)
 
     print("\n[✔] 3대 시그니처 룸 BGA 에셋 전체 생성 성공!")
