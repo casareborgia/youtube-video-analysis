@@ -472,6 +472,12 @@ def get_production_genre_stats(limit: int = 30) -> Dict[str, int]:
     return counts
 
 
+def active_luna_genres() -> List[str]:
+    """채널 개편 정책상 제작 가능한 장르(가중치 > 0)만 반환. 전부 0이면 핵심 장르로 폴백."""
+    active = [g for g in LUNA_GENRES.keys() if GENRE_BASE_WEIGHTS.get(g, 0.0) > 0.0]
+    return active or list(CORE_LUNA_GENRES)
+
+
 def pick_balanced_genres(count: int = 2, stats: Optional[Dict[str, int]] = None) -> List[str]:
     """
     채널 고정 장르 정책(Lo-Fi / Piano 중심)에 따라,
@@ -481,9 +487,7 @@ def pick_balanced_genres(count: int = 2, stats: Optional[Dict[str, int]] = None)
         stats = get_production_genre_stats(limit=30)
 
     # 가중치가 0보다 큰 활성 후보만 추출
-    candidates = [g for g in LUNA_GENRES.keys() if GENRE_BASE_WEIGHTS.get(g, 0.0) > 0.0]
-    if not candidates:
-        candidates = list(CORE_LUNA_GENRES)
+    candidates = active_luna_genres()
 
     weights = []
     for g in candidates:
@@ -568,7 +572,7 @@ def analyze_music_trends_for_luna(region_code: str = "KR", force_refresh: bool =
     g1_name, g2_name = LUNA_GENRES[g1], LUNA_GENRES[g2]
     m1_name, m2_name = LUNA_MOODS[m1], LUNA_MOODS[m2]
 
-    active_genres_map = {k: v for k, v in LUNA_GENRES.items() if GENRE_BASE_WEIGHTS.get(k, 0.0) > 0.0}
+    active_genres_map = {k: LUNA_GENRES[k] for k in active_luna_genres()}
     allowed_genres_str = ", ".join(f'"{k}"({v})' for k, v in active_genres_map.items())
     allowed_moods_str = ", ".join(f'"{k}"({v})' for k, v in LUNA_MOODS.items())
 
@@ -664,7 +668,7 @@ def analyze_music_trends_for_luna(region_code: str = "KR", force_refresh: bool =
 
     # Fallback 필요 시 동적 가중치 장르에 맞추어 생성
     if not parsed or not isinstance(parsed, dict) or not parsed.get("luna_briefs"):
-        rem_genres = [g for g in LUNA_GENRES.keys() if g not in (g1, g2)]
+        rem_genres = [g for g in active_luna_genres() if g not in (g1, g2)] or [g1]
         g3 = random.choice(rem_genres)
         g3_name = LUNA_GENRES[g3]
         rem_moods = [m for m in LUNA_MOODS.keys() if m not in (m1, m2)]
@@ -734,8 +738,10 @@ def analyze_music_trends_for_luna(region_code: str = "KR", force_refresh: bool =
     # 3번 브리프: 1·2번과 중복 시 제3의 장르로 자동 회전 교체
     if len(briefs) >= 3 and isinstance(briefs[2], dict):
         b3_g = (briefs[2].get("genre") or "").strip().lower()
-        if b3_g in (g1, g2) or b3_g not in LUNA_GENRES:
-            remaining = [g for g in LUNA_GENRES.keys() if g not in (g1, g2)]
+        active = active_luna_genres()
+        if b3_g in (g1, g2) or b3_g not in active:
+            # LLM 이 배제 장르(synthwave·citypop 등)나 중복 장르를 골랐으면 활성 장르로 교체
+            remaining = [g for g in active if g not in (g1, g2)] or [g1]
             new_g = random.choice(remaining)
             briefs[2]["genre"] = new_g
             briefs[2]["genre_name"] = LUNA_GENRES[new_g]

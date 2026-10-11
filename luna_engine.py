@@ -22,6 +22,12 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 LUNA_DIR = os.path.join(DATA_DIR, "luna_music")
 os.makedirs(LUNA_DIR, exist_ok=True)
 
+# ── 채널 브랜드 상수 (루나의 심야 서재) ─────────────────────────────────────
+# 핸들(@...)은 바뀔 수 있고 과거 @음악에이전트-c3j → 현재 @LunaAIMusic-x1s 로 이미 한 번 바뀌었다.
+# 설명란의 구독 링크는 절대 깨지지 않는 채널 ID URL 을 쓴다.
+LUNA_CHANNEL_ID = "UCowTfbpKpXDBF3Mc50H4iGQ"
+LUNA_CHANNEL_SUBSCRIBE_URL = f"https://www.youtube.com/channel/{LUNA_CHANNEL_ID}?sub_confirmation=1"
+
 # ── 장르 및 무드 독립 스펙 (Lo-Fi & Piano 중심 채널 개편) ───────────────
 GENRE_PRESETS = [
     {"id": "lofi", "name": "Lo-Fi / Chillhop", "desc": "따뜻한 바이닐 노이즈와 칠한 비트, 공부/코딩/휴식용 (핵심 주력)"},
@@ -558,7 +564,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
             "lyrics": fb_lyrics,
             "lyria_prompt": lyria_p,
             "visual_prompt": genre_spec["visual_style"],
-            "tags": ["에이전트루나", "AgentLuna", "AI음악", genre_key, mood_info["name"].split(" ")[0], "BGM", "힐링음악"]
+            "tags": ["루나의심야서재", "수면음악", "힐링음악", genre_key, mood_info["name"].split(" ")[0], "BGM"]
                     + (["가사", "노래", f"{genre_key.replace('-', '').capitalize()}Vocal"] if should_have_lyrics else ["순수연주곡", "몰입음악"])
                     + (brief["keywords"][:3] if brief else []),
             # LLM 기획이 실패해 템플릿으로 대체됐음을 UI·이력에 남긴다 (사용자가 재생성 여부를 판단할 수 있도록)
@@ -1123,6 +1129,25 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
 YT_TITLE_MAX = 100
 
 
+def genre_title_tag(genre: str) -> str:
+    """장르명 → 제목 맨 앞 대괄호 태그([Lo-Fi]/[Piano]/[Sleep]/[Ambient]/[Jazz]).
+
+    모바일 피드에서 제목 앞 20자 정도만 보이므로 장르 태그를 전면에 둔다. 매칭 실패 시 채널 주력 장르 Lo-Fi.
+    """
+    g = (genre or "").lower()
+    if "lo-fi" in g or "lofi" in g or "chillhop" in g:
+        return "Lo-Fi"
+    if "piano" in g:
+        return "Piano"
+    if "sleep" in g or "delta" in g or "meditation" in g:
+        return "Sleep"
+    if "ambient" in g:
+        return "Ambient"
+    if "jazz" in g:
+        return "Jazz"
+    return "Lo-Fi"
+
+
 def truncate_title(title: str, max_len: int = YT_TITLE_MAX, suffix: str = "") -> str:
     """유튜브 제목을 max_len 안에서 단어 경계로 자른다. suffix 는 항상 보존한다.
 
@@ -1419,7 +1444,7 @@ def build_luna_shorts_metadata(track_data, base_meta):
     ]
     genre_tag = re.sub(r"[^0-9A-Za-z가-힣]", "", (track_data.get("genre") or "").split("/")[0]) or "Music"
     desc = "\n\n".join(
-        [f"🎧 3분 풀버전 👉 {LONGFORM_URL_PLACEHOLDER}"] + paragraphs[:2] + [f"#Shorts #루나의심야서재 #{genre_tag} #수면음악 #로파이 #Lofi"]
+        [f"🎧 3분 풀버전 👉 {LONGFORM_URL_PLACEHOLDER}"] + paragraphs[:2] + [f"#Shorts #루나의심야서재 #{genre_tag} #수면음악 #힐링음악 #SleepBGM"]
     )
 
     tags = list(dict.fromkeys((base_meta.get("youtube_tags") or []) + ["Shorts", "YouTubeShorts"]))[:15]
@@ -1613,19 +1638,7 @@ def build_luna_metadata(track_data):
         print(f"[LunaEngine] Leo metadata LLM generation error: {e}")
 
     # 장르 태그 표준화 (모바일 전면 배치용)
-    genre_lower = (genre or "").lower()
-    if "lofi" in genre_lower or "chillhop" in genre_lower:
-        fallback_genre_tag = "Lo-Fi"
-    elif "piano" in genre_lower:
-        fallback_genre_tag = "Piano"
-    elif "sleep" in genre_lower or "delta" in genre_lower or "meditation" in genre_lower:
-        fallback_genre_tag = "Sleep"
-    elif "ambient" in genre_lower:
-        fallback_genre_tag = "Ambient"
-    elif "jazz" in genre_lower:
-        fallback_genre_tag = "Jazz"
-    else:
-        fallback_genre_tag = "Lo-Fi"
+    fallback_genre_tag = genre_title_tag(genre)
 
     if meta_llm:
         yt_title = truncate_title(meta_llm.get("youtube_title"))
@@ -1655,7 +1668,7 @@ def build_luna_metadata(track_data):
 
 🌙 루나의 심야 서재는 매일 밤 당신의 지친 마음을 다독이고 평온한 수면을 선물합니다.
 구독과 좋아요로 오늘 밤 서재의 따뜻한 음악 여정에 함께해주세요.
-👉 구독하기: https://www.youtube.com/@LunaMidnightRoom?sub_confirmation=1
+👉 구독하기: {LUNA_CHANNEL_SUBSCRIBE_URL}
 
 [Timeline]
 0:00 {title}
