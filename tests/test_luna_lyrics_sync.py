@@ -289,7 +289,7 @@ class DescriptionLyricsTests(unittest.TestCase):
         with patch.object(luna_engine.llm_client, "call_llm_json", side_effect=RuntimeError("down")):
             meta = luna_engine.build_luna_metadata(self._track())
         self.assertIn(f"[Lyrics / 가사]\n{LYRICS_KO}", meta["youtube_description"])
-        self.assertIn("보컬: 에이전트 루나", meta["youtube_description"])
+        self.assertIn("보컬: 루나", meta["youtube_description"])
 
     def test_vocal_less_audio_drops_lyrics_and_vocal_credit(self):
         with patch.object(luna_engine.llm_client, "call_llm_json", side_effect=RuntimeError("down")):

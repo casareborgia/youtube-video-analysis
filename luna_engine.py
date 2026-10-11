@@ -1419,7 +1419,7 @@ def build_luna_shorts_metadata(track_data, base_meta):
     ]
     genre_tag = re.sub(r"[^0-9A-Za-z가-힣]", "", (track_data.get("genre") or "").split("/")[0]) or "Music"
     desc = "\n\n".join(
-        [f"🎧 3분 풀버전 👉 {LONGFORM_URL_PLACEHOLDER}"] + paragraphs[:2] + [f"#Shorts #AgentLuna #{genre_tag} #에이전트루나 #AI음악"]
+        [f"🎧 3분 풀버전 👉 {LONGFORM_URL_PLACEHOLDER}"] + paragraphs[:2] + [f"#Shorts #루나의심야서재 #{genre_tag} #수면음악 #로파이 #Lofi"]
     )
 
     tags = list(dict.fromkeys((base_meta.get("youtube_tags") or []) + ["Shorts", "YouTubeShorts"]))[:15]
@@ -1564,7 +1564,7 @@ def build_luna_metadata(track_data):
 
     # Gemini를 활용하여 레오의 감성 + 알고리즘 최적화 카피 동적 생성
     prompt = f"""당신은 유튜브 알고리즘 마케팅 전문가 '에이전트 레오(Agent Leo)'입니다.
-음악 아티스트 '에이전트 루나(Agent Luna)'의 신곡 발매를 위해 유튜브 클릭률(CTR)과 댓글 참여율을 극대화하는 메타데이터를 작성하세요.
+'루나의 심야 서재(Luna\'s Midnight Room)'의 신곡 발매를 위해 밤/수면/휴식 청자의 클릭률(CTR)과 댓글 참여율을 극대화하는 메타데이터를 작성하세요.
 
 [곡 정보]
 - 곡 제목: {title}
@@ -1576,17 +1576,19 @@ def build_luna_metadata(track_data):
 
 [작성 요구사항]
 1. 유튜브 제목(youtube_title):
-   - '에이전트 루나 (Agent Luna) - {title} | [후킹 상황/감성] [장르]' 형식 (최대 90자).
-   - 예: 에이전트 루나 (Agent Luna) - {title} | 지친 하루 끝 깊은 수면을 위한 {genre}
+   - '[Playlist] [감성/상황 후킹 문구] 🌙 | {title} ({genre})' 형식 (최대 90자).
+   - '에이전트 루나'나 'AI음악' 같은 기계적인 수식어를 절대 넣지 말고, 밤에 불 끄고 휴식/수면/독서하러 온 청자의 감정을 어루만지는 후킹 제목을 작성하세요.
+   - 예: [Playlist] 지친 하루 끝, 조용한 위로가 필요할 때 🌙 | {title} ({genre})
+   - 예: [Sleep BGM] 불 끄고 침대에서 듣는 따뜻한 온기 🕯️ | {title} ({genre})
 2. 레오의 고정 댓글(pinned_comment):
    - 시청자가 영상을 끝까지 듣고 댓글을 달고 싶게 만드는 따뜻하고 도발적인 질문 (2~3문장).
    - 반드시 완전한 문장으로 종결하고, "{pinned_cta}"로 문장을 끝맺을 것.
 3. 감성 설명란(youtube_description):
    - 1) 감성 서사 스토리
-   - 2) 프로듀싱 정보 (작곡: 에이전트 루나, {f'보컬: 에이전트 루나 ({vocal_style or "감성 보컬"}), ' if has_lyrics else ''}마케팅: 에이전트 레오, 엔진: Lyria 3 Pro)
+   - 2) 크레딧 정보 (음악: 루나의 심야 서재 (Luna's Midnight Room), {f'보컬: 루나 ({vocal_style or "감성 보컬"}), ' if has_lyrics else ''}기획: 에이전트 레오)
 {lyrics_guideline}   - 4) 채널 구독 안내 문구
    - 5) [Timeline] (0:00 {title} ~ {duration_str} Outro)
-   - 6) 해시태그 8개
+   - 6) 해시태그 8개 (#루나의심야서재 #수면음악 #로파이 #새벽피아노 #힐링음악 #SleepBGM #Chillhop)
 
 [반환 형식 — 순수 JSON만 출력]
 {{
@@ -1621,38 +1623,38 @@ def build_luna_metadata(track_data):
             yt_desc = yt_desc.replace(LYRICS_PLACEHOLDER, "").strip()
     else:
         # 안전 Fallback
-        yt_title = truncate_title(f"에이전트 루나 (Agent Luna) - {title} | {mood} {genre}")
+        yt_title = truncate_title(f"[Playlist] {title} | 지친 밤을 위한 {mood} {genre} 🌙")
         pinned_comment = f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 ({pinned_cta})"
 
         lyrics_block = f"\n\n[Lyrics / 가사]\n{lyrics}\n" if include_lyrics else ""
-        vocal_credit = f"\n보컬: 에이전트 루나 ({vocal_style or 'AI 감성 보컬'})" if has_lyrics else ""
+        vocal_credit = f"\n보컬: 루나 ({vocal_style or '감성 보컬'})" if has_lyrics else ""
 
         yt_desc = f"""{story}
 
-작곡 & 프로듀싱: 에이전트 루나 (Agent Luna){vocal_credit}
-마케팅 & 채널 디렉팅: 에이전트 레오 (Agent Leo)
+음악: 루나의 심야 서재 (Luna's Midnight Room){vocal_credit}
+기획 & 디렉팅: 에이전트 레오 (Agent Leo)
 사운드 엔진: Google DeepMind Lyria 3 Pro
 장르: {genre} | 분위기: {mood}{lyrics_block}
 
-✨ 에이전트 루나의 음악은 매일 당신의 깊은 몰입과 평온한 수면을 함께합니다.
-구독과 좋아요로 루나의 다음 음악 여정에 함께해주세요 🌙
-👉 구독하기: https://www.youtube.com/@음악에이전트-c3j?sub_confirmation=1
+🌙 루나의 심야 서재는 매일 밤 당신의 지친 마음을 다독이고 평온한 수면을 선물합니다.
+구독과 좋아요로 오늘 밤 서재의 따뜻한 음악 여정에 함께해주세요.
+👉 구독하기: https://www.youtube.com/@LunaMidnightRoom?sub_confirmation=1
 
 [Timeline]
 0:00 {title}
 {duration_str} Outro
 
-#에이전트루나 #AgentLuna #에이전트레오 #AI음악 #Lyria3 #힐링음악"""
+#루나의심야서재 #수면음악 #로파이 #새벽피아노 #힐링음악 #SleepBGM"""
 
     # 고정 댓글 문장 완결성 및 안전 정제
     pinned_comment = sanitize_pinned_comment(pinned_comment, default_cta=pinned_cta)
     yt_desc = _cap_youtube_description(yt_desc)
 
-    base_tags = ["에이전트 루나", "Agent Luna", "에이전트 레오", "AI음악", "Lyria 3", "BGM", "힐링음악"]
+    base_tags = ["루나의심야서재", "LunasMidnightRoom", "수면음악", "새벽감성", "로파이", "힐링음악", "BGM", "SleepBGM"]
     if has_lyrics:
         base_tags += ["가사", "Lyrics", "노래", "보컬"]
     else:
-        base_tags += ["수면음악", "공부할때듣는음악", "순수연주곡"]
+        base_tags += ["공부할때듣는음악", "순수연주곡", "피아노연주곡"]
 
     custom_tags = track_data.get("tags") or []
     merged_tags = list(dict.fromkeys(base_tags + custom_tags))[:15]
