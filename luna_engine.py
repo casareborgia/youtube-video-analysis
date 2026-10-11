@@ -1044,12 +1044,89 @@ def _generate_fallback_cover_image(output_path, title):
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
 
-# ── 4. ffmpeg 감성 켄번즈(Ken Burns) 비디오 렌더러 ───────────────────────
+# ── 4. 장르별 대표 BGA(시그니처 룸) 자동 매핑 및 렌더러 ─────────────────
+
+BGA_ASSETS_DIR = os.path.join(DATA_DIR, "bga_assets")
+
+# 장르별 대표 시그니처 룸 에셋 매핑 (잠자는 삼색 고양이 & 고유 서재/공간)
+SIGNATURE_BGA_MAP = {
+    "lofi": {
+        "video": "bga_lofi_study.mp4",
+        "thumbnail": "thumb_lofi_cat.jpg",
+        "room_name": "책상 서재 (Lo-Fi)",
+    },
+    "piano": {
+        "video": "bga_piano_moonlight.mp4",
+        "thumbnail": "thumb_piano_cat.jpg",
+        "room_name": "달밤 창가 피아노 (Piano)",
+    },
+    "ambient": {
+        "video": "bga_ambient_bedroom.mp4",
+        "thumbnail": "thumb_ambient_cat.jpg",
+        "room_name": "자정의 침실 (Ambient)",
+    },
+    "sleep": {
+        "video": "bga_sleep_sanctuary.mp4",
+        "thumbnail": "thumb_sleep_cat.jpg",
+        "room_name": "포근한 수면 안식처 (Sleep)",
+    },
+    "jazz": {
+        "video": "bga_jazz_cafe.mp4",
+        "thumbnail": "thumb_jazz_cat.jpg",
+        "room_name": "심야 재즈 카페 (Jazz)",
+    },
+    "chill": {
+        "video": "bga_chill_balcony.mp4",
+        "thumbnail": "thumb_chill_cat.jpg",
+        "room_name": "도심 야경 발코니 (Chill)",
+    },
+    "rnb-chill": {
+        "video": "bga_chill_balcony.mp4",
+        "thumbnail": "thumb_chill_cat.jpg",
+        "room_name": "도심 야경 발코니 (Chill)",
+    },
+    "acoustic": {
+        "video": "bga_acoustic_attic.mp4",
+        "thumbnail": "thumb_acoustic_cat.jpg",
+        "room_name": "햇살 다락방 서재 (Acoustic)",
+    },
+}
+
+
+def resolve_signature_bga(genre: str) -> dict:
+    """장르 키 또는 텍스트를 분석하여 1:1 대응되는 대표 BGA 영상과 썸네일 경로를 반환합니다."""
+    g = (genre or "").strip().lower()
+    key = "lofi"
+    if "lofi" in g or "lo-fi" in g or "chillhop" in g:
+        key = "lofi"
+    elif "piano" in g:
+        key = "piano"
+    elif "sleep" in g or "delta" in g:
+        key = "sleep"
+    elif "ambient" in g:
+        key = "ambient"
+    elif "jazz" in g:
+        key = "jazz"
+    elif "chill" in g or "rnb" in g:
+        key = "chill"
+    elif "acoustic" in g or "folk" in g:
+        key = "acoustic"
+
+    spec = SIGNATURE_BGA_MAP.get(key, SIGNATURE_BGA_MAP["lofi"])
+    bga_file = os.path.join(BGA_ASSETS_DIR, spec["video"])
+    thumb_file = os.path.join(BGA_ASSETS_DIR, spec["thumbnail"])
+    return {
+        "genre_key": key,
+        "room_name": spec["room_name"],
+        "video_path": bga_file if os.path.exists(bga_file) else None,
+        "thumbnail_path": thumb_file if os.path.exists(thumb_file) else None,
+    }
+
 
 def render_luna_video(track_data, quality="1080p", progress_cb=None):
     """
-    고화질 앨범 커버에 은은한 줌인(Ken Burns) 효과와 감성 타이포그래피 자막을 합성하여
-    유튜브 업로드용 고화질 MP4 영상을 렌더링합니다.
+    장르별 대표 BGA(심리스 루프 영상)를 우선 탐색하여 음원과 완벽히 동기화 합성합니다.
+    대표 BGA가 없는 경우 고화질 앨범 커버에 켄번즈(Ken Burns) 효과를 적용한 비디오로 폴백합니다.
     """
     def step(pct, msg):
         if progress_cb:
@@ -1067,26 +1144,56 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
 
     if not os.path.exists(audio_path):
         raise FileNotFoundError(f"음원 파일을 찾을 수 없습니다: {audio_path}")
+
+    duration = producer.audio_duration(audio_path) or track_data.get("duration_seconds") or 180
+    genre = track_data.get("genre") or ""
+
+    # 1. 장르별 대표 BGA 심리스 루프 영상 우선 매핑 및 합성
+    sig = resolve_signature_bga(genre)
+    if sig["video_path"] and os.path.exists(sig["video_path"]):
+        step(20, f"루나의 심야 서재 대표 BGA({sig['room_name']}) 심리스 루프 합성 시작 ({duration:.1f}초)...")
+        cmd_bga = [
+            "ffmpeg", "-y",
+            "-stream_loop", "-1", "-i", sig["video_path"],
+            "-i", audio_path,
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+            "-c:a", "aac", "-b:a", "192k", "-pix_fmt", "yuv420p",
+            "-shortest",
+            "-movflags", "+faststart",
+            video_path
+        ]
+        proc = subprocess.run(cmd_bga, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0:
+            track_data["video_file"] = video_path
+            track_data["video_url"] = f"/data/luna_music/{track_id}/video.mp4"
+            track_data.pop("video_stale", None)
+            track_data["rendered_at"] = time.time()
+            track_data["video_source"] = "signature_bga"
+            track_data["signature_bga_room"] = sig["room_name"]
+            if sig["thumbnail_path"] and os.path.exists(sig["thumbnail_path"]):
+                track_data["signature_thumbnail"] = sig["thumbnail_path"]
+            save_track(track_data)
+            step(100, f"대표 BGA({sig['room_name']}) 비디오 렌더링 완성!")
+            return track_data
+        else:
+            print(f"[LunaVideo] 대표 BGA 렌더 실패 ({proc.stderr[:100]}) -> 앨범 커버 모드로 폴백")
+
+    # 2. 폴백: 앨범 커버 기반 켄번즈 렌더러
     if not os.path.exists(cover_path):
         raise FileNotFoundError(f"앨범 커버 이미지를 찾을 수 없습니다: {cover_path}")
 
-    duration = producer.audio_duration(audio_path) or track_data.get("duration_seconds") or 180
-
-    step(15, f"에이전트 루나 감성 음악 비디오 렌더링 시작 ({duration:.1f}초, {quality})...")
+    step(25, f"앨범 커버 켄번즈 영상 렌더링 시작 ({duration:.1f}초, {quality})...")
 
     # 해상도 설정
     res_map = {"1080p": (1920, 1080), "720p": (1280, 720), "360p": (640, 360)}
     w, h = res_map.get(quality, (1920, 1080))
+    title_safe = re.sub(r"['\":]", "", track_data.get("title") or "루나의 심야 서재")
 
-    title_safe = re.sub(r"['\":]", "", track_data.get("title") or "Agent Luna")
-
-    # 켄번즈 슬로우 줌 + 비네트 + 자막 오버레이 필터
     total_frames = int(duration * 25)
     vf_filter = (
         f"scale={w}:{h}, "
         f"zoompan=z='min(zoom+0.00015,1.15)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={total_frames}:s={w}x{h}, "
         f"vignette=PI/4, "
-        f"drawtext=text='AGENT LUNA':fontcolor=white@0.85:fontsize={h//24}:x=(w-text_w)/2:y=h*0.78:shadowcolor=black@0.6:shadowx=2:shadowy=2, "
         f"drawtext=text='{title_safe}':fontcolor=0xa5b4fc@0.95:fontsize={h//32}:x=(w-text_w)/2:y=h*0.84:shadowcolor=black@0.6:shadowx=2:shadowy=2, "
         f"fade=t=in:st=0:d=2,fade=t=out:st={max(duration-3, 1)}:d=3"
     )
@@ -1102,11 +1209,8 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
         video_path
     ]
 
-    step(35, "ffmpeg 하드웨어 가속 시네마틱 렌더링 진행 중 (잠시만 기다려주세요)...")
     proc = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     if proc.returncode != 0:
-        # 폰트 에러 시 단순 비디오 렌더링으로 폴백
-        print(f"[LunaVideo] 필터 경고 -> 단순 비디오 렌더링 모드로 재시도: {proc.stderr[:100]}")
         cmd_simple = [
             "ffmpeg", "-y",
             "-loop", "1", "-i", cover_path,
@@ -1121,12 +1225,12 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
 
     track_data["video_file"] = video_path
     track_data["video_url"] = f"/data/luna_music/{track_id}/video.mp4"
-    track_data.pop("video_stale", None)  # 최신 마스터로 다시 렌더했으므로 경고 해제
+    track_data.pop("video_stale", None)
     track_data["rendered_at"] = time.time()
     track_data["video_source"] = "cover"
     save_track(track_data)
 
-    step(100, "에이전트 루나 음악 영상 렌더링 완성!")
+    step(100, "음악 영상 렌더링 완성!")
     return track_data
 
 
@@ -1926,6 +2030,14 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, 
 
     step(20, f"유튜브 채널 업로드 준비 중: '{meta['youtube_title']}'...")
     
+    # 썸네일 결정 (1순위: 장르별 시그니처 대표 썸네일, 2순위: 트랙 커버 이미지)
+    sig = resolve_signature_bga(track.get("genre") or "")
+    thumb_path = None
+    if sig.get("thumbnail_path") and os.path.exists(sig["thumbnail_path"]):
+        thumb_path = sig["thumbnail_path"]
+    elif cover_path and os.path.exists(cover_path):
+        thumb_path = cover_path
+
     result = uploader.upload_video(
         video_path=video_path,
         title=meta["youtube_title"],
@@ -1934,7 +2046,7 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, 
         category_id=10,  # 음악 카테고리
         privacy=privacy_status,
         publish_at=publish_at,
-        thumbnail_path=cover_path if os.path.exists(cover_path) else None,
+        thumbnail_path=thumb_path,
         pinned_comment=meta.get("pinned_comment"),
         playlist_id=playlist_id,
         progress=lambda stage, msg, pct: step(20 + int(pct * 0.7), msg)

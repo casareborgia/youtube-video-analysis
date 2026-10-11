@@ -26,17 +26,29 @@ SOURCE_IMAGES = {
     "lofi": BGA_ASSETS_DIR / "thumb_lofi_cat.jpg",
     "piano": BGA_ASSETS_DIR / "thumb_piano_cat.jpg",
     "ambient": BGA_ASSETS_DIR / "thumb_ambient_cat.jpg",
+    "sleep": BGA_ASSETS_DIR / "thumb_sleep_cat.jpg",
+    "jazz": BGA_ASSETS_DIR / "thumb_jazz_cat.jpg",
+    "chill": BGA_ASSETS_DIR / "thumb_chill_cat.jpg",
+    "acoustic": BGA_ASSETS_DIR / "thumb_acoustic_cat.jpg",
 }
 _BRAIN_FALLBACK = {
     "lofi": _BRAIN_DIR / "lofi_cat_banner_sync_1791700806507.jpg",
     "piano": _BRAIN_DIR / "piano_cat_banner_sync_1791700829563.jpg",
     "ambient": _BRAIN_DIR / "ambient_cat_banner_sync_1791700850279.jpg",
+    "sleep": _BRAIN_DIR / "thumb_sleep_cat_1791705597450.jpg",
+    "jazz": _BRAIN_DIR / "thumb_jazz_cat_1791705560606.jpg",
+    "chill": _BRAIN_DIR / "thumb_chill_cat_1791705581671.jpg",
+    "acoustic": _BRAIN_DIR / "thumb_acoustic_cat_1791705615061.jpg",
 }
 
 TARGET_FILES = {
     "lofi": BGA_ASSETS_DIR / "bga_lofi_study.mp4",
     "piano": BGA_ASSETS_DIR / "bga_piano_moonlight.mp4",
-    "ambient": BGA_ASSETS_DIR / "bga_ambient_bedroom.mp4"
+    "ambient": BGA_ASSETS_DIR / "bga_ambient_bedroom.mp4",
+    "sleep": BGA_ASSETS_DIR / "bga_sleep_sanctuary.mp4",
+    "jazz": BGA_ASSETS_DIR / "bga_jazz_cafe.mp4",
+    "chill": BGA_ASSETS_DIR / "bga_chill_balcony.mp4",
+    "acoustic": BGA_ASSETS_DIR / "bga_acoustic_attic.mp4",
 }
 
 
