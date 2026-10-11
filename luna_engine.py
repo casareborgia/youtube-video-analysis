@@ -28,15 +28,15 @@ os.makedirs(LUNA_DIR, exist_ok=True)
 LUNA_CHANNEL_ID = "UCowTfbpKpXDBF3Mc50H4iGQ"
 LUNA_CHANNEL_SUBSCRIBE_URL = f"https://www.youtube.com/channel/{LUNA_CHANNEL_ID}?sub_confirmation=1"
 
-# ── 장르 및 무드 독립 스펙 (Lo-Fi & Piano 중심 채널 개편) ───────────────
+# ── 장르 및 무드 독립 스펙 (3대 코어 잠금: Lo-Fi / Piano / Ambient·Sleep — trend_scout.GENRE_BASE_WEIGHTS 와 동기) ───
 GENRE_PRESETS = [
     {"id": "lofi", "name": "Lo-Fi / Chillhop", "desc": "따뜻한 바이닐 노이즈와 칠한 비트, 공부/코딩/휴식용 (핵심 주력)"},
     {"id": "piano", "name": "Emotional Piano Solo", "desc": "한 편의 영화 같은 서정적이고 감동적인 피아노 멜로디 (핵심 주력)"},
-    {"id": "ambient", "name": "Cinematic Ambient", "desc": "깊은 공간감과 서정적인 패드 사운드, 명상/수면용"},
-    {"id": "sleep", "name": "Deep Sleep / Meditation", "desc": "432Hz 델타파 기반의 극도의 이완과 힐링 사운드스케이프"},
-    {"id": "jazz", "name": "Late Night Jazz Cafe", "desc": "감미로운 피아노 트리오와 잔잔한 콘트라베이스"},
-    {"id": "acoustic", "name": "Warm Acoustic / Folk", "desc": "따스한 핑거스타일 어쿠스틱 기타와 서정적 첼로 선율, 힐링 포크"},
-    {"id": "dark-ambient", "name": "Dark Atmospheric Ambient", "desc": "심해와 우주의 신비로운 초저역 펄스, 극도의 딥워크 집중용"},
+    {"id": "ambient", "name": "Cinematic Ambient", "desc": "깊은 공간감과 서정적인 패드 사운드, 명상/수면용 (핵심 주력)"},
+    {"id": "sleep", "name": "Deep Sleep / Meditation", "desc": "432Hz 델타파 기반의 극도의 이완과 힐링 사운드스케이프 (핵심 주력)"},
+    {"id": "jazz", "name": "Late Night Jazz Cafe", "desc": "감미로운 피아노 트리오와 잔잔한 콘트라베이스 (보관)"},
+    {"id": "acoustic", "name": "Warm Acoustic / Folk", "desc": "따스한 핑거스타일 어쿠스틱 기타와 서정적 첼로 선율, 힐링 포크 (보관)"},
+    {"id": "dark-ambient", "name": "Dark Atmospheric Ambient", "desc": "심해와 우주의 신비로운 초저역 펄스, 극도의 딥워크 집중용 (보관)"},
     {"id": "synthwave", "name": "Synthwave / Cyberpunk", "desc": "80년대 레트로 아날로그 신디사이저와 드라이브 비트 (보관)"},
     {"id": "citypop", "name": "Nostalgic City Pop", "desc": "80s 레트로 신스 브라스와 경쾌한 슬랩 베이스, 도심 드라이브 감성 (보관)"},
     {"id": "rnb-chill", "name": "Slow R&B Chillout", "desc": "몽환적인 808 서브 베이스와 세련된 어번 네오소울 건반 그루브 (보관)"}
@@ -1005,7 +1005,8 @@ def generate_luna_cover(track_data, progress_cb=None):
     os.makedirs(t_dir, exist_ok=True)
     cover_path = os.path.join(t_dir, "cover.jpg")
 
-    visual_prompt = track_data.get("visual_prompt") or "Cinematic aesthetic Lo-Fi bedroom at rainy night, cozy warm lighting, 8k, no text"
+    # 콘셉트에 비주얼 프롬프트가 없으면 채널 시각 정체성(잠자는 삼색 고양이 + 심야 서재) 기본 씬을 쓴다
+    visual_prompt = track_data.get("visual_prompt") or GENRE_SPECS["lofi"]["visual_style"]
     key = producer.gemini_key()
 
     step(20, "나노바나나 고화질 16:9 감성 앨범 아트 생성 중...")

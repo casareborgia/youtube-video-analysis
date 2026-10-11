@@ -79,6 +79,20 @@ class LeoGenrePolicyTests(unittest.TestCase):
         self.assertIn("lofi", active)
         self.assertIn("piano", active)
 
+    def test_core_list_matches_weights(self):
+        # 3대 코어 잠금: 가중치 > 0 인 장르 집합과 CORE_LUNA_GENRES 가 어긋나면 폴백 경로가 다른 장르를 고르게 된다
+        self.assertEqual(set(trend_scout.active_luna_genres()), set(trend_scout.CORE_LUNA_GENRES))
+        self.assertEqual(set(trend_scout.CORE_LUNA_GENRES), {"lofi", "piano", "ambient", "sleep"})
+
+    def test_preset_labels_follow_lock(self):
+        active = set(trend_scout.active_luna_genres())
+        for preset in luna_engine.GENRE_PRESETS:
+            if preset["id"] in active:
+                self.assertIn("핵심 주력", preset["desc"], preset)
+                self.assertNotIn("보관", preset["desc"], preset)
+            else:
+                self.assertIn("보관", preset["desc"], preset)
+
     def test_pick_balanced_never_returns_excluded(self):
         for _ in range(50):
             picked = trend_scout.pick_balanced_genres(2, stats={})
