@@ -9,7 +9,8 @@
 | 작성일 | 2026-10-19 |
 | 참고 레포 | [casareborgia/remotion](https://github.com/casareborgia/remotion) (remotion-dev 포크, 2026-10-18 시점) · [casareborgia/hyperframes](https://github.com/casareborgia/hyperframes) (heygen-com 포크, 2026-10-18 시점) · [calesthio/OpenMontage](https://github.com/calesthio/OpenMontage) (2026-10-16 시점) |
 | 선행 | 루나 숏폼 Phase B 머지(`luna_engine.render_luna_shorts_video`), Remotion 스파이크 C-1b/C-1c 머지(`remotion/` + `choonsik_bga.render_bga_remotion`, `BGA_RENDERER` 옵션) |
-| 1차 목표 플랫폼 | 유튜브 쇼츠(기존 `uploader.py` 재사용) → 인스타그램 릴스(신규 Graph API 클라이언트) |
+| 1차 목표 플랫폼 | **유튜브 쇼츠 우선**(기존 `uploader.py` 재사용). 인스타그램 릴스는 유튜브 파이프라인 안정화 후 2차 |
+| 대상 채널 | **루나(Luna Maestro)와 별개의 신규 채널**(사용자 보유 비즈니스 계정). 쇼츠 발행은 항상 채널을 명시 지정하며 루나 채널은 가드로 차단 |
 | 범위 밖 | 틱톡 발행, 실사 토킹헤드 자막(얼굴 없는 채널), Veo 세로 영상(비용 승인 후 별도) |
 
 이 문서는 참고 레포 3개를 실제로 클론해 읽고(2장), 현재 시스템에서 그대로 쓸 수 있는 자산을 대조한 뒤(3장), **무엇을 가져오고 무엇을 가져오지 않을지**(4장)와 단계별 작업(7장)을 확정한 계획서다. 코드 변경은 아직 없다.
@@ -158,12 +159,12 @@
 | 1 | S-1 Remotion `ShortsScene` 컴포지션 + Python 래퍼 | `feat/shorts-remotion-composition` | 0 | 없음 |
 | 2 | S-2 `shorts_engine` 파이프라인(F1 정보형) + API + UI 패널 | `feat/shorts-pipeline` | Gemini 이미지 | S-1 |
 | 3 | S-3 유튜브 쇼츠 발행 + export 번들 | `feat/shorts-publish-youtube` | 유튜브 할당량 1,600/편 | S-2 |
-| 4 | S-4 인스타그램 릴스 발행 | `feat/instagram-reels-publish` | 호스팅 방식에 따라 | S-3, 결정 ① |
-| 5 | S-5 루나 뮤직 쇼츠 2.0(F2) | `feat/luna-shorts-remotion` | 0 | S-1 |
-| 6 | S-6 자동화 루틴(트렌드 → 쇼츠 → 예약) | `feat/shorts-autopilot` | 이미지 + 할당량 | S-3 |
+| 4 | S-6 자동화 루틴(트렌드 → 쇼츠 → 예약) | `feat/shorts-autopilot` | 이미지 + 할당량 | S-3 |
+| 5 | S-4 인스타그램 릴스 발행 *(2차)* | `feat/instagram-reels-publish` | 호스팅 방식에 따라 | S-3, 결정 ① |
+| 6 | S-5 루나 뮤직 쇼츠 2.0(F2) *(루나 채널용, 별도 판단)* | `feat/luna-shorts-remotion` | 0 | S-1 |
 | 7 | S-7 롱폼 리컷(F3) *(선택)* | `feat/shorts-recut` | 0 | S-1 |
 
-S-4 와 S-5 는 서로 독립이라 S-3 머지 후 병렬 가능. 각 단계는 PR 1개, 머지 전 다음 단계 시작 금지(기존 규칙).
+2026-10-19 사용자 결정: **유튜브부터 진행**하고, 쇼츠는 루나와 별개의 신규 채널에서 운영한다. 따라서 S-1 → S-2 → S-3 → S-6 이 1차 경로이고, S-4(릴스)·S-5(루나 뮤직 쇼츠)는 그 뒤로 미룬다. 각 단계는 PR 1개, 머지 전 다음 단계 시작 금지(기존 규칙).
 
 ---
 
@@ -184,9 +185,15 @@ S-4 와 S-5 는 서로 독립이라 S-3 머지 후 병렬 가능. 각 단계는 
    - `probe_video(path)`: ffprobe 로 width/height/duration/fps/size/audio 유무.
 4. 테스트 `tests/test_shorts_remotion.py`: subprocess 모킹으로 props 구성·폴백·미설치 경로 검증(Node 없이 통과). `remotion/node_modules` 있을 때만 `npx remotion compositions` 스모크.
 5. 수용 기준
-   - [ ] 합성 입력(색 이미지 3장 + edge-tts 10초 + 사인파 BGM)으로 1080×1920 30fps 렌더 성공, 자막·훅·엔드 태그 보임
-   - [ ] 30초 쇼츠 렌더 시간 측정·보고(C-1b 처럼 실측 수치 기입)
-   - [ ] `LunaBga`·`choonsik_bga.py`·`uploader.py` diff 0, 기존 테스트 전부 통과
+   - [x] 합성 입력(색 이미지 3장 + 사인파 나레이션 12초 + 사인파 BGM)으로 1080×1920 30fps 렌더 성공, 자막(어절 하이라이트)·훅·엔드 태그 프레임 확인
+   - [x] 렌더 시간 실측(2026-10-19, M시리즈 Mac): **20초 쇼츠 → Remotion 11.3초**, ffmpeg 폴백 1.2초. 30초 기준 약 17초 예상
+   - [x] `LunaBga`·`choonsik_bga.py`·`uploader.py` diff 0, 기존 테스트 전부 통과(393개)
+
+6. 구현 메모(2026-10-19, `feat/shorts-remotion-composition`)
+   - 의존성은 `@remotion/captions` 4.0.534 만 명시 추가했다. `@remotion/transitions`·`layout-utils` 는 크로스페이드(Sequence 겹침 + opacity)와 글자 수 기반 폰트 크기로 대체해 넣지 않았다.
+   - ffmpeg 폴백은 `producer.build_video` 를 호출하지 않고 `shorts_engine.render_shorts_ffmpeg` 로 독립 구현했다(켄번즈 → xfade → 나레이션·BGM 사이드체인 덕킹 → libass SRT). 씬 시작 시각은 Remotion 과 동일한 절대 시각을 유지한다. 훅·엔드 태그·어절 하이라이트는 생략되고 `warnings` 에 기록된다.
+   - 자막 토큰 규약: 새 어절은 `text` 앞에 공백 1칸, 문장 끝 `pageBreakAfter: true`. 단어 타이밍이 없을 때는 `proportional_captions` 로 글자 수 비례 분배.
+   - 잡 폴더 밖의 오디오·이미지는 `data/shorts/<id>/` 안으로 복사한 뒤 `remotion/public/shorts` 심볼릭 링크로 읽는다.
 
 ### S-2. `shorts_engine` 파이프라인 F1 + API + UI (`feat/shorts-pipeline`)
 
@@ -210,6 +217,7 @@ S-4 와 S-5 는 서로 독립이라 S-3 머지 후 병렬 가능. 각 단계는 
 1. `shorts_engine.build_metadata(job)`: 로컬 LLM 으로 제목 후보 3(≤100자, 선택적 `#Shorts`), 설명(첫 줄 훅 + 해시태그 3~5), 태그(≤30), 고정 댓글(인게이지먼트 질문 — 기존 `pinned_comment` 규칙), 인스타 캡션(≤2,200자, 해시태그 ≤30). 파싱 실패 시 템플릿 폴백 + `is_fallback`.
 2. `export_bundle(job)`: `data/shorts/<id>/export/{youtube,instagram}/` 에 `final_9x16.mp4`(하드링크), `metadata.json`, `caption.txt`, `thumbnail.jpg`(세로 썸네일 — 첫 프레임 또는 레드라인 이미지). 상태 `exported`.
 3. `publish_youtube(job, channel_id, privacy, publish_at, playlist_id)`: `uploader.upload_video` 호출(category 27 또는 기획서 값, `pinned_comment`, `thumbnail_path`). 결과 `job["publish"]["youtube"]`. 할당량 경고(1,600 유닛/편) UI 표시.
+   - **채널 가드**: `channel_id` 는 필수 인자이며 `uploader.get_active_channel_id()` 로 암묵 대체하지 않는다. 기본값은 `SHORTS_YOUTUBE_CHANNEL_ID`(.env) 이고, 값이 `LUNA_YOUTUBE_CHANNEL_ID`(루나 채널) 와 같으면 발행을 거부한다. 현재 연결된 채널은 「영상에이전트」와 「Luna Maestro」 두 개이며, 신규 비즈니스 채널은 S-3 착수 시 `[채널 추가 연결]` 로 연결한다.
 4. 예약: `publish_at` 지정 시 기존 규칙대로 `private` + `publishAt`. 롱폼이 있는 주제면 숏폼 설명 첫 줄에 롱폼 링크(루나 Phase B 의 플레이스홀더 치환 재사용).
 5. API `POST /api/shorts/jobs/{id}/export`, `POST /api/shorts/jobs/{id}/publish/youtube`. UI 에 채널 선택·공개 범위·예약 시각·재생목록.
 6. 테스트: `uploader.upload_video` 모킹 — 호출 인자(9:16 파일, 제목 길이, 고정 댓글), export 폴더 구조, 메타 폴백.
@@ -278,11 +286,12 @@ S-4 와 S-5 는 서로 독립이라 S-3 머지 후 병렬 가능. 각 단계는 
 
 | # | 결정 | 선택지 | 권장 |
 |---|---|---|---|
-| ① | 릴스 발행용 **공개 URL 호스팅** | (a) Cloudflare R2 또는 S3 공개/서명 URL (b) cloudflared/ngrok 임시 터널 (c) 기존 Playwright 프로필로 웹 업로드 | **(a)**. 안정적이고 비용 거의 0. (b) 는 터널 수명·보안, (c) 는 약관·깨짐 위험 |
-| ② | 쇼츠 기본 성우 | edge-tts(단어 타이밍 정확) vs Qwen 클론(타이밍 근사) | **edge-tts 기본**, 클론은 옵션 |
-| ③ | S-4(릴스) 와 S-5(뮤직 쇼츠) 중 먼저 할 것 | | 메타 앱 승인이 걸리므로 **S-5 를 먼저** 하고, 그 사이 사용자가 ① 과 인스타 사전 조건을 준비 |
-| ④ | Gemini 이미지 일일 상한 | 기본 40장 | 채널 운영 편수에 맞춰 조정 |
-| ⑤ | 쇼츠 길이 정책 | 30초 고정 / 30~58초 가변 | **가변(30~58초)**, 유튜브·릴스 공용 1본 |
+| ① | 릴스 발행용 **공개 URL 호스팅** | (a) Cloudflare R2 또는 S3 공개/서명 URL (b) cloudflared/ngrok 임시 터널 (c) 기존 Playwright 프로필로 웹 업로드 | **보류** — 유튜브 안정화 후 S-4 착수 시 결정. 권장은 (a) |
+| ② | 쇼츠 기본 성우 | edge-tts(단어 타이밍 정확) vs Qwen 클론(타이밍 근사) | **확정: edge-tts 기본**, 클론은 옵션 |
+| ③ | 착수 순서 | | **확정: 유튜브 우선** (S-1 → S-2 → S-3 → S-6). S-4·S-5 는 후순위 |
+| ④ | Gemini 이미지 일일 상한 | 기본 40장 | **확정: 40장** (운영 편수에 따라 조정) |
+| ⑤ | 쇼츠 길이 정책 | 30초 고정 / 30~58초 가변 | **확정: 가변(30~58초)** |
+| ⑥ | **쇼츠 채널** | 신규 비즈니스 계정 채널 (루나와 별개) | **확정**. 채널 ID·컨셉(주제·톤·채널명)은 S-2 컨셉 팩 설계 전에 알려 주실 것 |
 
 ---
 

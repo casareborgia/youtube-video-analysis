@@ -7,6 +7,7 @@
     "compositions": "remotion compositions src/index.ts"
   },
   "dependencies": {
+    "@remotion/captions": "4.0.534",
     "@remotion/cli": "4.0.534",
     "@remotion/google-fonts": "4.0.534",
     "@remotion/media-utils": "4.0.534",
