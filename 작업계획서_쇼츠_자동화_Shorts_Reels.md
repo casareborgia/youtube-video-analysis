@@ -284,7 +284,9 @@
 - 씬 본래 길이가 끝나면 콘텐츠만 먼저 사라져 크로스페이드·엔드 태그와 글자가 겹치지 않는다.
 - ffmpeg 폴백에서는 비이미지 씬이 단색 배경으로 대체되고 `warnings` 에 기록된다.
 - **권장 조합**: 비용 0 씬을 기본으로, 편당 히어로 씬 1개만 무료 스톡(Pexels/Pixabay, S-2 이후 검토) 또는 저가 모델(`gemini-2.5-flash-image`, 장당 약 $0.04)로.
-- 실측: 어사이드 AI 동향 「Gemini 4 Argon」 사례를 6씬(텍스트 2·막대 1·숫자 1·비교 2) 52.9초로 조립, Remotion 렌더 33초, **생성 비용 0원** (`data/shorts/shorts_argon_ai_trend/`).
+- 실측: 어사이드 AI 동향 「Gemini 4 Argon」 사례를 6씬(텍스트 2·막대 1·숫자 1·비교 2) 52.9초로 조립, Remotion 렌더 28~33초, **생성 비용 0원** (`data/shorts/shorts_argon_ai_trend/`, 조립 스크립트 `scripts/build_argon_shorts.py`).
+- 나노바나나 가용성 확인(2026-10-19): Gemini 키 유효, 이 키로 `nano-banana-pro-preview`·`gemini-2.5-flash-image`·`gemini-3.1-flash-image`·`gemini-3.1-flash-lite-image`·`gemini-nano-banana-2.1` 이 `generateContent` 모델로 노출됨. `gemini-2.5-flash-image` 9:16 1장 실측: 768×1344 PNG, 9.3초, 출력 토큰 1,290(장당 약 $0.04). 최종본 v3 는 3번 씬(Spot)만 이 이미지로 교체하고 나머지 5씬은 0원 씬 — **편당 약 60원**.
+- 남은 일: 나레이션 어절 타이밍(edge-tts 7.3.1 `boundary="WordBoundary"`)은 S-2 가 `tts_service` 에 정식 반영, 업로드는 S-3.
 
 ## 8. 비용·한도
 
