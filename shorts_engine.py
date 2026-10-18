@@ -38,6 +38,11 @@ PLATFORM_PROFILES = {
 # 작업계획서 5.2 — 공통 안전 영역 900×1400 중앙
 SAFE_ZONE = {"top": 120, "bottom": 300, "left": 90, "right": 96}
 
+# 씬 종류 — image 외에는 이미지 생성 비용 없이 Remotion 이 그린다 (작업계획서 비용 절감안 ①)
+SCENE_KINDS = ("image", "text_card", "stat_card", "bar_chart", "compare")
+SCENE_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows")
+FALLBACK_PALETTE = ("0x1b2a4a", "0x3a1f4f", "0x0f3d3e", "0x4a2a1b", "0x1f3f2a", "0x2b1b4a")
+
 DEFAULT_ACCENT = "#ffd166"
 DEFAULT_BGM_VOLUME = 0.16
 DEFAULT_TRANSITION = 0.4
@@ -184,14 +189,25 @@ def build_remotion_props(job: dict) -> dict:
         raise RuntimeError("스토리보드에 씬이 없습니다.")
     scenes = []
     for i, s in enumerate(scenes_in, 1):
-        img = s.get("image")
-        if not img:
-            raise RuntimeError(f"씬 {s.get('scene_num', i)} 에 이미지가 없습니다.")
-        scenes.append({
-            "image": _ensure_in_job_dir(shorts_id, img, f"scene_{i:02d}"),
+        kind = (s.get("kind") or "image").strip().lower()
+        if kind not in SCENE_KINDS:
+            raise RuntimeError(f"씬 {s.get('scene_num', i)} 의 kind 가 올바르지 않습니다: {kind}")
+        item = {
+            "kind": kind,
             "seconds": float(s.get("seconds") or 0),
             "motion": s.get("motion") or ("zoom_in" if i % 2 == 1 else "zoom_out"),
-        })
+        }
+        if kind == "image":
+            img = s.get("image")
+            if not img:
+                raise RuntimeError(f"씬 {s.get('scene_num', i)} 에 이미지가 없습니다.")
+            item["image"] = _ensure_in_job_dir(shorts_id, img, f"scene_{i:02d}")
+        else:
+            # 비용 0 씬: 이미지 없이 타이포·데이터 비주얼. 종류별 필드만 그대로 전달한다.
+            for k in SCENE_KIND_FIELDS:
+                if s.get(k) is not None:
+                    item[k] = s[k]
+        scenes.append(item)
     audio = job.get("audio") or {}
     narration = audio.get("narration")
     bgm = audio.get("bgm")
@@ -335,8 +351,16 @@ def render_shorts_ffmpeg(job: dict, progress_cb: Optional[Callable] = None, runn
 
     # 1. 씬별 켄번즈 (무음)
     files, durs = [], []
+    kind_scenes = [i for i, s in enumerate(scenes, 1) if (s.get("kind") or "image") != "image"]
+    if kind_scenes:
+        warnings.append(f"ffmpeg 폴백: 타이포·데이터 씬({', '.join(map(str, kind_scenes))})은 단색 배경으로 대체됩니다.")
     for i, s in enumerate(scenes, 1):
         img = s.get("image")
+        if (s.get("kind") or "image") != "image":
+            img = os.path.join(work, f"kind_bg_{i:02d}.png")
+            color = FALLBACK_PALETTE[(i - 1) % len(FALLBACK_PALETTE)]
+            _ff_run([ff, "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", f"color=c={color}:s={WIDTH}x{HEIGHT}:d=1",
+                     "-frames:v", "1", img], runner=runner)
         if not img or not os.path.exists(img):
             raise FileNotFoundError(f"씬 {i} 이미지가 없습니다: {img}")
         # Remotion 타임라인과 같은 절대 시각을 유지한다: 마지막이 아닌 씬은 다음 씬의 페이드만큼 더 길게 만들고

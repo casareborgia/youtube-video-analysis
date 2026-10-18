@@ -139,6 +139,58 @@ class RemotionWrapperTests(ShortsEngineBase):
         self.assertIn("browser crashed", str(cm.exception))
 
 
+class SceneKindTests(ShortsEngineBase):
+    def test_non_image_kinds_need_no_image_and_pass_fields(self):
+        self.enable_node()
+        self.job["storyboard"]["scenes"] = [
+            {"scene_num": 1, "seconds": 6, "kind": "text_card", "title": "로봇이 스스로 연습한다", "subtitle": "Gemini 4 Argon"},
+            {"scene_num": 2, "seconds": 6, "kind": "bar_chart", "title": "ERQA", "unit": "%", "decimals": 1,
+             "bars": [{"label": "Argon", "value": 87, "highlight": True}, {"label": "Opus", "value": 82.3}]},
+            {"scene_num": 3, "seconds": 6, "kind": "compare", "rows": [{"label": "성공률", "from": 56, "to": 75, "unit": "%"}]},
+            {"scene_num": 4, "seconds": 6, "kind": "stat_card", "value": 18, "unit": "자유도", "label": "Spot"},
+            {"scene_num": 5, "seconds": 6, "image": self.imgs[0]},
+        ]
+        self.job["storyboard"]["end_tag"] = None
+        rec = {}
+        shorts_engine.render_shorts_remotion(self.job, runner=_ok_runner(rec))
+        with open(rec["cmd"][rec["cmd"].index("--props") + 1], encoding="utf-8") as f:
+            props = json.load(f)
+        kinds = [s["kind"] for s in props["scenes"]]
+        self.assertEqual(kinds, ["text_card", "bar_chart", "compare", "stat_card", "image"])
+        self.assertNotIn("image", props["scenes"][0])
+        self.assertEqual(props["scenes"][1]["bars"][0]["highlight"], True)
+        self.assertEqual(props["scenes"][2]["rows"][0]["to"], 75)
+        self.assertEqual(props["scenes"][3]["unit"], "자유도")
+        self.assertTrue(props["scenes"][4]["image"].endswith("scene_01.png"))
+
+    def test_unknown_kind_rejected(self):
+        self.enable_node()
+        self.job["storyboard"]["scenes"][0]["kind"] = "hologram"
+        with self.assertRaises(RuntimeError) as cm:
+            shorts_engine.render_shorts_remotion(self.job, runner=MagicMock())
+        self.assertIn("kind", str(cm.exception))
+
+    def test_ffmpeg_fallback_uses_color_for_kind_scenes(self):
+        calls = []
+
+        def runner(cmd, capture_output=None, text=None, timeout=None):
+            calls.append(cmd)
+            res = MagicMock()
+            res.returncode, res.stdout, res.stderr = 0, "", ""
+            # 단색 배경 png 를 실제로 만들지 않으므로 존재 검사를 위해 빈 파일 생성
+            if "-frames:v" in cmd and cmd[-1].endswith(".png"):
+                open(cmd[-1], "wb").close()
+            return res
+
+        self.job["storyboard"]["scenes"][1] = {"scene_num": 2, "seconds": 6, "kind": "stat_card", "value": 87, "unit": "%"}
+        with patch.object(shorts_engine.producer, "ffmpeg_path", return_value="/fake/ffmpeg"), \
+             patch.object(shorts_engine, "_ffmpeg_has_filter", return_value=False):
+            job = shorts_engine.render_shorts_ffmpeg(self.job, runner=runner)
+        color_cmds = [c for c in calls if "-f" in c and "lavfi" in c and any("color=c=" in x for x in c)]
+        self.assertEqual(len(color_cmds), 1)
+        self.assertTrue(any("타이포" in w for w in job["render"]["warnings"]))
+
+
 class DispatcherTests(ShortsEngineBase):
     def test_remotion_failure_falls_back_to_ffmpeg(self):
         self.enable_node()
