@@ -31,10 +31,30 @@ export const SAFE_ZONE = { top: 120, bottom: 300, left: 90, right: 96 };
 
 export type ShortsMotion = "zoom_in" | "zoom_out" | "pan_left" | "pan_right" | "none";
 
+export type ShortsSceneKind = "image" | "text_card" | "stat_card" | "bar_chart" | "compare";
+export type ShortsBar = { label: string; value: number; highlight?: boolean };
+export type ShortsCompareRow = { label: string; from: number; to: number; unit?: string; decimals?: number };
+
+// 씬 한 개. kind 가 image 가 아니면 이미지 없이(비용 0) 그라데이션 배경 위에 타이포·데이터 비주얼을 그린다.
 export type ShortsSceneItem = {
-  image: string; // public/ 기준 상대 경로 (shorts/<job_id>/scene_01.png)
+  kind?: ShortsSceneKind; // 기본 image
+  image?: string; // public/ 기준 상대 경로 (shorts/<job_id>/scene_01.png) — kind=image 일 때 필수
   seconds: number;
   motion?: ShortsMotion;
+  palette?: number; // 비이미지 씬 배경 팔레트 인덱스(기본: 씬 순서)
+  // text_card
+  title?: string;
+  subtitle?: string;
+  // stat_card
+  value?: number;
+  unit?: string;
+  prefix?: string;
+  decimals?: number;
+  label?: string;
+  // bar_chart
+  bars?: ShortsBar[];
+  // compare
+  rows?: ShortsCompareRow[];
 };
 
 // Python 쪽이 만든 어절 토큰. text 는 새 어절이면 앞에 공백 하나를 붙여 보낸다(@remotion/captions 규약).
@@ -77,6 +97,279 @@ export const totalSecondsOf = (p: {
 };
 
 const msToFrames = (ms: number, fps: number) => Math.round((ms / 1000) * fps);
+
+// ── 비이미지 씬 공통: 배경·카운트업·콘텐츠 영역 ─────────────────────────────
+// 콘텐츠 영역은 훅 배너(상단 ~520px)와 자막(하단 ~1250px 이하) 사이에 둔다.
+const CONTENT_TOP = 560;
+const CONTENT_BOTTOM = SAFE_ZONE.bottom + 430;
+
+const PALETTES: Array<[string, string, string]> = [
+  ["#0b1026", "#1b2a4a", "#4f8cff"],
+  ["#140b26", "#3a1f4f", "#c56bff"],
+  ["#061f1f", "#0f3d3e", "#2fd4c1"],
+  ["#1f1206", "#4a2a1b", "#ffb347"],
+  ["#071a10", "#1f3f2a", "#5fe08a"],
+  ["#0a0a1c", "#2b1b4a", "#ff6b9d"],
+];
+
+const easeOutCubic = (x: number) => 1 - Math.pow(1 - x, 3);
+
+const countUp = (frame: number, target: number, delay = 6, dur = 40) =>
+  target * easeOutCubic(Math.min(1, Math.max(0, (frame - delay) / dur)));
+
+const fmt = (v: number, decimals = 0) =>
+  v.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+
+const GradientBackdrop: React.FC<{ palette: number }> = ({ palette }) => {
+  const frame = useCurrentFrame();
+  const [c1, c2, glow] = PALETTES[((palette % PALETTES.length) + PALETTES.length) % PALETTES.length];
+  const drift = Math.sin(frame / 90) * 60;
+  const drift2 = Math.cos(frame / 110) * 80;
+  return (
+    <AbsoluteFill style={{ background: `linear-gradient(160deg, ${c1} 0%, ${c2} 100%)` }}>
+      <div
+        style={{
+          position: "absolute",
+          left: 540 + drift - 520,
+          top: 700 + drift2 - 520,
+          width: 1040,
+          height: 1040,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${glow}55 0%, ${glow}00 62%)`,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          left: 140 - drift2 - 380,
+          top: 1500 - drift - 380,
+          width: 760,
+          height: 760,
+          borderRadius: "50%",
+          background: `radial-gradient(circle, ${glow}33 0%, ${glow}00 65%)`,
+        }}
+      />
+      {/* 미세한 격자: 정지 슬라이드 느낌을 줄이는 질감 */}
+      <AbsoluteFill
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px)",
+          backgroundSize: "90px 90px",
+          backgroundPosition: `${drift}px ${drift2}px`,
+        }}
+      />
+    </AbsoluteFill>
+  );
+};
+
+const ContentZone: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <AbsoluteFill
+    style={{
+      paddingTop: CONTENT_TOP,
+      paddingBottom: CONTENT_BOTTOM,
+      paddingLeft: SAFE_ZONE.left,
+      paddingRight: SAFE_ZONE.right,
+      justifyContent: "center",
+      alignItems: "center",
+      fontFamily,
+      color: "white",
+    }}
+  >
+    {children}
+  </AbsoluteFill>
+);
+
+const titleFontSize = (text: string) => {
+  const n = text.replace(/\s+/g, "").length;
+  if (n <= 8) return 104;
+  if (n <= 14) return 92;
+  if (n <= 22) return 76;
+  return 64;
+};
+
+const TextCardScene: React.FC<{ item: ShortsSceneItem; accent: string }> = ({ item, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const enter = spring({ frame, fps, config: { damping: 18, stiffness: 120 }, durationInFrames: 18 });
+  const sub = spring({ frame: frame - 8, fps, config: { damping: 20 }, durationInFrames: 18 });
+  const title = item.title || "";
+  return (
+    <ContentZone>
+      <div style={{ textAlign: "center", wordBreak: "keep-all", overflowWrap: "anywhere", width: "100%" }}>
+        <div
+          style={{
+            fontSize: titleFontSize(title),
+            fontWeight: 900,
+            lineHeight: 1.18,
+            textShadow: "0 8px 30px rgba(0,0,0,0.55)",
+            transform: `translateY(${interpolate(enter, [0, 1], [40, 0])}px)`,
+            opacity: enter,
+          }}
+        >
+          {title}
+        </div>
+        {item.subtitle ? (
+          <div
+            style={{
+              marginTop: 34,
+              fontSize: 42,
+              fontWeight: 600,
+              color: accent,
+              letterSpacing: "0.02em",
+              opacity: Math.max(0, sub),
+              transform: `translateY(${interpolate(Math.max(0, sub), [0, 1], [20, 0])}px)`,
+            }}
+          >
+            {item.subtitle}
+          </div>
+        ) : null}
+        <div style={{ margin: "40px auto 0", width: interpolate(enter, [0, 1], [0, 160]), height: 8, borderRadius: 4, backgroundColor: accent }} />
+      </div>
+    </ContentZone>
+  );
+};
+
+const StatCardScene: React.FC<{ item: ShortsSceneItem; accent: string }> = ({ item, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const enter = spring({ frame, fps, config: { damping: 16, stiffness: 110 }, durationInFrames: 18 });
+  const target = Number(item.value) || 0;
+  const v = countUp(frame, target);
+  return (
+    <ContentZone>
+      <div style={{ textAlign: "center", width: "100%", wordBreak: "keep-all" }}>
+        {item.title ? <div style={{ fontSize: 44, fontWeight: 700, color: "rgba(255,255,255,0.85)", marginBottom: 26 }}>{item.title}</div> : null}
+        <div style={{ transform: `scale(${interpolate(enter, [0, 1], [0.8, 1])})`, opacity: enter }}>
+          <span style={{ fontSize: 96, fontWeight: 900, color: accent, verticalAlign: "top", marginRight: 10 }}>{item.prefix || ""}</span>
+          <span style={{ fontSize: 220, fontWeight: 900, color: accent, lineHeight: 1, textShadow: `0 0 50px ${accent}55` }}>
+            {fmt(v, item.decimals || 0)}
+          </span>
+          <span style={{ fontSize: 84, fontWeight: 800, color: accent, marginLeft: 12 }}>{item.unit || ""}</span>
+        </div>
+        {item.label ? <div style={{ marginTop: 30, fontSize: 48, fontWeight: 700, lineHeight: 1.3, whiteSpace: "pre-line" }}>{item.label}</div> : null}
+      </div>
+    </ContentZone>
+  );
+};
+
+const BarChartScene: React.FC<{ item: ShortsSceneItem; accent: string }> = ({ item, accent }) => {
+  const frame = useCurrentFrame();
+  const bars = item.bars || [];
+  const max = Math.max(1, ...bars.map((b) => Number(b.value) || 0));
+  const decimals = item.decimals ?? 0;
+  return (
+    <ContentZone>
+      <div style={{ width: "100%" }}>
+        {item.title ? <div style={{ fontSize: 50, fontWeight: 800, marginBottom: 44, textAlign: "center", wordBreak: "keep-all" }}>{item.title}</div> : null}
+        {bars.map((b, i) => {
+          const delay = 6 + i * 10;
+          const p = easeOutCubic(Math.min(1, Math.max(0, (frame - delay) / 40)));
+          const val = (Number(b.value) || 0) * p;
+          const w = (val / max) * 100;
+          const color = b.highlight ? accent : "rgba(255,255,255,0.55)";
+          return (
+            <div key={i} style={{ marginBottom: 34, opacity: Math.min(1, Math.max(0, (frame - delay + 6) / 10)) }}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 40, fontWeight: b.highlight ? 900 : 600, marginBottom: 12, color: b.highlight ? "white" : "rgba(255,255,255,0.8)" }}>
+                <span>{b.label}</span>
+                <span style={{ color }}>{fmt(val, decimals)}{item.unit || ""}</span>
+              </div>
+              <div style={{ height: 34, borderRadius: 17, backgroundColor: "rgba(255,255,255,0.12)", overflow: "hidden" }}>
+                <div style={{ width: `${w}%`, height: "100%", borderRadius: 17, backgroundColor: color, boxShadow: b.highlight ? `0 0 30px ${accent}88` : undefined }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </ContentZone>
+  );
+};
+
+const CompareScene: React.FC<{ item: ShortsSceneItem; accent: string }> = ({ item, accent }) => {
+  const frame = useCurrentFrame();
+  const rows = item.rows || [];
+  return (
+    <ContentZone>
+      <div style={{ width: "100%" }}>
+        {item.title ? <div style={{ fontSize: 50, fontWeight: 800, marginBottom: 40, textAlign: "center", wordBreak: "keep-all" }}>{item.title}</div> : null}
+        {rows.map((r, i) => {
+          const delay = 6 + i * 14;
+          const p = easeOutCubic(Math.min(1, Math.max(0, (frame - delay) / 40)));
+          const from = Number(r.from) || 0;
+          const to = Number(r.to) || 0;
+          const cur = from + (to - from) * p;
+          const d = r.decimals ?? 0;
+          return (
+            <div
+              key={i}
+              style={{
+                marginBottom: 36,
+                padding: "26px 30px",
+                borderRadius: 24,
+                backgroundColor: "rgba(0,0,0,0.28)",
+                border: "2px solid rgba(255,255,255,0.1)",
+                opacity: Math.min(1, Math.max(0, (frame - delay + 8) / 12)),
+                transform: `translateY(${(1 - Math.min(1, Math.max(0, (frame - delay + 8) / 12))) * 24}px)`,
+              }}
+            >
+              <div style={{ fontSize: 38, fontWeight: 600, color: "rgba(255,255,255,0.8)", marginBottom: 10, wordBreak: "keep-all" }}>{r.label}</div>
+              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 26 }}>
+                <span style={{ fontSize: 72, fontWeight: 700, color: "rgba(255,255,255,0.45)", textDecoration: "line-through", textDecorationThickness: 5 }}>
+                  {fmt(from, d)}{r.unit || ""}
+                </span>
+                <span style={{ fontSize: 60, color: accent }}>→</span>
+                <span style={{ fontSize: 112, fontWeight: 900, color: accent, lineHeight: 1, textShadow: `0 0 40px ${accent}55` }}>
+                  {fmt(cur, d)}
+                  <span style={{ fontSize: 56, marginLeft: 6 }}>{r.unit || ""}</span>
+                </span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </ContentZone>
+  );
+};
+
+// 비이미지 씬: 배경 + 종류별 콘텐츠. 이미지 씬과 같은 페이드인 규칙을 따른다.
+const KindScene: React.FC<{ item: ShortsSceneItem; index: number; accent: string; fadeInFrames: number; contentFrames: number }> = ({
+  item,
+  index,
+  accent,
+  fadeInFrames,
+  contentFrames,
+}) => {
+  const frame = useCurrentFrame();
+  const opacity =
+    fadeInFrames > 0
+      ? interpolate(frame, [0, fadeInFrames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })
+      : 1;
+  // 씬 본래 길이가 끝나면(다음 씬 크로스페이드·엔드 태그 구간) 콘텐츠만 먼저 걷어 글자가 겹치지 않게 한다
+  const contentOpacity = interpolate(frame, [contentFrames - 8, contentFrames + 4], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const palette = item.palette ?? index;
+  let body: React.ReactNode = null;
+  switch (item.kind) {
+    case "stat_card":
+      body = <StatCardScene item={item} accent={accent} />;
+      break;
+    case "bar_chart":
+      body = <BarChartScene item={item} accent={accent} />;
+      break;
+    case "compare":
+      body = <CompareScene item={item} accent={accent} />;
+      break;
+    default:
+      body = <TextCardScene item={item} accent={accent} />;
+  }
+  return (
+    <AbsoluteFill style={{ opacity }}>
+      <GradientBackdrop palette={palette} />
+      <AbsoluteFill style={{ opacity: contentOpacity }}>{body}</AbsoluteFill>
+    </AbsoluteFill>
+  );
+};
 
 // ── 씬 이미지 (켄번즈) ──────────────────────────────────────────────────────
 const SceneImage: React.FC<{
@@ -317,7 +610,9 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
         // 다음 씬의 페이드인 동안 밑에 남아 있어야 하고, 마지막 씬은 엔드 태그까지 덮는다
         hold: dur + (isLast ? endTagFrames + 1 : fadeFrames),
         motion,
-        src: s.image,
+        src: s.image || "",
+        kind: (s.kind || "image") as ShortsSceneKind,
+        item: s,
       };
     });
   }, [scenes, fps, fadeFrames, endTagFrames]);
@@ -360,7 +655,11 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
       {/* 1. 씬 이미지 + 크로스페이드 */}
       {timeline.map((t, i) => (
         <Sequence key={`scene-${i}`} from={t.from} durationInFrames={t.hold} layout="none">
-          <SceneImage src={staticFile(t.src)} motion={t.motion} durationInFrames={t.hold} fadeInFrames={i === 0 ? 0 : fadeFrames} />
+          {t.kind === "image" && t.src ? (
+            <SceneImage src={staticFile(t.src)} motion={t.motion} durationInFrames={t.hold} fadeInFrames={i === 0 ? 0 : fadeFrames} />
+          ) : (
+            <KindScene item={t.item} index={i} accent={accent} fadeInFrames={i === 0 ? 0 : fadeFrames} contentFrames={t.dur} />
+          )}
         </Sequence>
       ))}
 
