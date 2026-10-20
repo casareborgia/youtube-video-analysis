@@ -1,7 +1,7 @@
-"""쇼츠(9:16) 엔진 — S-1: Remotion `ShortsScene` 렌더 래퍼 + ffmpeg 폴백 + 프로브.
+"""쇼츠(9:16) 엔진 — S-1: Remotion `ShortsScene` 렌더 래퍼 + ffmpeg 폴백 + 프로브
+                  S-2: 씬 기획서 → 잡, 이미지(Gemini, 편당·일일 상한), 나레이션(edge-tts 단어 타이밍) + BGM, 음량 보정, QC, 빌드 오케스트레이션.
 
-작업계획서_쇼츠_자동화_Shorts_Reels.md 7장 S-1 범위만 담는다.
-잡 생성(씬 기획 → 잡)·TTS 단어 타이밍·이미지 생성·발행은 S-2/S-3 에서 이 모듈에 추가된다.
+작업계획서_쇼츠_자동화_Shorts_Reels.md 7장 S-1·S-2 범위. 발행(S-3)은 아직 없다.
 
 설계 원칙 (choonsik_bga.render_bga 와 동일):
 - 기본 렌더러는 Remotion(SHORTS_RENDERER=remotion), 미설치·실패 시 ffmpeg 로 자동 폴백하고 사유를 기록한다.
@@ -9,15 +9,20 @@
 - 출력은 항상 data/shorts/<shorts_id>/final_9x16.mp4 이며, 기존 파일을 덮어쓰기 전에 백업하지 않는다(쇼츠는 재생성 비용이 낮다).
 """
 
+import asyncio
+import datetime
 import json
 import os
 import re
 import shutil
 import subprocess
 import time
-from typing import Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
-import producer  # ffmpeg_path(drawtext 지원 바이너리 우선), audio_duration, find_font
+import concept_packs
+import producer  # ffmpeg_path(drawtext 지원 바이너리 우선), audio_duration, find_font, generate_images, list_media
+import scene_store
+import tts_service
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SHORTS_DIR = os.path.join(BASE_DIR, "data", "shorts")
@@ -539,3 +544,804 @@ def probe_video(path: str) -> dict:
         "audio_present": a is not None,
         "audio_codec": a.get("codec_name") if a else None,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# S-2. 파이프라인 F1 (정보형 씬 쇼츠): 기획서 → 잡 → 이미지 → 음성/자막 → 렌더 → 음량 → QC
+# ═══════════════════════════════════════════════════════════════════════════
+
+SHORTS_USAGE_FILE = os.path.join(BASE_DIR, "data", "shorts_usage.json")   # choonsik_bga.bga_usage.json 과 같은 {날짜: 장수}
+DEFAULT_MAX_IMAGES_PER_JOB = 7     # env SHORTS_MAX_IMAGES_PER_JOB
+DEFAULT_MAX_IMAGES_PER_DAY = 40    # env SHORTS_MAX_IMAGES_PER_DAY (2026-10-19 사용자 결정 ④)
+IMAGE_USD_PER_IMAGE = 0.039        # Gemini 2.5 Flash Image: 출력 1290토큰 × $30/M ≈ $0.039/장 (공식 요금표 기준 추정)
+USD_KRW = 1400
+
+MIN_SCENE_SECONDS = 3.0            # 60초 컷 때 씬을 이보다 짧게 줄이지 않는다
+SCENE_PAD_SECONDS = 0.35           # 씬 나레이션 뒤 숨 고르기(무음). 자막·씬 시각은 이 패드를 포함한 길이로 계산
+DEFAULT_VOICE_ID = "edge_injoon"   # 2026-10-19 사용자 결정 ②: 기본 성우 edge-tts
+TARGET_LUFS = -14.0                # 작업계획서 5.3
+TARGET_TRUE_PEAK = -1.0
+LUFS_TOLERANCE = 1.0
+QC_MIN_BRIGHTNESS = 12.0           # 첫 프레임 평균 밝기(0~255). 블랙 오프닝 금지
+SHORTS_PROGRESS_SPAN = {"images": (0, 40), "audio": (40, 60), "render": (60, 97), "qc": (97, 100)}
+
+
+# ── 일일 사용량 (data/shorts_usage.json) ─────────────────────────────────────
+
+def per_job_cap() -> int:
+    return int(os.getenv("SHORTS_MAX_IMAGES_PER_JOB", str(DEFAULT_MAX_IMAGES_PER_JOB)))
+
+
+def daily_cap() -> int:
+    return int(os.getenv("SHORTS_MAX_IMAGES_PER_DAY", str(DEFAULT_MAX_IMAGES_PER_DAY)))
+
+
+def _read_usage_data() -> dict:
+    if not os.path.exists(SHORTS_USAGE_FILE):
+        return {}
+    try:
+        with open(SHORTS_USAGE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _write_usage_data(data: dict):
+    os.makedirs(os.path.dirname(SHORTS_USAGE_FILE), exist_ok=True)
+    with open(SHORTS_USAGE_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def get_today_usage() -> int:
+    val = _read_usage_data().get(datetime.date.today().isoformat(), 0)
+    return int(val) if isinstance(val, (int, float)) else 0
+
+
+def _increment_usage(n: int = 1):
+    key = datetime.date.today().isoformat()
+    data = _read_usage_data()
+    cur = data.get(key, 0)
+    data[key] = (int(cur) if isinstance(cur, (int, float)) else 0) + int(n)
+    _write_usage_data(data)
+
+
+def usage_summary() -> dict:
+    today = get_today_usage()
+    cap = daily_cap()
+    return {"today": today, "cap": cap, "remaining": max(0, cap - today), "per_job_cap": per_job_cap(),
+            "usd_per_image": IMAGE_USD_PER_IMAGE}
+
+
+# ── 잡 생성 (씬 기획서 9:16 → job.json, 작업계획서 5.4) ──────────────────────
+
+def _slug(text: str, limit: int = 24) -> str:
+    """_ID_RE(영숫자·_·-·한글) 안에서만 만든다. scene_store._slug 는 \\w 라 다른 문자가 섞일 수 있다."""
+    s = re.sub(r"[^A-Za-z0-9가-힣]+", "_", (text or "").strip()).strip("_")
+    return s[:limit].strip("_") or "shorts"
+
+
+def _hook_from_title(title: str, max_words: int = 5) -> str:
+    words = re.sub(r"[\[\]\(\)\"':#]", " ", title or "").split()
+    return " ".join(words[:max_words])
+
+
+def _scene_motion(i: int) -> str:
+    return ("zoom_in", "zoom_out", "pan_left", "pan_right")[(i - 1) % 4]
+
+
+def _kind_spec(spec: Optional[dict] = None) -> tuple:
+    """(허용 kind 목록, 종류별 필드) — 컨셉 팩 규격 우선, 없으면 shorts_info 기본값."""
+    spec = spec or concept_packs.shorts_spec("shorts_info")
+    return (tuple(spec.get("scene_kinds") or ("image",)), tuple(spec.get("scene_kind_fields") or ()))
+
+
+def _clip_text(text: str, n: int) -> str:
+    t = re.sub(r"\s+", " ", str(text or "")).strip()
+    return t if len(t) <= n else t[: n - 1].rstrip() + "…"
+
+
+def fill_kind_defaults(scene: dict, spec: Optional[dict] = None) -> dict:
+    """씬 kind 를 검증하고 종류별 필수 필드가 없으면 채우거나 text_card 로 내린다 (Remotion 이 빈 카드를 그리지 않게).
+
+    - 모르는 kind → image
+    - text_card: title 없으면 나레이션 앞 18자
+    - stat_card: value 가 숫자가 아니면 text_card 로
+    - bar_chart: bars 2개 미만이면 text_card 로 / compare: rows 없으면 text_card 로
+    """
+    kinds, _fields = _kind_spec(spec)
+    kind = str(scene.get("kind") or "image").strip().lower()
+    if kind not in kinds:
+        kind = "image"
+    narration = scene.get("narration") or ""
+
+    def to_text_card(reason: str):
+        scene["kind"] = "text_card"
+        scene.setdefault("title", _clip_text(scene.get("title") or narration, 18))
+        scene.setdefault("kind_note", reason)
+
+    if kind == "stat_card":
+        try:
+            scene["value"] = float(scene.get("value"))
+        except (TypeError, ValueError):
+            to_text_card("stat_card 에 value 가 없어 text_card 로 대체")
+            return scene
+        scene["kind"] = kind
+        scene.setdefault("label", _clip_text(narration, 24))
+    elif kind == "bar_chart":
+        bars = [b for b in (scene.get("bars") or []) if isinstance(b, dict) and b.get("label") is not None and b.get("value") is not None]
+        if len(bars) < 2:
+            to_text_card("bar_chart 에 막대가 2개 미만이라 text_card 로 대체")
+            return scene
+        scene["kind"], scene["bars"] = kind, bars
+        scene.setdefault("title", _clip_text(narration, 18))
+    elif kind == "compare":
+        rows = [r for r in (scene.get("rows") or []) if isinstance(r, dict) and r.get("label") is not None
+                and r.get("from") is not None and r.get("to") is not None]
+        if not rows:
+            to_text_card("compare 에 전→후 행이 없어 text_card 로 대체")
+            return scene
+        scene["kind"], scene["rows"] = kind, rows
+        scene.setdefault("title", _clip_text(narration, 18))
+    elif kind == "text_card":
+        scene["kind"] = kind
+        if not (scene.get("title") or "").strip():
+            scene["title"] = _clip_text(narration, 18)
+    else:
+        scene["kind"] = "image"
+    return scene
+
+
+def _is_image_scene(scene: dict) -> bool:
+    return (scene.get("kind") or "image") == "image"
+
+
+def list_jobs() -> List[dict]:
+    out = []
+    if not os.path.isdir(SHORTS_DIR):
+        return out
+    for name in os.listdir(SHORTS_DIR):
+        path = os.path.join(SHORTS_DIR, name, "job.json")
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, encoding="utf-8") as f:
+                j = json.load(f)
+        except Exception:
+            continue
+        out.append(job_summary(j))
+    out.sort(key=lambda x: x.get("created_at") or 0, reverse=True)
+    return out
+
+
+def job_summary(job: dict) -> dict:
+    sb = job.get("storyboard") or {}
+    render = job.get("render") or {}
+    qc = job.get("qc") or {}
+    return {
+        "shorts_id": job.get("shorts_id"),
+        "status": job.get("status"),
+        "format": job.get("format"),
+        "title": ((job.get("metadata") or {}).get("youtube") or {}).get("title") or job.get("topic") or "",
+        "topic": job.get("topic", ""),
+        "plan_id": (job.get("source") or {}).get("plan_id"),
+        "platforms": job.get("platforms") or [],
+        "scene_count": len(sb.get("scenes") or []),
+        "total_seconds": total_seconds(job),
+        "caption_source": job.get("caption_source"),
+        "renderer_used": render.get("renderer_used"),
+        "video_url": render.get("url"),
+        "qc_passed": qc.get("passed"),
+        "progress": job.get("progress"),
+        "error": job.get("error"),
+        "created_at": job.get("created_at"),
+        "updated_at": job.get("updated_at"),
+    }
+
+
+def delete_job(shorts_id: str) -> bool:
+    d = job_dir(shorts_id)
+    if not os.path.isdir(d):
+        return False
+    shutil.rmtree(d, ignore_errors=True)
+    return True
+
+
+def _resolve_scene_images(job: dict, plan: Optional[dict] = None) -> int:
+    """기획서의 미디어 인덱스(producer.list_media)에 있는 씬 이미지를 잡 씬에 연결한다. 반환: 이미지가 있는 씬 수."""
+    plan_id = (job.get("source") or {}).get("plan_id")
+    if not plan_id:
+        return 0
+    try:
+        idx = producer.list_media(plan_id)
+        d = producer.render_dir(plan_id)
+    except Exception:
+        return 0
+    found = 0
+    for sc in (job.get("storyboard") or {}).get("scenes") or []:
+        if not _is_image_scene(sc):
+            continue   # 비용 0 씬(text_card 등)은 이미지가 필요 없다
+        if sc.get("image") and os.path.exists(sc["image"]):
+            found += 1
+            continue
+        item = idx.get(str(sc.get("scene_num")))
+        if not item:
+            continue
+        fname = item.get("image_file") if item.get("type") == "video" else item.get("file")
+        if fname and os.path.exists(os.path.join(d, fname)):
+            sc["image"] = os.path.join(d, fname)
+            found += 1
+    return found
+
+
+def fit_to_max_seconds(job: dict, max_seconds: float = MAX_SECONDS, min_scene: float = MIN_SCENE_SECONDS) -> List[str]:
+    """씬 길이 합(+엔드 태그)이 상한을 넘으면 마지막 씬부터 줄인다(씬당 min_scene 까지). 그래도 넘으면 뒤 씬을 뺀다. 반환: 경고 목록."""
+    sb = job.setdefault("storyboard", {})
+    scenes = sb.get("scenes") or []
+    warnings: List[str] = []
+    excess = round(total_seconds(job) - max_seconds, 3)
+    if excess <= 0:
+        return warnings
+    warnings.append(f"씬 길이 합 {total_seconds(job):.1f}초가 상한 {max_seconds:.0f}초를 넘어 마지막 씬부터 줄였습니다.")
+    for sc in reversed(scenes):
+        room = float(sc.get("seconds") or 0) - min_scene
+        if room <= 0:
+            continue
+        cut = min(room, excess)
+        before = float(sc.get("seconds") or 0)
+        sc["seconds"] = round(before - cut, 2)
+        excess = round(excess - cut, 3)
+        warnings.append(f"씬 {sc.get('scene_num')}: {before:.1f}초 → {sc['seconds']:.1f}초")
+        if excess <= 0:
+            break
+    while excess > 0 and len(scenes) > 1:
+        dropped = scenes.pop()
+        excess = round(excess - float(dropped.get("seconds") or 0), 3)
+        warnings.append(f"씬 {dropped.get('scene_num')} 제거 (상한 초과)")
+    job.setdefault("warnings", []).extend(warnings)
+    return warnings
+
+
+def build_job_from_plan(plan_id: str, platforms: Optional[List[str]] = None, voice_id: Optional[str] = None,
+                        plan: Optional[dict] = None) -> dict:
+    """저장된 9:16 씬 기획서 → data/shorts/<id>/job.json (작업계획서 5.4 스키마). 이미지·음성은 build_job 에서 채운다."""
+    plan = plan or scene_store.load_plan(plan_id)
+    if not plan:
+        raise FileNotFoundError(f"씬 기획서를 찾을 수 없습니다: {plan_id}")
+    aspect = plan.get("aspect_ratio") or "16:9"
+    if aspect != "9:16":
+        raise ValueError(f"쇼츠는 9:16 기획서만 받습니다 (이 기획서는 {aspect}). 3단계에서 화면 비율을 9:16 으로 다시 기획하세요.")
+    scenes_in = plan.get("structured_scenes") or []
+    if not scenes_in:
+        raise ValueError("기획서에 씬이 없습니다.")
+    plats = [p for p in (platforms or ["youtube_shorts"]) if p in PLATFORM_PROFILES]
+    if not plats:
+        raise ValueError(f"지원하지 않는 플랫폼입니다: {platforms}. 가능: {', '.join(PLATFORM_PROFILES)}")
+
+    spec = concept_packs.shorts_spec(plan.get("concept_key"))
+    max_scenes = int(spec.get("max_scenes") or 6)
+    topic = plan.get("topic") or plan.get("title") or "쇼츠"
+    title = plan.get("title") or topic
+    shorts_id = f"shorts_{int(time.time())}_{_slug(topic)}"
+    n = 1
+    while os.path.exists(os.path.join(SHORTS_DIR, shorts_id)):
+        n += 1
+        shorts_id = f"shorts_{int(time.time())}_{_slug(topic, 20)}_{n}"
+    _safe_id(shorts_id)
+
+    warnings: List[str] = []
+    if len(scenes_in) > max_scenes:
+        warnings.append(f"씬 {len(scenes_in)}개 중 앞 {max_scenes}개만 사용합니다 (쇼츠 씬 상한).")
+        scenes_in = scenes_in[:max_scenes]
+    scenes = []
+    _kinds, kind_fields = _kind_spec(spec)
+    for i, sc in enumerate(scenes_in, 1):
+        narration = (sc.get("narration") or sc.get("subtitle") or "").strip()
+        item = {
+            "scene_num": int(sc.get("scene_num") or i),
+            "seconds": float(sc.get("seconds") or plan.get("scene_seconds") or 8.0),
+            "narration": narration,
+            "kind": sc.get("kind") or "image",
+            "image": None,
+            "motion": _scene_motion(i),
+            "beat": sc.get("dramatic_beat") or "",
+            "visual": sc.get("visual_description_ko") or "",
+        }
+        for k in kind_fields:   # 비용 0 씬(작업계획서 7b)의 종류별 필드를 그대로 넘긴다
+            if sc.get(k) is not None:
+                item[k] = sc[k]
+        scenes.append(fill_kind_defaults(item, spec))
+    hook_words = spec.get("hook_words") or {"min": 3, "max": 5}
+    hook = (plan.get("hook_text") or "").strip() or _hook_from_title(title, int(hook_words.get("max", 5)))
+    tag_default = spec.get("end_tag") or {}
+    end_tag = {
+        "text": (plan.get("end_tag_text") or tag_default.get("text") or "구독하고 다음 편 보기").strip(),
+        "subtext": (plan.get("end_tag_subtext") or tag_default.get("subtext") or "").strip(),
+        "seconds": float(tag_default.get("seconds") or 2.0),
+    }
+    yt_title = title if "#shorts" in title.lower() else f"{title} #Shorts"
+    description = "\n\n".join(x for x in [plan.get("seo_description") or "", plan.get("engagement_question") or ""] if x)
+    job = {
+        "shorts_id": shorts_id,
+        "format": "scene",
+        "source": {"plan_id": plan.get("plan_id") or plan_id, "track_id": None},
+        "status": "planned",
+        "topic": topic,
+        "platforms": plats,
+        "voice_id": voice_id or DEFAULT_VOICE_ID,
+        "concept_key": plan.get("concept_key") or "",
+        "storyboard": {
+            "hook_text": hook,
+            "hook_seconds": float(spec.get("hook_seconds") or 3.0),
+            "scenes": scenes,
+            "end_tag": end_tag,
+        },
+        "captions": [],
+        "caption_source": None,
+        "caption_page_ms": 1200,
+        "audio": {"narration": None, "bgm": None, "bgm_track_id": None, "bgm_volume": DEFAULT_BGM_VOLUME, "lufs": None, "true_peak": None},
+        "render": {},
+        "qc": {},
+        "metadata": {
+            "youtube": {"title": yt_title[:100], "description": description[:4900], "tags": ["Shorts"], "pinned_comment": plan.get("pinned_comment") or ""},
+            "instagram": {"caption": f"{title}\n\n{description}"[:2200], "hashtags": []},
+        },
+        "publish": {"youtube": {"video_id": None, "publish_at": None}, "instagram": {"media_id": None, "permalink": None}},
+        "warnings": warnings,
+        "created_at": time.time(),
+    }
+    _resolve_scene_images(job, plan)
+    fit_to_max_seconds(job)
+    save_job(job)
+    return job
+
+
+def update_storyboard(job: dict, hook_text: Optional[str] = None, scenes: Optional[List[dict]] = None,
+                      end_tag: Optional[dict] = None) -> dict:
+    """UI 스토리보드 카드 편집 반영. 씬은 scene_num 기준으로 narration·seconds·motion·kind·title·subtitle 만 바꾼다(이미지 경로는 UI 가 못 바꾼다)."""
+    sb = job.setdefault("storyboard", {})
+    spec = concept_packs.shorts_spec(job.get("concept_key"))
+    kinds, _fields = _kind_spec(spec)
+    if hook_text is not None:
+        sb["hook_text"] = str(hook_text).strip()[:60]
+    if scenes:
+        by_num = {int(s.get("scene_num") or 0): s for s in sb.get("scenes") or []}
+        for edit in scenes:
+            cur = by_num.get(int(edit.get("scene_num") or 0))
+            if not cur:
+                continue
+            if edit.get("narration") is not None:
+                cur["narration"] = str(edit["narration"]).strip()[:400]
+            if edit.get("seconds") is not None:
+                cur["seconds"] = max(1.0, min(15.0, float(edit["seconds"])))
+            if edit.get("motion") in ("zoom_in", "zoom_out", "pan_left", "pan_right"):
+                cur["motion"] = edit["motion"]
+            for k in ("title", "subtitle"):
+                if edit.get(k) is not None:
+                    cur[k] = str(edit[k]).strip()[:40]
+            if edit.get("kind") in kinds and edit["kind"] != (cur.get("kind") or "image"):
+                cur["kind"] = edit["kind"]
+                cur.pop("kind_note", None)
+                fill_kind_defaults(cur, spec)
+    if end_tag is not None:
+        cur_tag = sb.setdefault("end_tag", {"text": "", "subtext": "", "seconds": 2.0})
+        for k in ("text", "subtext"):
+            if end_tag.get(k) is not None:
+                cur_tag[k] = str(end_tag[k]).strip()[:40]
+        if end_tag.get("seconds") is not None:
+            cur_tag["seconds"] = max(0.0, min(4.0, float(end_tag["seconds"])))
+    fit_to_max_seconds(job)
+    save_job(job)
+    return job
+
+
+# ── 이미지 (producer.generate_images 9:16 재사용, 편당·일일 상한, 과금 가드) ─────
+
+def _scenes_needing_images(job: dict) -> List[dict]:
+    """kind=image 인데 파일이 없는 씬만 (비용 0 씬은 제외)."""
+    return [sc for sc in (job.get("storyboard") or {}).get("scenes") or []
+            if _is_image_scene(sc) and not (sc.get("image") and os.path.exists(sc["image"]))]
+
+
+def estimate_images(job: dict, plan: Optional[dict] = None) -> dict:
+    """생성 전 예상 장수·비용·한도. API 가 그대로 돌려주고 UI 가 확인 모달에 띄운다."""
+    _resolve_scene_images(job, plan)
+    needed = len(_scenes_needing_images(job))
+    usage = usage_summary()
+    cap_job = usage["per_job_cap"]
+    allowed, reason = True, ""
+    if needed > cap_job:
+        allowed, reason = False, f"편당 이미지 상한({cap_job}장)을 넘습니다 (필요 {needed}장)."
+    elif usage["today"] + needed > usage["cap"]:
+        allowed, reason = False, f"일일 이미지 상한({usage['cap']}장)을 넘습니다 (오늘 {usage['today']}장 사용, 요청 {needed}장)."
+    elif needed > 0 and not producer.gemini_key():
+        allowed, reason = False, "Gemini API 키가 없습니다. ③ 탭의 환경 영역에서 키를 저장하세요."
+    usd = round(needed * IMAGE_USD_PER_IMAGE, 3)
+    all_scenes = (job.get("storyboard") or {}).get("scenes") or []
+    image_scenes = [sc for sc in all_scenes if _is_image_scene(sc)]
+    return {
+        "needed": needed,
+        "scenes": [sc.get("scene_num") for sc in _scenes_needing_images(job)],
+        "reused": len(image_scenes) - needed,
+        "cost_free": len(all_scenes) - len(image_scenes),
+        "usd": usd,
+        "krw": int(round(usd * USD_KRW, -1)),
+        "usage": usage,
+        "allowed": allowed,
+        "reason": reason,
+    }
+
+
+def generate_job_images(job: dict, progress_cb: Optional[Callable] = None, generator: Optional[Callable] = None) -> dict:
+    """씬 이미지를 Gemini 로 생성한다(9:16, 기획서 미디어 폴더에 저장 → 씬에 연결). 썸네일은 만들지 않는다(쇼츠는 커스텀 썸네일 미사용).
+
+    호출 전 상한을 다시 검사한다 — API 의 confirm 가드와 별개로 엔진 단독 호출도 과금을 막아야 한다.
+    """
+    plan_id = (job.get("source") or {}).get("plan_id")
+    plan = scene_store.load_plan(plan_id) if plan_id else None
+    if not plan:
+        raise FileNotFoundError(f"기획서를 찾을 수 없습니다: {plan_id}")
+    est = estimate_images(job, plan)
+    if est["needed"] == 0:
+        return {"generated": [], "errors": [], "reused": est["reused"]}
+    if not est["allowed"]:
+        raise RuntimeError(est["reason"])
+    slots = [str(n) for n in est["scenes"]]
+    gen = generator or producer.generate_images
+
+    def cb(step, msg, pct):
+        if progress_cb:
+            progress_cb("images", msg, pct)
+
+    res = gen(plan, slots=slots, progress=cb) or {}
+    generated = list(res.get("generated") or [])
+    if generated:
+        _increment_usage(len(generated))
+    _resolve_scene_images(job, plan)
+    still = _scenes_needing_images(job)
+    errors = list(res.get("errors") or [])
+    job.setdefault("warnings", []).extend(f"이미지 생성 실패(씬 {e.get('slot')}): {str(e.get('error'))[:120]}" for e in errors)
+    save_job(job)
+    if still:
+        raise RuntimeError("이미지가 없는 씬이 남았습니다: " + ", ".join(str(s.get("scene_num")) for s in still)
+                           + ((" — " + "; ".join(str(e.get("error"))[:80] for e in errors)) if errors else ""))
+    return {"generated": generated, "errors": errors, "reused": est["reused"]}
+
+
+# ── 오디오: 씬 나레이션(edge-tts 단어 타이밍) + 이어붙이기 + BGM ─────────────
+
+def _default_synth(voice_id: str) -> Callable:
+    """씬 하나를 합성하는 함수를 만든다. 반환 함수: (text, scene_num, out_path_base) → {"file", "captions"|None, "engine"}."""
+    edge_map = {ep["id"]: ep for ep in tts_service.EDGE_PRESETS}
+    is_edge = voice_id in edge_map or str(voice_id).startswith("ko-KR-")
+
+    def synth(text: str, scene_num: int, out_base: str) -> dict:
+        if is_edge:
+            conf = edge_map.get(voice_id, tts_service.EDGE_PRESETS[0])
+            code = conf.get("voice_id") if voice_id in edge_map else voice_id
+            out = out_base + ".mp3"
+            res = asyncio.run(tts_service.TTSService.synthesize_edge_tts_single(
+                text, voice_code=code, rate=conf.get("default_rate", "+5%"), output_file=out, with_word_boundaries=True))
+            if not res or not os.path.exists(out):
+                raise RuntimeError(f"씬 {scene_num} edge-tts 합성 실패")
+            return {"file": out, "captions": res.get("captions") or None, "engine": "edge-tts"}
+        res = tts_service.TTSService.synthesize_speech(text, voice_id=voice_id, scene_index=scene_num, topic_slug="shorts")
+        if res.get("status") != "success":
+            raise RuntimeError(f"씬 {scene_num} 음성 합성 실패: {res.get('message')}")
+        src = os.path.join(str(tts_service.AUDIO_DIR), res.get("filename") or "")
+        out = out_base + os.path.splitext(src)[1]
+        shutil.copy(src, out)
+        return {"file": out, "captions": None, "engine": res.get("engine") or "qwen-tts"}
+    return synth
+
+
+def _pad_audio(ff: Optional[str], src: str, dst: str, pad: float) -> str:
+    """끝에 pad 초 무음을 붙인 복사본. ffmpeg 가 없으면 원본을 그대로 쓴다."""
+    if not ff or pad <= 0:
+        return src
+    try:
+        res = subprocess.run([ff, "-y", "-hide_banner", "-loglevel", "error", "-i", src, "-af", f"apad=pad_dur={pad:.3f}",
+                              "-c:a", "libmp3lame", "-q:a", "2", dst], capture_output=True, text=True, timeout=120)
+        if res.returncode == 0 and os.path.exists(dst):
+            return dst
+    except Exception:
+        pass
+    return src
+
+
+def pick_bgm(track_id: Optional[str] = None) -> Optional[dict]:
+    """루나 트랙 중 vocal_mode == 'instrumental' 인 음원을 고른다(최신순). 없으면 None → 무음."""
+    try:
+        import luna_engine
+        tracks = luna_engine.list_tracks()
+    except Exception:
+        return None
+    if track_id:
+        cands = [t for t in tracks if t.get("track_id") == track_id]
+    else:
+        cands = [t for t in tracks if (t.get("vocal_mode") or "").lower() == "instrumental"]
+    for t in cands:
+        tid = t.get("track_id")
+        if not tid:
+            continue
+        meta = luna_engine.load_track(tid) or {}
+        for cand in (meta.get("audio_file"), os.path.join(luna_engine.LUNA_DIR, tid, "audio.mp3")):
+            if cand and os.path.exists(cand):
+                return {"track_id": tid, "file": cand, "title": t.get("title") or tid}
+    return None
+
+
+def synthesize_job_audio(job: dict, voice_id: Optional[str] = None, progress_cb: Optional[Callable] = None,
+                         synth: Optional[Callable] = None, merger: Optional[Callable] = None,
+                         bgm_picker: Optional[Callable] = None) -> dict:
+    """씬별 나레이션 합성 → 씬 길이를 실제 발화 길이(+패드)로 맞춤 → 자막 토큰(절대 ms) → 이어붙이기 → BGM 선택 → LUFS 측정(가능할 때).
+
+    자막 원천: edge-tts WordBoundary 가 있으면 그대로(caption_source=edge_tts), 없으면 글자 수 비례(proportional).
+    """
+    def step(pct, msg):
+        if progress_cb:
+            progress_cb("audio", msg, pct)
+
+    shorts_id = _safe_id(job["shorts_id"])
+    vid = voice_id or job.get("voice_id") or DEFAULT_VOICE_ID
+    job["voice_id"] = vid
+    sb = job.get("storyboard") or {}
+    scenes = sb.get("scenes") or []
+    if not scenes:
+        raise RuntimeError("스토리보드에 씬이 없습니다.")
+    d = job_dir(shorts_id, create=True)
+    synth = synth or _default_synth(vid)
+    merge = merger or tts_service.merge_audio_files
+    ff = producer.ffmpeg_path()
+
+    captions: List[dict] = []
+    files: List[str] = []
+    sources = set()
+    cursor_ms = 0
+    for i, sc in enumerate(scenes, 1):
+        text = (sc.get("narration") or "").strip()
+        if not text:
+            raise RuntimeError(f"씬 {sc.get('scene_num')} 나레이션이 비어 있습니다.")
+        step(int(80 * (i - 1) / len(scenes)), f"나레이션 합성 {i}/{len(scenes)}...")
+        res = synth(text, int(sc.get("scene_num") or i), os.path.join(d, f"narration_{i:02d}"))
+        afile = res["file"]
+        dur = producer.audio_duration(afile)
+        toks = res.get("captions") or []
+        if not dur:
+            dur = (toks[-1]["endMs"] / 1000.0 + 0.2) if toks else max(1.0, len(text) / 5.2)
+        dur = float(dur)
+        pad = SCENE_PAD_SECONDS if ff else 0.0
+        padded = _pad_audio(ff, afile, os.path.join(d, f"narration_{i:02d}_pad.mp3"), pad)
+        if padded == afile:
+            pad = 0.0
+        if toks:
+            toks = [dict(t, startMs=t["startMs"] + cursor_ms, endMs=t["endMs"] + cursor_ms) for t in toks]
+            toks[-1]["pageBreakAfter"] = True
+            sources.add("edge_tts")
+        else:
+            toks = proportional_captions(text, cursor_ms, cursor_ms + int(round(dur * 1000)))
+            sources.add("proportional")
+        captions.extend(toks)
+        sc["seconds"] = round(dur + pad, 2)
+        sc["narration_file"] = afile
+        sc["narration_seconds"] = round(dur, 3)
+        sc["caption_source"] = "edge_tts" if res.get("captions") else "proportional"
+        files.append(padded)
+        cursor_ms += int(round(sc["seconds"] * 1000))
+
+    step(85, "나레이션 이어붙이기...")
+    narration = os.path.join(d, "narration.mp3")
+    if not merge(files, narration) or not os.path.exists(narration):
+        raise RuntimeError("나레이션 병합에 실패했습니다 (ffmpeg 확인).")
+
+    # 60초 상한: 발화가 길어 넘치면 엔드 태그를 먼저 줄이고, 그래도 넘으면 대본을 줄이라고 실패시킨다(음성 중간을 자르지 않는다)
+    tag = sb.setdefault("end_tag", {"text": "", "subtext": "", "seconds": 2.0})
+    if total_seconds(job) > MAX_SECONDS and float(tag.get("seconds") or 0) > 1.5:
+        tag["seconds"] = 1.5
+        job.setdefault("warnings", []).append("길이 상한 때문에 엔드 태그를 1.5초로 줄였습니다.")
+    if total_seconds(job) > MAX_SECONDS:
+        raise RuntimeError(f"나레이션을 합친 길이 {total_seconds(job):.1f}초가 상한 {MAX_SECONDS:.0f}초를 넘습니다. 씬 대본을 줄이세요.")
+
+    picker = bgm_picker or pick_bgm
+    bgm = picker(job.get("audio", {}).get("bgm_track_id")) if picker else None
+    audio = job.setdefault("audio", {})
+    audio.update({
+        "narration": narration,
+        "bgm": bgm["file"] if bgm else None,
+        "bgm_track_id": bgm["track_id"] if bgm else None,
+        "bgm_title": bgm.get("title") if bgm else None,
+        "bgm_volume": audio.get("bgm_volume", DEFAULT_BGM_VOLUME),
+        "narration_seconds": round(cursor_ms / 1000.0, 3),
+    })
+    if not bgm:
+        job.setdefault("warnings", []).append("연주곡(vocal_mode=instrumental) 루나 트랙이 없어 BGM 없이 만듭니다.")
+    job["captions"] = captions
+    job["caption_source"] = "edge_tts" if sources == {"edge_tts"} else "proportional"
+    loud = measure_loudness(narration)
+    audio["narration_lufs"] = loud["lufs"] if loud else None
+    job["status"] = "assets"
+    save_job(job)
+    step(100, f"오디오 준비 완료 ({cursor_ms / 1000:.1f}초, 자막 {len(captions)}토큰, {job['caption_source']})")
+    return job
+
+
+# ── 음량 (베가 분석 함수가 있으면 측정, 벗어나면 loudnorm 1패스) ─────────────
+
+def measure_loudness(path: str) -> Optional[dict]:
+    """vega_engine(pyloudnorm) 으로 통합 LUFS·트루피크. 의존성이 없거나 실패하면 None (측정 생략)."""
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        import vega_engine
+        if not vega_engine.is_available():
+            return None
+        audio, sr = vega_engine.load_audio(path)
+        a = vega_engine.analyze(audio, sr)
+        if a.get("is_silent"):
+            return {"lufs": -70.0, "true_peak": -120.0, "silent": True}
+        return {"lufs": float(a["integrated_lufs"]), "true_peak": float(a["true_peak_dbtp"]), "silent": False}
+    except Exception:
+        return None
+
+
+def normalize_loudness(job: dict, measurer: Optional[Callable] = None, runner=subprocess.run) -> dict:
+    """렌더 결과의 LUFS 가 목표 ±1dB 를 벗어나면 ffmpeg loudnorm 1패스(영상 스트림은 copy). 측정 불가면 건너뛴다."""
+    render = job.get("render") or {}
+    path = render.get("file")
+    audio = job.setdefault("audio", {})
+    measure = measurer or measure_loudness
+    loud = measure(path) if path else None
+    audio["lufs"] = loud["lufs"] if loud else None
+    audio["true_peak"] = loud["true_peak"] if loud else None
+    audio["loudnorm_applied"] = False
+    if not loud or loud.get("silent"):
+        return job
+    if abs(loud["lufs"] - TARGET_LUFS) <= LUFS_TOLERANCE and loud["true_peak"] <= TARGET_TRUE_PEAK + 0.1:
+        return job
+    ff = producer.ffmpeg_path()
+    if not ff:
+        return job
+    tmp = os.path.join(os.path.dirname(path), "final_9x16_loudnorm.mp4")
+    res = runner([ff, "-y", "-hide_banner", "-loglevel", "error", "-i", path, "-c:v", "copy",
+                  "-af", f"loudnorm=I={TARGET_LUFS}:TP={TARGET_TRUE_PEAK}:LRA=11", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+                  "-movflags", "+faststart", tmp], capture_output=True, text=True, timeout=600)
+    if getattr(res, "returncode", 1) == 0 and os.path.exists(tmp):
+        os.replace(tmp, path)
+        audio["loudnorm_applied"] = True
+        audio["lufs_before"] = loud["lufs"]
+        after = measure(path)
+        if after:
+            audio["lufs"], audio["true_peak"] = after["lufs"], after["true_peak"]
+        try:
+            render["probe"] = probe_video(path)
+        except Exception:
+            pass
+    else:
+        job.setdefault("warnings", []).append("loudnorm 보정 실패 — 측정값 그대로 둡니다.")
+    save_job(job)
+    return job
+
+
+# ── QC ───────────────────────────────────────────────────────────────────────
+
+def first_frame_brightness(path: str, ff: Optional[str] = None, runner=subprocess.run) -> Optional[float]:
+    """첫 프레임을 96×54 그레이로 뽑아 평균 밝기(0~255). ffmpeg 가 없으면 None."""
+    ff = ff or producer.ffmpeg_path()
+    if not ff or not path or not os.path.exists(path):
+        return None
+    try:
+        res = runner([ff, "-v", "error", "-i", path, "-frames:v", "1", "-vf", "scale=96:54,format=gray", "-f", "rawvideo", "-"],
+                     capture_output=True, timeout=60)
+        data = res.stdout or b""
+        if getattr(res, "returncode", 1) != 0 or not data:
+            return None
+        return round(sum(data) / float(len(data)), 2)
+    except Exception:
+        return None
+
+
+def qc_job(job: dict, probe: Optional[dict] = None, brightness: Optional[float] = None,
+           loudness: Optional[dict] = None, measure: bool = True) -> dict:
+    """작업계획서 S-2 6항. 통과 → qc_passed, 하나라도 실패 → failed. 측정 불가 항목은 skipped 로 남기고 판정에서 뺀다."""
+    render = job.get("render") or {}
+    path = render.get("file")
+    checks: List[dict] = []
+
+    def add(name, passed, detail="", skipped=False):
+        checks.append({"name": name, "passed": (None if skipped else bool(passed)), "detail": detail, "skipped": bool(skipped)})
+
+    if not path or not os.path.exists(path):
+        add("file_exists", False, f"렌더 파일 없음: {path}")
+        pr = {}
+    else:
+        add("file_exists", True, os.path.basename(path))
+        pr = probe or (render.get("probe") if (render.get("probe") or {}).get("width") else None)
+        if pr is None:
+            try:
+                pr = probe_video(path)
+            except Exception as e:
+                pr = {"error": str(e)[:120]}
+    if pr.get("width"):
+        dur = float(pr.get("duration") or 0)
+        add("duration<=60", dur <= MAX_SECONDS + 0.1, f"{dur:.2f}초")
+        add("1080x1920", int(pr.get("width") or 0) == WIDTH and int(pr.get("height") or 0) == HEIGHT, f"{pr.get('width')}x{pr.get('height')}")
+        add("audio_present", bool(pr.get("audio_present")), pr.get("audio_codec") or "오디오 스트림 없음")
+    elif path and os.path.exists(path):
+        add("probe", False, pr.get("error") or "ffprobe 실패", skipped=False)
+
+    if path and os.path.exists(path):
+        br = brightness if brightness is not None else (first_frame_brightness(path) if measure else None)
+        if br is None:
+            add("first_frame_not_black", None, "측정 불가(ffmpeg 없음)", skipped=True)
+        else:
+            add("first_frame_not_black", br >= QC_MIN_BRIGHTNESS, f"평균 밝기 {br:.1f} (기준 ≥ {QC_MIN_BRIGHTNESS:.0f})")
+        loud = loudness
+        if loud is None and (job.get("audio") or {}).get("lufs") is not None:
+            loud = {"lufs": job["audio"]["lufs"], "true_peak": job["audio"].get("true_peak")}
+        if loud is None and measure:
+            loud = measure_loudness(path)
+        if not loud or loud.get("lufs") is None:
+            add("lufs_within_1db", None, "측정 불가(베가 의존성 없음)", skipped=True)
+        else:
+            diff = abs(float(loud["lufs"]) - TARGET_LUFS)
+            add("lufs_within_1db", diff <= LUFS_TOLERANCE, f"{float(loud['lufs']):.1f} LUFS (목표 {TARGET_LUFS:.0f} ±{LUFS_TOLERANCE:.0f})")
+
+    failed = [c["name"] for c in checks if c["passed"] is False]
+    passed = not failed and any(c["passed"] for c in checks)
+    job["qc"] = {"passed": passed, "checks": checks, "failed": failed, "checked_at": time.time()}
+    if passed:
+        job["status"] = "qc_passed"
+        job.pop("error", None)
+    else:
+        job["status"] = "failed"
+        job["error"] = "QC 실패: " + ", ".join(f"{c['name']}({c['detail']})" for c in checks if c["passed"] is False)
+    save_job(job)
+    return job
+
+
+# ── 빌드 오케스트레이션 (API 워커가 호출) ─────────────────────────────────────
+
+def build_job(job: dict, options: Optional[dict] = None, progress_cb: Optional[Callable] = None, **hooks) -> dict:
+    """이미지(0~40%) → 음성/자막(40~60%) → 렌더(60~97%) → 음량·QC(97~100%). 실패하면 status=failed + error 를 남기고 잡을 돌려준다.
+
+    hooks: 테스트용 주입 — generator(이미지), synth/merger/bgm_picker(오디오), renderer_fn(렌더), measurer(음량), qc_kwargs.
+    """
+    opts = options or {}
+
+    def step(stage, msg, pct):
+        job["progress"] = {"stage": stage, "message": msg, "percent": int(pct), "at": time.time()}
+        if progress_cb:
+            progress_cb(stage, msg, int(pct))
+
+    def scaled(stage):
+        lo, hi = SHORTS_PROGRESS_SPAN[stage]
+        return lambda _s, msg, pct: step(stage, msg, lo + (hi - lo) * max(0, min(100, int(pct or 0))) / 100.0)
+
+    try:
+        job["status"] = "assets"
+        job.pop("error", None)
+        save_job(job)
+        est = estimate_images(job)
+        if est["needed"] > 0:
+            if not opts.get("confirm"):
+                raise RuntimeError(f"Gemini 이미지 {est['needed']}장 생성에는 confirm=true 가 필요합니다 (예상 ${est['usd']}).")
+            step("images", f"이미지 {est['needed']}장 생성 시작 (오늘 {est['usage']['today']}/{est['usage']['cap']})", 0)
+            generate_job_images(job, progress_cb=scaled("images"), generator=hooks.get("generator"))
+        else:
+            step("images", f"기존 이미지 {est['reused']}장 재사용 (생성 비용 없음)", 40)
+        synthesize_job_audio(job, voice_id=opts.get("voice_id"), progress_cb=scaled("audio"),
+                             synth=hooks.get("synth"), merger=hooks.get("merger"), bgm_picker=hooks.get("bgm_picker"))
+        render_fn = hooks.get("renderer_fn") or render_shorts
+        render_fn(job, renderer=opts.get("renderer"), progress_cb=scaled("render"))
+        step("render", "음량 측정·보정...", 97)
+        normalize_loudness(job, measurer=hooks.get("measurer"))
+        step("qc", "QC 검사...", 98)
+        qc_job(job, **(hooks.get("qc_kwargs") or {}))
+        step("qc", "QC 통과 — 쇼츠 완성" if job.get("status") == "qc_passed" else (job.get("error") or "QC 실패"), 100)
+        save_job(job)   # 마지막 진행률(100%)까지 job.json 에 남긴다 — UI 폴링이 이 값을 읽는다
+    except Exception as e:
+        job["status"] = "failed"
+        job["error"] = f"{type(e).__name__}: {str(e)[:300]}"
+        step(job.get("progress", {}).get("stage") or "build", job["error"], job.get("progress", {}).get("percent") or 0)
+        save_job(job)
+    return job

@@ -685,6 +685,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else if (targetId === 'producer') {
       loadProducerPlans();
       checkYoutubeStatus();
+      loadShortsPanel();
     } else if (targetId === 'marketing') {
       loadMarketingHistory();
     } else if (targetId === 'music') {
@@ -2205,6 +2206,529 @@ document.addEventListener('DOMContentLoaded', () => {
         btnStartRender.querySelector('.spinner').style.display = 'none';
       }
     }, 1500);
+  }
+
+  // ==============================================================
+  // 15b. [Phase 4] 쇼츠(9:16) 패널 — 작업계획서_쇼츠_자동화 S-2
+  //   9:16 기획서 선택 → [쇼츠 잡 생성] → 스토리보드 카드 편집 → 이미지 비용 확인 모달 → [빌드] 진행률 → 세로 미리보기 + QC 배지
+  //   롱폼 producer 흐름(위 15번)과 DOM·상태를 공유하지 않는다.
+  // ==============================================================
+  const shortsPanel = document.getElementById('shortsPanel');
+  const shortsPlanSelect = document.getElementById('shortsPlanSelect');
+  const shortsVoiceSelect = document.getElementById('shortsVoiceSelect');
+  const btnShortsCreateJob = document.getElementById('btnShortsCreateJob');
+  const shortsJobList = document.getElementById('shortsJobList');
+  const shortsUsageBadge = document.getElementById('shortsUsageBadge');
+  const shortsStoryboard = document.getElementById('shortsStoryboard');
+  const shortsJobTitle = document.getElementById('shortsJobTitle');
+  const shortsJobStatus = document.getElementById('shortsJobStatus');
+  const shortsJobMeta = document.getElementById('shortsJobMeta');
+  const btnShortsDeleteJob = document.getElementById('btnShortsDeleteJob');
+  const shortsHookInput = document.getElementById('shortsHookInput');
+  const shortsSceneCards = document.getElementById('shortsSceneCards');
+  const shortsEndTagText = document.getElementById('shortsEndTagText');
+  const shortsEndTagSubtext = document.getElementById('shortsEndTagSubtext');
+  const shortsWarnings = document.getElementById('shortsWarnings');
+  const btnShortsSaveStoryboard = document.getElementById('btnShortsSaveStoryboard');
+  const shortsRendererSelect = document.getElementById('shortsRendererSelect');
+  const btnShortsBuild = document.getElementById('btnShortsBuild');
+  const shortsProgressBox = document.getElementById('shortsProgressBox');
+  const shortsStepText = document.getElementById('shortsStepText');
+  const shortsPercentText = document.getElementById('shortsPercentText');
+  const shortsProgressBar = document.getElementById('shortsProgressBar');
+  const shortsResultBox = document.getElementById('shortsResultBox');
+  const shortsVideoPlayer = document.getElementById('shortsVideoPlayer');
+  const btnShortsDownload = document.getElementById('btnShortsDownload');
+  const shortsQcSummary = document.getElementById('shortsQcSummary');
+  const shortsQcBadges = document.getElementById('shortsQcBadges');
+  const shortsResultMeta = document.getElementById('shortsResultMeta');
+  const shortsResultError = document.getElementById('shortsResultError');
+  const modalShortsConfirm = document.getElementById('modalShortsConfirm');
+  const shortsConfirmBody = document.getElementById('shortsConfirmBody');
+  const btnConfirmShortsBuild = document.getElementById('btnConfirmShortsBuild');
+  const btnCancelShortsConfirm = document.getElementById('btnCancelShortsConfirm');
+  const btnCloseShortsConfirm = document.getElementById('btnCloseShortsConfirm');
+
+  let currentShortsJob = null;
+  let shortsPollTimer = null;
+  let shortsPendingBuild = null;   // 비용 확인 모달이 승인되면 실행할 빌드 옵션
+
+  const SHORTS_STATUS_LABEL = {
+    planned: '기획됨', assets: '자산 준비 중', rendered: '렌더됨', qc_passed: 'QC 통과',
+    failed: '실패', exported: '내보냄', published: '발행됨'
+  };
+  const SHORTS_QC_LABEL = {
+    file_exists: '파일', 'duration<=60': '≤60초', '1080x1920': '1080×1920', audio_present: '오디오',
+    first_frame_not_black: '첫 프레임 밝기', lufs_within_1db: 'LUFS ±1dB', probe: 'ffprobe'
+  };
+  const SHORTS_MOTIONS = [['zoom_in', '줌 인'], ['zoom_out', '줌 아웃'], ['pan_left', '팬 왼쪽'], ['pan_right', '팬 오른쪽']];
+  // 씬 종류(작업계획서 7b): image 만 Gemini 비용, 나머지는 Remotion 이 그린다
+  const SHORTS_KINDS = [['image', '🖼 이미지 (Gemini)'], ['text_card', '🅰 텍스트 카드 (0원)'], ['stat_card', '🔢 숫자 카드 (0원)'],
+                        ['bar_chart', '📊 막대 비교 (0원)'], ['compare', '↔ 전후 비교 (0원)']];
+
+  function setShortsBusy(btn, busy) {
+    if (!btn) return;
+    btn.disabled = busy;
+    const t = btn.querySelector('.btn-text');
+    const sp = btn.querySelector('.spinner');
+    if (t) t.style.display = busy ? 'none' : 'inline-block';
+    if (sp) sp.style.display = busy ? 'inline-block' : 'none';
+  }
+
+  async function loadShortsPanel() {
+    if (!shortsPanel) return;
+    await Promise.all([loadShortsPlans(), loadShortsVoices(), loadShortsUsage(), loadShortsJobs()]);
+  }
+
+  async function loadShortsPlans() {
+    if (!shortsPlanSelect) return;
+    const prev = shortsPlanSelect.value;
+    shortsPlanSelect.innerHTML = '<option value="">9:16 기획서를 선택하세요...</option>';
+    try {
+      const res = await fetch('/api/shorts/plans');
+      const d = await res.json();
+      (d.data || []).forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = `${p.title || p.topic} — 씬 ${p.scene_count}`;
+        shortsPlanSelect.appendChild(opt);
+      });
+      if (prev) shortsPlanSelect.value = prev;
+    } catch (err) {
+      console.warn('쇼츠 기획서 목록 로드 실패:', err);
+    }
+  }
+
+  async function loadShortsVoices() {
+    if (!shortsVoiceSelect) return;
+    try {
+      const res = await fetch('/api/tts/voices');
+      const d = await res.json();
+      const voices = (d && d.data) || [];
+      if (!voices.length) return;
+      const prev = shortsVoiceSelect.value || 'edge_injoon';
+      shortsVoiceSelect.innerHTML = '';
+      voices.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v.id;
+        const tag = v.engine === 'edge-tts' ? ' · 단어 타이밍' : ' · 비례 자막';
+        opt.textContent = `${v.name}${tag}`;
+        shortsVoiceSelect.appendChild(opt);
+      });
+      shortsVoiceSelect.value = voices.some(v => v.id === prev) ? prev : 'edge_injoon';
+    } catch (err) {
+      console.warn('쇼츠 성우 목록 로드 실패:', err);
+    }
+  }
+
+  async function loadShortsUsage() {
+    if (!shortsUsageBadge) return;
+    try {
+      const res = await fetch('/api/shorts/usage');
+      const u = await res.json();
+      shortsUsageBadge.textContent = `오늘 이미지 ${u.today}/${u.cap}장 · 편당 ≤${u.per_job_cap}장 · ${u.remotion_available ? 'Remotion' : 'ffmpeg 폴백'}`;
+      shortsUsageBadge.className = (u.today >= u.cap) ? 'badge badge-accent' : 'badge badge-subtle';
+      if (!u.gemini_key_set) shortsUsageBadge.textContent += ' · Gemini 키 없음';
+    } catch (_) {}
+  }
+
+  async function loadShortsJobs() {
+    if (!shortsJobList) return;
+    try {
+      const res = await fetch('/api/shorts/jobs');
+      const d = await res.json();
+      const jobs = d.data || [];
+      if (!jobs.length) {
+        shortsJobList.innerHTML = '<span style="font-size: 0.78rem; color: var(--text-muted);">아직 쇼츠 잡이 없습니다. 9:16 기획서를 고르고 [쇼츠 잡 생성]을 누르세요.</span>';
+        return;
+      }
+      shortsJobList.innerHTML = jobs.slice(0, 12).map(j => {
+        const st = j.building ? '빌드 중' : (SHORTS_STATUS_LABEL[j.status] || j.status || '');
+        const color = j.status === 'qc_passed' ? '#34d399' : (j.status === 'failed' ? '#f87171' : (j.building ? '#fbbf24' : '#9ca3af'));
+        const active = currentShortsJob && currentShortsJob.shorts_id === j.shorts_id;
+        return `<button type="button" class="btn btn-xs btn-outline shorts-job-chip" data-id="${escapeHtml(j.shorts_id)}"
+                  style="border-color: ${active ? '#f59e0b' : 'var(--border-color)'}; color: var(--text-color); text-align: left;">
+                  <span style="color: ${color};">●</span> ${escapeHtml((j.title || j.topic || j.shorts_id).slice(0, 28))}
+                  <span style="color: var(--text-muted); font-size: 0.72rem;">· ${escapeHtml(st)} · ${Number(j.total_seconds || 0).toFixed(0)}초</span>
+                </button>`;
+      }).join('');
+      shortsJobList.querySelectorAll('.shorts-job-chip').forEach(b => b.addEventListener('click', () => openShortsJob(b.dataset.id)));
+    } catch (err) {
+      console.warn('쇼츠 잡 목록 로드 실패:', err);
+    }
+  }
+
+  async function openShortsJob(shortsId) {
+    try {
+      const res = await fetch(`/api/shorts/jobs/${encodeURIComponent(shortsId)}`);
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || '잡 조회 실패');
+      }
+      const d = await res.json();
+      currentShortsJob = d.data;
+      renderShortsStoryboard(currentShortsJob);
+      renderShortsResult(currentShortsJob);
+      loadShortsJobs();
+      if (d.building) startShortsPolling(shortsId);
+    } catch (err) {
+      showAlert('쇼츠 잡 열기 실패: ' + err.message, 'error');
+    }
+  }
+
+  function renderShortsStoryboard(job) {
+    if (!shortsStoryboard || !job) return;
+    const sb = job.storyboard || {};
+    shortsStoryboard.style.display = 'block';
+    const yt = (job.metadata && job.metadata.youtube) || {};
+    shortsJobTitle.textContent = yt.title || job.topic || job.shorts_id;
+    shortsJobTitle.title = job.shorts_id;
+    const st = SHORTS_STATUS_LABEL[job.status] || job.status || '';
+    shortsJobStatus.textContent = st;
+    shortsJobStatus.className = 'badge ' + (job.status === 'qc_passed' ? 'badge-accent' : 'badge-subtle');
+    const total = (sb.scenes || []).reduce((a, s) => a + Number(s.seconds || 0), 0) + Number((sb.end_tag || {}).seconds || 0);
+    const voice = job.voice_id || 'edge_injoon';
+    shortsJobMeta.textContent = `${(sb.scenes || []).length}씬 · 약 ${total.toFixed(1)}초 · 성우 ${voice}` + (job.caption_source ? ` · 자막 ${job.caption_source}` : '');
+    shortsHookInput.value = sb.hook_text || '';
+    shortsEndTagText.value = (sb.end_tag || {}).text || '';
+    shortsEndTagSubtext.value = (sb.end_tag || {}).subtext || '';
+
+    shortsSceneCards.innerHTML = (sb.scenes || []).map(s => {
+      const motionOpts = SHORTS_MOTIONS.map(([v, l]) => `<option value="${v}" ${s.motion === v ? 'selected' : ''}>${l}</option>`).join('');
+      const kind = s.kind || 'image';
+      const kindOpts = SHORTS_KINDS.map(([v, l]) => `<option value="${v}" ${kind === v ? 'selected' : ''}>${l}</option>`).join('');
+      const hasImg = !!s.image;
+      const src = (job.caption_source || s.caption_source) ? ` · 자막 ${escapeHtml(s.caption_source || job.caption_source)}` : '';
+      let state;
+      if (kind !== 'image') state = `<span style="color: #a78bfa;"><i class="fa-solid fa-wand-magic-sparkles"></i> ${escapeHtml(kind)} · 비용 0${src}</span>`;
+      else state = `<span style="color: ${hasImg ? '#34d399' : '#fbbf24'};"><i class="fa-solid ${hasImg ? 'fa-image' : 'fa-image-slash'}"></i> ${hasImg ? '이미지 있음' : '이미지 생성 예정'}${src}</span>`;
+      const kindNote = s.kind_note ? `<div style="font-size: 0.7rem; color: #fbbf24; margin-bottom: 4px;">⚠ ${escapeHtml(s.kind_note)}</div>` : '';
+      const dataSummary = kind === 'stat_card' ? `${escapeHtml(String(s.prefix || ''))}${escapeHtml(String(s.value ?? ''))}${escapeHtml(String(s.unit || ''))}`
+        : kind === 'bar_chart' ? (s.bars || []).map(b => `${escapeHtml(String(b.label))} ${escapeHtml(String(b.value))}`).join(' · ')
+        : kind === 'compare' ? (s.rows || []).map(r => `${escapeHtml(String(r.label))} ${escapeHtml(String(r.from))}→${escapeHtml(String(r.to))}${escapeHtml(String(r.unit || ''))}`).join(' · ') : '';
+      return `<div class="shorts-scene-card" data-num="${Number(s.scene_num)}" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.78rem;">
+            <strong>씬 ${Number(s.scene_num)}</strong>
+            ${state}
+          </div>
+          ${s.beat ? `<div style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px;">${escapeHtml(s.beat)}</div>` : ''}
+          ${kindNote}
+          <div style="display: flex; gap: 6px; margin-bottom: 6px;">
+            <select class="form-select shorts-scene-kind" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;" title="씬 종류 — image 만 Gemini 비용">${kindOpts}</select>
+          </div>
+          <div class="shorts-kind-fields" style="display: ${kind === 'image' ? 'none' : 'flex'}; gap: 6px; margin-bottom: 6px;">
+            <input type="text" class="form-control shorts-scene-title" maxlength="40" placeholder="카드 제목 (≤18자)" value="${escapeHtml(s.title || '')}" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;">
+            <input type="text" class="form-control shorts-scene-subtitle" maxlength="40" placeholder="부제 (선택)" value="${escapeHtml(s.subtitle || '')}" style="flex: 1; padding: 4px 6px; font-size: 0.78rem;">
+          </div>
+          ${dataSummary ? `<div style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px;">데이터: ${dataSummary}</div>` : ''}
+          <textarea class="form-control shorts-scene-narration" rows="3" maxlength="400" style="font-size: 0.82rem; margin-bottom: 6px;">${escapeHtml(s.narration || '')}</textarea>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <input type="number" class="form-control shorts-scene-seconds" min="1" max="15" step="0.5" value="${Number(s.seconds || 0)}" style="width: 80px; padding: 4px 6px; font-size: 0.8rem;" title="씬 길이(초) — 빌드 시 실제 발화 길이로 다시 맞춰짐">
+            <span style="font-size: 0.72rem; color: var(--text-muted);">초</span>
+            <select class="form-select shorts-scene-motion" style="flex: 1; padding: 4px 6px; font-size: 0.8rem;">${motionOpts}</select>
+          </div>
+        </div>`;
+    }).join('');
+    shortsSceneCards.querySelectorAll('.shorts-scene-kind').forEach(sel => sel.addEventListener('change', () => {
+      const box = sel.closest('.shorts-scene-card').querySelector('.shorts-kind-fields');
+      if (box) box.style.display = sel.value === 'image' ? 'none' : 'flex';
+    }));
+
+    const warns = job.warnings || [];
+    if (warns.length) {
+      shortsWarnings.style.display = 'block';
+      shortsWarnings.innerHTML = warns.slice(-6).map(w => `<div>⚠ ${escapeHtml(w)}</div>`).join('');
+    } else {
+      shortsWarnings.style.display = 'none';
+      shortsWarnings.innerHTML = '';
+    }
+  }
+
+  function collectShortsStoryboard() {
+    const scenes = Array.from(shortsSceneCards.querySelectorAll('.shorts-scene-card')).map(card => ({
+      scene_num: Number(card.dataset.num),
+      narration: card.querySelector('.shorts-scene-narration').value,
+      seconds: Number(card.querySelector('.shorts-scene-seconds').value),
+      motion: card.querySelector('.shorts-scene-motion').value,
+      kind: card.querySelector('.shorts-scene-kind').value,
+      title: card.querySelector('.shorts-scene-title').value,
+      subtitle: card.querySelector('.shorts-scene-subtitle').value
+    }));
+    return {
+      hook_text: shortsHookInput.value,
+      scenes,
+      end_tag: { text: shortsEndTagText.value, subtext: shortsEndTagSubtext.value }
+    };
+  }
+
+  async function saveShortsStoryboard(silent) {
+    if (!currentShortsJob) return false;
+    try {
+      const res = await fetch(`/api/shorts/jobs/${encodeURIComponent(currentShortsJob.shorts_id)}/storyboard`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(collectShortsStoryboard())
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || '저장 실패');
+      }
+      const d = await res.json();
+      currentShortsJob = d.data;
+      renderShortsStoryboard(currentShortsJob);
+      if (!silent) showAlert('스토리보드를 저장했습니다.', 'success');
+      return true;
+    } catch (err) {
+      showAlert('스토리보드 저장 실패: ' + err.message, 'error');
+      return false;
+    }
+  }
+
+  function updateShortsProgress(progress, building) {
+    if (!shortsProgressBox) return;
+    const p = progress || {};
+    const pct = Math.max(0, Math.min(100, Number(p.percent || 0)));
+    shortsProgressBox.style.display = 'block';
+    shortsProgressBar.style.width = pct + '%';
+    shortsPercentText.textContent = pct + '%';
+    shortsStepText.textContent = (p.message || (building ? '빌드 중...' : '')) ;
+  }
+
+  function renderShortsResult(job) {
+    if (!shortsResultBox || !job) return;
+    const render = job.render || {};
+    const qc = job.qc || {};
+    const hasVideo = !!render.url;
+    if (job.progress && (job.status === 'assets' || job.status === 'failed' || job.status === 'rendered')) {
+      updateShortsProgress(job.progress, false);
+    } else if (shortsProgressBox && job.status === 'planned') {
+      shortsProgressBox.style.display = 'none';
+    }
+    if (!hasVideo && !qc.checks && !job.error) {
+      shortsResultBox.style.display = 'none';
+      return;
+    }
+    shortsResultBox.style.display = 'block';
+    if (hasVideo) {
+      const url = render.url + '?t=' + Math.floor(Number(job.updated_at || Date.now()));
+      shortsVideoPlayer.src = url;
+      btnShortsDownload.href = render.url;
+      btnShortsDownload.style.display = '';
+    } else {
+      shortsVideoPlayer.removeAttribute('src');
+      btnShortsDownload.style.display = 'none';
+    }
+    const checks = qc.checks || [];
+    if (checks.length) {
+      shortsQcSummary.textContent = qc.passed ? '통과' : `실패 ${(qc.failed || []).length}건`;
+      shortsQcSummary.className = 'badge ' + (qc.passed ? 'badge-accent' : 'badge-subtle');
+      shortsQcSummary.style.color = qc.passed ? '' : '#f87171';
+      shortsQcBadges.innerHTML = checks.map(c => {
+        const color = c.skipped ? '#9ca3af' : (c.passed ? '#34d399' : '#f87171');
+        const icon = c.skipped ? 'fa-minus' : (c.passed ? 'fa-check' : 'fa-xmark');
+        const label = SHORTS_QC_LABEL[c.name] || c.name;
+        return `<span class="badge badge-subtle" style="color: ${color}; border: 1px solid ${color}40;" title="${escapeHtml(c.detail || '')}"><i class="fa-solid ${icon}"></i> ${escapeHtml(label)}${c.detail ? ` <span style="opacity: .75;">${escapeHtml(c.detail)}</span>` : ''}</span>`;
+      }).join('');
+    } else {
+      shortsQcSummary.textContent = '미실행';
+      shortsQcBadges.innerHTML = '';
+    }
+    const probe = render.probe || {};
+    const audio = job.audio || {};
+    const meta = [];
+    if (render.renderer_used) meta.push(`렌더러 <b>${escapeHtml(render.renderer_used)}</b>${render.fallback_reason ? ` (폴백: ${escapeHtml(String(render.fallback_reason).slice(0, 80))})` : ''}${render.elapsed_sec ? ` · ${render.elapsed_sec}초` : ''}`);
+    if (probe.width) meta.push(`${probe.width}×${probe.height} · ${Number(probe.duration || 0).toFixed(1)}초 · ${probe.fps}fps · ${(Number(probe.size_bytes || 0) / 1048576).toFixed(1)}MB`);
+    if (job.caption_source) meta.push(`자막 원천 <b>${escapeHtml(job.caption_source)}</b> · ${(job.captions || []).length}토큰`);
+    if (audio.lufs !== null && audio.lufs !== undefined) meta.push(`음량 ${Number(audio.lufs).toFixed(1)} LUFS / 피크 ${Number(audio.true_peak || 0).toFixed(1)} dBTP${audio.loudnorm_applied ? ' (loudnorm 보정됨)' : ''}`);
+    if (audio.bgm_title) meta.push(`BGM: ${escapeHtml(audio.bgm_title)}`);
+    else if (audio.narration) meta.push('BGM 없음 (연주곡 루나 트랙 없음)');
+    shortsResultMeta.innerHTML = meta.map(m => `<div>${m}</div>`).join('');
+    if (job.error) {
+      shortsResultError.style.display = 'block';
+      shortsResultError.textContent = job.error;
+    } else {
+      shortsResultError.style.display = 'none';
+      shortsResultError.textContent = '';
+    }
+  }
+
+  function startShortsPolling(shortsId) {
+    if (shortsPollTimer) clearInterval(shortsPollTimer);
+    setShortsBusy(btnShortsBuild, true);
+    shortsPollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/shorts/jobs/${encodeURIComponent(shortsId)}`);
+        if (!res.ok) throw new Error('조회 실패');
+        const d = await res.json();
+        const job = d.data;
+        updateShortsProgress(job.progress, d.building);
+        if (!d.building) {
+          clearInterval(shortsPollTimer);
+          shortsPollTimer = null;
+          setShortsBusy(btnShortsBuild, false);
+          currentShortsJob = job;
+          renderShortsStoryboard(job);
+          renderShortsResult(job);
+          loadShortsJobs();
+          loadShortsUsage();
+          if (job.status === 'qc_passed') showAlert('쇼츠 빌드 완료 — QC 통과!', 'success');
+          else showAlert('쇼츠 빌드 실패: ' + (job.error || '원인 불명'), 'error');
+        }
+      } catch (err) {
+        clearInterval(shortsPollTimer);
+        shortsPollTimer = null;
+        setShortsBusy(btnShortsBuild, false);
+      }
+    }, 1500);
+  }
+
+  async function requestShortsBuild(confirmed) {
+    if (!currentShortsJob) return;
+    const payload = {
+      confirm: !!confirmed,
+      renderer: shortsRendererSelect ? (shortsRendererSelect.value || null) : null,
+      voice_id: shortsVoiceSelect ? shortsVoiceSelect.value : null
+    };
+    const res = await fetch(`/api/shorts/jobs/${encodeURIComponent(currentShortsJob.shorts_id)}/build`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || (res.status === 429 ? '일일 이미지 상한 초과' : '빌드 시작 실패'));
+    }
+    return res.json();
+  }
+
+  function openShortsConfirmModal(estimate) {
+    if (!modalShortsConfirm) return;
+    const u = estimate.usage || {};
+    shortsConfirmBody.innerHTML = `
+      <div>Gemini 이미지 <b>${Number(estimate.needed)}장</b>을 새로 생성합니다 (기존 이미지 재사용 ${Number(estimate.reused || 0)}장 · 비용 0 씬 ${Number(estimate.cost_free || 0)}개).</div>
+      <div>예상 비용 <b>$${Number(estimate.usd).toFixed(3)}</b> (≈ ₩${Number(estimate.krw).toLocaleString()}) · 장당 $${Number(u.usd_per_image || 0.039)}</div>
+      <div>오늘 사용량 ${Number(u.today)}/${Number(u.cap)}장 → 승인 후 ${Number(u.today) + Number(estimate.needed)}/${Number(u.cap)}장</div>
+      <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 6px;">대상 씬: ${(estimate.scenes || []).map(n => escapeHtml(String(n))).join(', ')} · 승인하지 않으면 아무 호출도 하지 않습니다.</div>`;
+    modalShortsConfirm.style.display = 'flex';
+  }
+
+  function closeShortsConfirmModal() {
+    if (modalShortsConfirm) modalShortsConfirm.style.display = 'none';
+    shortsPendingBuild = null;
+  }
+
+  if (btnShortsCreateJob) {
+    btnShortsCreateJob.addEventListener('click', async () => {
+      const planId = shortsPlanSelect ? shortsPlanSelect.value : '';
+      if (!planId) {
+        showAlert('9:16 씬 기획서를 먼저 선택해주세요.', 'error');
+        return;
+      }
+      setShortsBusy(btnShortsCreateJob, true);
+      try {
+        const res = await fetch('/api/shorts/jobs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ plan_id: planId, platforms: ['youtube_shorts'], voice_id: shortsVoiceSelect ? shortsVoiceSelect.value : null })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || '쇼츠 잡 생성 실패');
+        }
+        const d = await res.json();
+        currentShortsJob = d.data;
+        if (shortsResultBox) shortsResultBox.style.display = 'none';
+        if (shortsProgressBox) shortsProgressBox.style.display = 'none';
+        renderShortsStoryboard(currentShortsJob);
+        loadShortsJobs();
+        const est = d.estimate || {};
+        showAlert(`쇼츠 잡 생성 완료 — 씬 ${currentShortsJob.storyboard.scenes.length}개, 이미지 ${est.needed || 0}장 생성 예정 (재사용 ${est.reused || 0}장)`, 'success');
+      } catch (err) {
+        showAlert('쇼츠 잡 생성 실패: ' + err.message, 'error');
+      } finally {
+        setShortsBusy(btnShortsCreateJob, false);
+      }
+    });
+  }
+
+  if (btnShortsSaveStoryboard) btnShortsSaveStoryboard.addEventListener('click', () => saveShortsStoryboard(false));
+
+  if (btnShortsBuild) {
+    btnShortsBuild.addEventListener('click', async () => {
+      if (!currentShortsJob) {
+        showAlert('먼저 쇼츠 잡을 생성하거나 선택해주세요.', 'error');
+        return;
+      }
+      setShortsBusy(btnShortsBuild, true);
+      try {
+        const saved = await saveShortsStoryboard(true);
+        if (!saved) throw new Error('스토리보드 저장에 실패해 빌드를 중단했습니다.');
+        const d = await requestShortsBuild(false);
+        if (d.status === 'confirm_required') {
+          // 과금 가드: 서버는 confirm=true 전까지 Gemini 를 호출하지 않는다
+          shortsPendingBuild = { shortsId: currentShortsJob.shorts_id };
+          openShortsConfirmModal(d.estimate || {});
+          setShortsBusy(btnShortsBuild, false);
+          return;
+        }
+        if (d.status === 'started') {
+          updateShortsProgress({ message: '빌드 시작 (이미지 생성 없음)', percent: 1 }, true);
+          startShortsPolling(d.shorts_id);
+          return;
+        }
+        throw new Error('예상하지 못한 응답: ' + (d.status || ''));
+      } catch (err) {
+        setShortsBusy(btnShortsBuild, false);
+        showAlert('빌드 시작 실패: ' + err.message, 'error');
+      }
+    });
+  }
+
+  if (btnConfirmShortsBuild) {
+    btnConfirmShortsBuild.addEventListener('click', async () => {
+      if (!shortsPendingBuild || !currentShortsJob) return closeShortsConfirmModal();
+      btnConfirmShortsBuild.disabled = true;
+      try {
+        const d = await requestShortsBuild(true);
+        closeShortsConfirmModal();
+        if (d.status === 'started') {
+          updateShortsProgress({ message: `이미지 ${(d.estimate || {}).needed || 0}장 생성 시작...`, percent: 1 }, true);
+          startShortsPolling(d.shorts_id);
+          loadShortsUsage();
+        } else {
+          throw new Error('빌드가 시작되지 않았습니다: ' + (d.message || d.status || ''));
+        }
+      } catch (err) {
+        showAlert('빌드 시작 실패: ' + err.message, 'error');
+      } finally {
+        btnConfirmShortsBuild.disabled = false;
+      }
+    });
+  }
+  if (btnCancelShortsConfirm) btnCancelShortsConfirm.addEventListener('click', closeShortsConfirmModal);
+  if (btnCloseShortsConfirm) btnCloseShortsConfirm.addEventListener('click', closeShortsConfirmModal);
+  if (modalShortsConfirm) modalShortsConfirm.addEventListener('click', (e) => { if (e.target === modalShortsConfirm) closeShortsConfirmModal(); });
+
+  if (btnShortsDeleteJob) {
+    btnShortsDeleteJob.addEventListener('click', async () => {
+      if (!currentShortsJob) return;
+      if (!confirm(`쇼츠 잡 '${currentShortsJob.shorts_id}' 와 생성된 파일(이미지 제외)을 삭제할까요?`)) return;
+      try {
+        const res = await fetch(`/api/shorts/jobs/${encodeURIComponent(currentShortsJob.shorts_id)}`, { method: 'DELETE' });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || '삭제 실패');
+        }
+        currentShortsJob = null;
+        shortsStoryboard.style.display = 'none';
+        shortsResultBox.style.display = 'none';
+        shortsProgressBox.style.display = 'none';
+        loadShortsJobs();
+        showAlert('쇼츠 잡을 삭제했습니다.', 'success');
+      } catch (err) {
+        showAlert('삭제 실패: ' + err.message, 'error');
+      }
+    });
   }
 
   // ---------------------------------------------------------------

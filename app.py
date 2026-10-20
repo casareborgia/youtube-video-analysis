@@ -38,6 +38,7 @@ import luna_engine
 import vega_engine
 import vega_feedback
 import choonsik_bga
+import shorts_engine
 import threads_client
 import capcut_builder
 import engagement_automation
@@ -1016,6 +1017,155 @@ async def get_producer_status(job_id: str):
     if not job:
         raise HTTPException(status_code=404, detail="작업 ID를 찾을 수 없습니다.")
     return job
+
+# ==========================================
+# 쇼츠(9:16) 파이프라인 API — 작업계획서_쇼츠_자동화_Shorts_Reels.md S-2
+# 모든 경로의 ID 는 shorts_engine._safe_id 로 검증한다. 이미지 생성(Gemini 과금)은 confirm=true 일 때만.
+# ==========================================
+_shorts_building: set = set()   # 빌드 중인 shorts_id (중복 빌드 방지)
+
+
+class ShortsJobCreateRequest(BaseModel):
+    plan_id: str
+    platforms: Optional[List[str]] = None   # 기본 ["youtube_shorts"]
+    voice_id: Optional[str] = None          # 기본 edge_injoon
+
+
+class ShortsStoryboardRequest(BaseModel):
+    hook_text: Optional[str] = None
+    scenes: Optional[List[Dict[str, Any]]] = None   # [{scene_num, narration?, seconds?, motion?}]
+    end_tag: Optional[Dict[str, Any]] = None        # {text?, subtext?, seconds?}
+
+
+class ShortsBuildRequest(BaseModel):
+    confirm: Optional[bool] = False     # 이미지 생성 과금 승인
+    renderer: Optional[str] = None      # remotion | ffmpeg (기본 SHORTS_RENDERER)
+    voice_id: Optional[str] = None
+
+
+def _shorts_job_or_404(shorts_id: str) -> dict:
+    try:
+        sid = shorts_engine._safe_id(shorts_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    job = shorts_engine.load_job(sid)
+    if not job:
+        raise HTTPException(status_code=404, detail="쇼츠 잡을 찾을 수 없습니다.")
+    return job
+
+
+def _run_shorts_build_worker(shorts_id: str, options: dict):
+    _shorts_building.add(shorts_id)
+    try:
+        job = shorts_engine.load_job(shorts_id)
+        if job:
+            shorts_engine.build_job(job, options=options)
+    except Exception as e:
+        job = shorts_engine.load_job(shorts_id)
+        if job:
+            job["status"] = "failed"
+            job["error"] = f"빌드 실패: {str(e)[:300]}"
+            shorts_engine.save_job(job)
+    finally:
+        _shorts_building.discard(shorts_id)
+
+
+@app.get("/api/shorts/usage")
+async def get_shorts_usage():
+    """오늘 이미지 사용량·상한·편당 상한·렌더러."""
+    u = shorts_engine.usage_summary()
+    u.update({"remotion_available": shorts_engine.remotion_available(), "default_renderer": shorts_engine.default_renderer(),
+              "gemini_key_set": bool(producer.gemini_key())})
+    return u
+
+
+@app.get("/api/shorts/plans")
+async def list_shorts_plans():
+    """쇼츠로 만들 수 있는 9:16 씬 기획서만."""
+    return {"status": "success", "data": [p for p in scene_store.list_plans() if (p.get("aspect_ratio") or "16:9") == "9:16"]}
+
+
+@app.post("/api/shorts/jobs")
+async def create_shorts_job(req: ShortsJobCreateRequest):
+    """9:16 씬 기획서 → 쇼츠 잡(job.json). 합계 60초 초과 시 마지막 씬부터 줄이고 warnings 에 남긴다."""
+    try:
+        job = shorts_engine.build_job_from_plan(req.plan_id, platforms=req.platforms, voice_id=req.voice_id)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"쇼츠 잡 생성 실패: {e}")
+    return {"status": "success", "shorts_id": job["shorts_id"], "data": job, "estimate": shorts_engine.estimate_images(job)}
+
+
+@app.get("/api/shorts/jobs")
+async def list_shorts_jobs():
+    jobs = shorts_engine.list_jobs()
+    for j in jobs:
+        j["building"] = j.get("shorts_id") in _shorts_building
+    return {"status": "success", "data": jobs}
+
+
+@app.get("/api/shorts/jobs/{shorts_id}")
+async def get_shorts_job(shorts_id: str):
+    job = _shorts_job_or_404(shorts_id)
+    return {"status": "success", "data": job, "building": job["shorts_id"] in _shorts_building}
+
+
+@app.put("/api/shorts/jobs/{shorts_id}/storyboard")
+async def update_shorts_storyboard(shorts_id: str, req: ShortsStoryboardRequest):
+    """스토리보드 카드 편집(훅·씬 나레이션/길이/모션·엔드 태그). 빌드 중에는 거부."""
+    job = _shorts_job_or_404(shorts_id)
+    if job["shorts_id"] in _shorts_building:
+        raise HTTPException(status_code=409, detail="빌드 중인 잡은 편집할 수 없습니다.")
+    try:
+        job = shorts_engine.update_storyboard(job, hook_text=req.hook_text, scenes=req.scenes, end_tag=req.end_tag)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"스토리보드 수정 실패: {e}")
+    return {"status": "success", "data": job}
+
+
+@app.get("/api/shorts/jobs/{shorts_id}/estimate")
+async def estimate_shorts_images(shorts_id: str):
+    """빌드 전 예상 이미지 장수·비용·오늘 사용량 (과금 확인 모달용)."""
+    job = _shorts_job_or_404(shorts_id)
+    return {"status": "success", "estimate": shorts_engine.estimate_images(job)}
+
+
+@app.post("/api/shorts/jobs/{shorts_id}/build")
+async def build_shorts_job(shorts_id: str, req: ShortsBuildRequest, background_tasks: BackgroundTasks):
+    """빌드 시작(BackgroundTasks). 이미지가 필요한데 confirm 이 없으면 시작하지 않고 estimate 만 돌려준다(과금 가드).
+    진행률: 이미지 0~40% / 음성 40~60% / 렌더 60~97% / QC ~100% — GET /api/shorts/jobs/{id} 의 data.progress."""
+    job = _shorts_job_or_404(shorts_id)
+    sid = job["shorts_id"]
+    if sid in _shorts_building:
+        raise HTTPException(status_code=409, detail="이미 빌드 중입니다.")
+    est = shorts_engine.estimate_images(job)
+    if est["needed"] > 0:
+        if not est["allowed"]:
+            raise HTTPException(status_code=429 if "상한" in est["reason"] else 400, detail=est["reason"])
+        if not req.confirm:
+            return {"status": "confirm_required", "shorts_id": sid, "estimate": est,
+                    "message": f"Gemini 이미지 {est['needed']}장 (≈ ${est['usd']}) 생성을 승인하려면 confirm=true 로 다시 요청하세요."}
+    options = {"confirm": bool(req.confirm), "renderer": req.renderer, "voice_id": req.voice_id}
+    job["status"] = "assets"
+    job["progress"] = {"stage": "queued", "message": "빌드 대기 중...", "percent": 0, "at": time.time()}
+    job.pop("error", None)
+    shorts_engine.save_job(job)
+    _shorts_building.add(sid)
+    background_tasks.add_task(_run_shorts_build_worker, sid, options)
+    return {"status": "started", "shorts_id": sid, "estimate": est}
+
+
+@app.delete("/api/shorts/jobs/{shorts_id}")
+async def delete_shorts_job(shorts_id: str):
+    job = _shorts_job_or_404(shorts_id)
+    if job["shorts_id"] in _shorts_building:
+        raise HTTPException(status_code=409, detail="빌드 중인 잡은 삭제할 수 없습니다.")
+    shorts_engine.delete_job(job["shorts_id"])
+    return {"status": "success", "message": "쇼츠 잡을 삭제했습니다."}
+
 
 @app.get("/api/youtube/status")
 async def get_youtube_status():
@@ -2991,6 +3141,8 @@ if os.path.exists(channel_builder.CHANNELS_DIR):
     app.mount("/data/channels", StaticFiles(directory=str(channel_builder.CHANNELS_DIR)), name="channels")
 if os.path.exists(luna_engine.LUNA_DIR):
     app.mount("/data/luna_music", StaticFiles(directory=str(luna_engine.LUNA_DIR)), name="luna_music")
+os.makedirs(shorts_engine.SHORTS_DIR, exist_ok=True)   # 쇼츠 미리보기(final_9x16.mp4) 서빙
+app.mount("/data/shorts", StaticFiles(directory=str(shorts_engine.SHORTS_DIR)), name="shorts")
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")

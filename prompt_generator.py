@@ -73,6 +73,7 @@ SUPPORTED_MODELS = {
 NARRATION_MIN_CHARS = 35
 NARRATION_MAX_CHARS = 45
 KO_CHARS_PER_SEC = 5.2  # 한국어 다큐 어조 기준 초당 발화 글자수
+SHORTS_MAX_SCENES = 6   # 9:16 쇼츠 경로 씬 수 상한 (작업계획서_쇼츠_자동화 S-2)
 
 
 # 응답 길이는 씬 개수에 비례한다. 고정 4096 으로는 10씬부터 잘려
@@ -487,6 +488,77 @@ class PromptGenerator:
             "scene_first_frames": scene_first_frames
         }
 
+    @staticmethod
+    def _shorts_prompt_rules(shorts: Dict[str, Any], scene_count: int) -> str:
+        """쇼츠(9:16) 기획 전용 규칙 블록. 훅 → 핵심 1 → 핵심 2 → 반전/근거 → CTA 골격과 훅·엔드 태그 필드를 요구한다."""
+        hw = shorts.get("hook_words") or {"min": 3, "max": 5}
+        beats = " → ".join(shorts.get("beats") or ["훅", "핵심 1", "핵심 2", "반전/근거", "CTA"])
+        tag = (shorts.get("end_tag") or {}).get("text") or "구독하고 다음 편 보기"
+        return (
+            "[★ 쇼츠(9:16) 전용 규칙]\n"
+            f"- 서사 골격: {beats} 순서를 씬 순서 그대로 배치 (씬이 {scene_count}개면 핵심을 합치거나 나눠 맞출 것)\n"
+            "- 1번 씬 나레이션은 첫 2초 안에 시청자를 멈추게 하는 질문·단정으로 시작할 것\n"
+            f"- hook_text: 화면 상단에 2~4초 노출될 훅 문구, {hw['min']}~{hw['max']}어절, 질문형 또는 단정형 (예: \"이거 모르면 손해\")\n"
+            f"- end_tag_text: 마지막 2초 엔드 태그 문구 (예: \"{tag}\"), end_tag_subtext 는 선택(채널명 등)\n"
+            "- 마지막 씬 나레이션은 CTA(구독·댓글·다음 편 예고)로 끝낼 것\n"
+            + PromptGenerator._shorts_kind_rules(shorts)
+        )
+
+    @staticmethod
+    def _shorts_kind_rules(shorts: Dict[str, Any]) -> str:
+        """씬 종류(kind) 규칙 — image 외 종류는 이미지 생성 비용이 0 이므로 수치·훅 씬은 그쪽으로 유도한다."""
+        kinds = shorts.get("scene_kinds") or ["image"]
+        if len(kinds) <= 1:
+            return ""
+        guide = shorts.get("kind_guide") or {}
+        max_img = int(shorts.get("max_image_scenes") or 2)
+        lines = [f"- 각 씬에 kind 를 지정할 것 ({'|'.join(kinds)}). image 는 편당 최대 {max_img}씬(히어로 장면)만, 나머지는 비용 0 씬:"]
+        for k in kinds:
+            if guide.get(k):
+                lines.append(f"  * {k}: {guide[k]}")
+        lines.append("- 수치가 나오는 씬은 stat_card/bar_chart/compare 로, 훅·전환·결론은 text_card 로. 숫자는 대본에 실제 나온 값만 사용")
+        lines.append("- kind 가 image 가 아닌 씬도 prompt_en·visual_description_ko 는 그대로 작성(폴백용)")
+        return "\n".join(lines) + "\n"
+
+    @staticmethod
+    def _normalize_scene_kinds(scenes: List[Dict[str, Any]], shorts: Dict[str, Any]) -> None:
+        """LLM 이 준 kind 를 검증한다. 모르는 kind·필수 필드 없는 씬은 image 로 둔다(shorts_engine 이 다시 기본값을 채운다)."""
+        kinds = set(shorts.get("scene_kinds") or ["image"])
+        for sc in scenes:
+            kind = str(sc.get("kind") or "image").strip().lower()
+            sc["kind"] = kind if kind in kinds else "image"
+
+    @staticmethod
+    def _shorts_scene_json_hint(shorts: Dict[str, Any]) -> str:
+        """JSON 예시의 씬 객체에 붙는 kind 필드 안내 (쇼츠 전용)."""
+        kinds = shorts.get("scene_kinds") or ["image"]
+        if len(kinds) <= 1:
+            return ""
+        return (',\n      "kind": "' + "|".join(kinds) + '",\n'
+                '      "title": "text_card/stat_card/bar_chart/compare 제목 (≤18자, image 면 생략)",\n'
+                '      "subtitle": "text_card 부제 (선택)",\n'
+                '      "value": 87, "unit": "%", "label": "stat_card 설명 (stat_card 일 때만)",\n'
+                '      "bars": [{"label": "A", "value": 87, "highlight": true}, {"label": "B", "value": 82}],\n'
+                '      "rows": [{"label": "성공률", "from": 56, "to": 75, "unit": "%"}]')
+
+    @staticmethod
+    def _shorts_fields(parsed: Dict[str, Any], shorts: Dict[str, Any], title: str) -> Dict[str, Any]:
+        """LLM 응답에서 훅·엔드 태그를 꺼내고, 없으면 제목·팩 기본값으로 채운다."""
+        hw = shorts.get("hook_words") or {"min": 3, "max": 5}
+        hook = re.sub(r"\s+", " ", str(parsed.get("hook_text") or "")).strip()
+        if not hook:
+            hook = " ".join(re.sub(r"[\[\]\(\)\"':]", " ", str(title or "")).split()[: int(hw["max"])])
+        words = hook.split()
+        if len(words) > int(hw["max"]):
+            hook = " ".join(words[: int(hw["max"])])
+        tag_default = shorts.get("end_tag") or {}
+        return {
+            "hook_text": hook,
+            "end_tag_text": (str(parsed.get("end_tag_text") or "").strip() or tag_default.get("text") or "구독하고 다음 편 보기")[:30],
+            "end_tag_subtext": str(parsed.get("end_tag_subtext") or tag_default.get("subtext") or "").strip()[:30],
+            "shorts_spec": shorts,
+        }
+
     @classmethod
     def generate_prompts_from_custom_topic(
         cls,
@@ -512,6 +584,12 @@ class PromptGenerator:
         target_lang = SUPPORTED_LANGUAGES.get(language, SUPPORTED_LANGUAGES["korean"])
         style_info = STYLE_PRESETS.get(style_key, STYLE_PRESETS["photorealistic_8k"])
         concept = concept_packs.get_pack(concept_key)
+
+        # 쇼츠(9:16) 경로: 씬 수 상한 6, 훅 문구·엔드 태그 필드를 추가로 요구한다. 16:9 롱폼 경로는 그대로.
+        is_vertical = (aspect_ratio == "9:16")
+        shorts = concept_packs.shorts_spec(concept_key) if (is_vertical or concept_packs.is_shorts_pack(concept_key)) else None
+        if is_vertical:
+            scene_count = max(1, min(int(scene_count or 1), SHORTS_MAX_SCENES))
 
         # 1. 씬별 시간 분할 계산 (8초 단위)
         time_segments = []
@@ -548,6 +626,7 @@ class PromptGenerator:
 - prompt_en 포맷 규격:
   "Hyperrealistic 8k cinematic footage of [구체적 시각 묘사, silent characters with closed mouths]. Audio: [현장 효과음 sfx]. (SFX and ambience only — no voice, no speech, no dialogue, no music, no BGM, no on-screen text) --ar {aspect_ratio} --no voice, speech, dialogue, singing, music, bgm, text, watermark"
 
+{cls._shorts_prompt_rules(shorts, scene_count) if shorts else ""}
 [★ 에이전트 레오의 알고리즘 인게이지먼트 해킹 절대 규칙]
 - engagement_question: 마지막 씬 종료 후 시청자가 댓글창으로 달려오게 만드는 도발적 양자택일 선택형 질문(오픈 퀘스천 / 밸런스 질문) 1문장.
 - pinned_comment: 영상 업로드 즉시 크리에이터가 댓글 최상단에 고정하여 시청자 반응을 폭발시킬 추천 고정 댓글 텍스트 (시청 감사 + 오픈 퀘스천 질문 제시 + 좋아요/구독 넛지).
@@ -561,7 +640,10 @@ class PromptGenerator:
     "후보 2: [정밀 수치/스케일 압도 훅]",
     "후보 3: [난제/실패 선언형 훅]"
   ],
-  "recommended_title": "최종 추천 제목",
+  "recommended_title": "최종 추천 제목",{'''
+  "hook_text": "상단 훅 문구 (3~5어절)",
+  "end_tag_text": "엔드 태그 문구 (예: 구독하고 다음 편 보기)",
+  "end_tag_subtext": "엔드 태그 보조 문구 (선택, 채널명 등)",''' if shorts else ""}
   "seo_description": "유튜브 설명란 3줄 요약 줄거리 및 CTA",
   "engagement_question": "시청자의 댓글 논쟁을 유발하는 도발적 양자택일 오픈 퀘스천",
   "pinned_comment": "📌 [고정 댓글] 영상 끝까지 봐주셔서 감사합니다! 여러분의 선택은 A인가요 B인가요? 댓글로 이유를 남겨주시면 하트를 달아드립니다!",
@@ -575,7 +657,7 @@ class PromptGenerator:
       "lighting": "Moody volumetric mist with dramatic golden hour rim light",
       "visual_description_ko": "화면 구도 및 연출 핵심 한국어 설명",
       "sfx": "high-altitude wind howling, distant metallic drone, heavy concrete footsteps",
-      "prompt_en": "Hyperrealistic 8k cinematic footage of [구체적 시각 묘사, silent characters with closed mouths]. Audio: high-altitude wind howling, distant metallic drone, heavy concrete footsteps. (SFX and ambience only — no voice, no speech, no dialogue, no music, no BGM, no on-screen text) --ar {aspect_ratio} --no voice, speech, dialogue, singing, music, bgm, text, watermark"
+      "prompt_en": "Hyperrealistic 8k cinematic footage of [구체적 시각 묘사, silent characters with closed mouths]. Audio: high-altitude wind howling, distant metallic drone, heavy concrete footsteps. (SFX and ambience only — no voice, no speech, no dialogue, no music, no BGM, no on-screen text) --ar {aspect_ratio} --no voice, speech, dialogue, singing, music, bgm, text, watermark"{cls._shorts_scene_json_hint(shorts) if shorts else ""}
     }}
   ]
 }}
@@ -740,6 +822,10 @@ class PromptGenerator:
             "scenes": scenes,
             "total_scenes": len(scenes)
         }
+        if shorts:
+            # 쇼츠 기획서는 훅·엔드 태그를 별도 필드로 보관하고 씬 kind 를 검증한다 (shorts_engine.build_job_from_plan 이 읽음)
+            cls._normalize_scene_kinds(scenes, shorts)
+            result_payload.update(cls._shorts_fields(parsed_data, shorts, result_payload["recommended_title"]))
 
         # output/ 폴더에 기획서 문서 자동 저장
         try:

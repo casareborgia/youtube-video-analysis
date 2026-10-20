@@ -25,7 +25,7 @@ uvloop==0.22.1; sys_platform != 'win32'
 watchfiles==1.2.0
 websockets>=13.0,<17.0  # google-genai 가 websockets<17.0 을 요구 (uvicorn 은 >=13 이면 충족)
 yt-dlp==2026.8.19
-edge-tts>=7.0.0
+edge-tts>=7.3.0  # WordBoundary 는 7.3+ 에서 boundary="WordBoundary" 로 받음 (7.2.x 는 bing 403)
 
 # HTTP & API 유틸리티
 requests>=2.31.0
