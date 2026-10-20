@@ -268,11 +268,31 @@
 
 ---
 
+## 7b. 비용 0 경로 — 씬 종류(2026-10-19 추가, `feat/shorts-scene-kinds`)
+
+사용자 요청("비용을 최대한 줄이는 방안")에 따라 **이미지 없는 씬 종류**를 `ShortsScene` 에 넣었다. 근거는 HyperFrames `faceless-explainer`(모든 비주얼을 타이포·추상·도표로), OpenMontage `remotion-composer` 의 TextCard·StatCard·BarChart·ComparisonCard 규격(재작성), Remotion 모션그래픽 템플릿이다.
+
+| `kind` | 그리는 것 | 필드 |
+|---|---|---|
+| `image` | 기존 켄번즈 이미지 | `image`, `motion` |
+| `text_card` | 큰 제목 + 액센트 부제 + 밑줄 등장 | `title`, `subtitle` |
+| `stat_card` | 숫자 카운트업 + 단위 + 설명 | `value`, `unit`, `prefix`, `decimals`, `title`, `label` |
+| `bar_chart` | 가로 막대 성장(강조 막대 액센트) | `title`, `unit`, `decimals`, `bars[{label,value,highlight}]` |
+| `compare` | 전→후 카드(전 값 취소선, 후 값 카운트) | `title`, `rows[{label,from,to,unit,decimals}]` |
+
+- 배경은 팔레트 6종 그라데이션 + 느리게 떠다니는 글로우 + 미세 격자(`palette` 로 지정). 정지 슬라이드 느낌을 피하려고 모든 종류에 등장·카운트 애니메이션을 넣었다.
+- 씬 본래 길이가 끝나면 콘텐츠만 먼저 사라져 크로스페이드·엔드 태그와 글자가 겹치지 않는다.
+- ffmpeg 폴백에서는 비이미지 씬이 단색 배경으로 대체되고 `warnings` 에 기록된다.
+- **권장 조합**: 비용 0 씬을 기본으로, 편당 히어로 씬 1개만 무료 스톡(Pexels/Pixabay, S-2 이후 검토) 또는 저가 모델(`gemini-2.5-flash-image`, 장당 약 $0.04)로.
+- 실측: 어사이드 AI 동향 「Gemini 4 Argon」 사례를 6씬(텍스트 2·막대 1·숫자 1·비교 2) 52.9초로 조립, Remotion 렌더 28~33초, **생성 비용 0원** (`data/shorts/shorts_argon_ai_trend/`, 조립 스크립트 `scripts/build_argon_shorts.py`).
+- 나노바나나 가용성 확인(2026-10-19): Gemini 키 유효, 이 키로 `nano-banana-pro-preview`·`gemini-2.5-flash-image`·`gemini-3.1-flash-image`·`gemini-3.1-flash-lite-image`·`gemini-nano-banana-2.1` 이 `generateContent` 모델로 노출됨. `gemini-2.5-flash-image` 9:16 1장 실측: 768×1344 PNG, 9.3초, 출력 토큰 1,290(장당 약 $0.04). 최종본 v3 는 3번 씬(Spot)만 이 이미지로 교체하고 나머지 5씬은 0원 씬 — **편당 약 60원**.
+- 남은 일: 나레이션 어절 타이밍(edge-tts 7.3.1 `boundary="WordBoundary"`)은 S-2 가 `tts_service` 에 정식 반영, 업로드는 S-3.
+
 ## 8. 비용·한도
 
 | 항목 | 단위 | 비고 |
 |---|---|---|
-| Gemini 이미지(나노바나나) | 편당 3~7장 | 유일한 생성 비용. 일일 상한 40장 기본 |
+| Gemini 이미지(나노바나나) | 편당 0~7장 | 유일한 생성 비용. 7b 의 씬 종류를 쓰면 0장도 가능. 일일 상한 40장 기본 |
 | 로컬 LLM | 0 | 기획·메타데이터 |
 | edge-tts | 0 | 단어 타임스탬프 포함 |
 | Remotion 렌더 | 0 (CPU 시간) | 30초 쇼츠 예상 1~2분(S-1 에서 실측) |
