@@ -157,6 +157,60 @@ def clean_narration_text(text: str) -> str:
     return clean
 
 
+_SENTENCE_END_RE = re.compile(r"[.!?…。！？]['\"”’)]*$")
+_PUNCT_ONLY_RE = re.compile(r"^[\W_]+$")
+
+
+def _strip_punct(word: str) -> str:
+    return re.sub(r"[\W_]+", "", word or "")
+
+
+def word_boundaries_to_captions(boundaries: List[Dict[str, Any]], text: Optional[str] = None,
+                                page_break_at_end: bool = True) -> List[Dict[str, Any]]:
+    """edge-tts WordBoundary(offset·duration, 100ns 틱) → shorts_engine 자막 토큰.
+
+    규약(작업계획서 S-1 메모): 새 어절은 text 앞에 공백 1칸, 문장 끝(마침표·물음표·느낌표)에는 pageBreakAfter.
+    Azure 는 한국어 어절을 구두점 없이 보내므로(실측 2026-10-19: "손해입니다." → "손해입니다") 원문 text 를 주면
+    어절을 순서대로 맞춰 구두점을 되살리고 문장 끝을 판정한다. 구두점만 있는 이벤트는 앞 어절에 붙인다.
+    마지막 토큰은 항상 pageBreakAfter(씬 단위 합성이므로 씬 끝 = 페이지 끝).
+    """
+    source = [w for w in re.split(r"\s+", text or "") if w]
+    cursor = 0
+    out: List[Dict[str, Any]] = []
+    for b in boundaries or []:
+        word = str(b.get("text") or "").strip()
+        if not word:
+            continue
+        # 원문 어절과 정렬: 구두점을 뗀 형태가 같은 어절을 앞에서부터 3칸 안에서 찾는다
+        if source and not _PUNCT_ONLY_RE.match(word):
+            core = _strip_punct(word)
+            for j in range(cursor, min(cursor + 3, len(source))):
+                if core and _strip_punct(source[j]) == core:
+                    word = source[j]
+                    cursor = j + 1
+                    break
+        start_ms = int(round(int(b.get("offset") or 0) / 10000))
+        end_ms = int(round((int(b.get("offset") or 0) + int(b.get("duration") or 0)) / 10000))
+        end_ms = max(start_ms + 1, end_ms)
+        if out and _PUNCT_ONLY_RE.match(word):
+            out[-1]["text"] += word
+            out[-1]["endMs"] = max(out[-1]["endMs"], end_ms)
+            if _SENTENCE_END_RE.search(word):
+                out[-1]["pageBreakAfter"] = True
+            continue
+        tok: Dict[str, Any] = {"text": (" " if out else "") + word, "startMs": start_ms, "endMs": end_ms}
+        if _SENTENCE_END_RE.search(word):
+            tok["pageBreakAfter"] = True
+        out.append(tok)
+    # 이벤트가 겹치거나 역행하면 단조 증가로 보정한다
+    for i in range(1, len(out)):
+        if out[i]["startMs"] < out[i - 1]["endMs"]:
+            out[i - 1]["endMs"] = out[i]["startMs"] if out[i]["startMs"] > out[i - 1]["startMs"] else out[i - 1]["endMs"]
+    if out and page_break_at_end:
+        out[-1]["pageBreakAfter"] = True
+    return out
+
+
 def merge_audio_files(input_files: List[str], output_file: str) -> bool:
     """여러 MP3/WAV 오디오 파일을 하나의 완전한 MP3 파일로 병합 (ffmpeg 또는 바이너리 결합)"""
     existing_files = [f for f in input_files if os.path.exists(f)]
@@ -268,15 +322,41 @@ class TTSService:
         voice_code: str = "ko-KR-InJoonNeural",
         rate: str = "+5%",
         pitch: str = "+0Hz",
-        output_file: str = "output.mp3"
-    ) -> str:
-        """단일 문장 Edge-TTS 음성 합성"""
+        output_file: str = "output.mp3",
+        with_word_boundaries: bool = False,
+    ):
+        """단일 문장 Edge-TTS 음성 합성.
+
+        기본(with_word_boundaries=False)은 기존과 동일하게 파일 경로(str)를 돌려준다.
+        with_word_boundaries=True 면 Communicate.stream() 의 WordBoundary 이벤트(offset·duration, 100ns 단위)를 모아
+        shorts_engine 자막 토큰({"text", "startMs", "endMs", "pageBreakAfter"}) 으로 바꿔
+        {"file", "captions", "word_count"} 를 돌려준다 (작업계획서_쇼츠_자동화 S-2 3항).
+        """
         clean_text = clean_narration_text(text)
         if not clean_text or len(clean_text) < 2:
             return None
-        comm = edge_tts.Communicate(clean_text, voice=voice_code, rate=rate, pitch=pitch)
-        await comm.save(output_file)
-        return output_file
+        if not with_word_boundaries:
+            comm = edge_tts.Communicate(clean_text, voice=voice_code, rate=rate, pitch=pitch)
+            await comm.save(output_file)
+            return output_file
+
+        # edge-tts 7.x 는 boundary="WordBoundary" 를 줘야 단어 이벤트를 보낸다(기본은 SentenceBoundary). 6.x 는 인자가 없고 항상 단어 단위.
+        try:
+            comm = edge_tts.Communicate(clean_text, voice=voice_code, rate=rate, pitch=pitch, boundary="WordBoundary")
+        except TypeError:
+            comm = edge_tts.Communicate(clean_text, voice=voice_code, rate=rate, pitch=pitch)
+        boundaries: List[Dict[str, Any]] = []
+        with open(output_file, "wb") as f:
+            async for chunk in comm.stream():
+                ctype = chunk.get("type")
+                if ctype == "audio":
+                    f.write(chunk.get("data") or b"")
+                elif ctype == "WordBoundary":
+                    boundaries.append({"offset": int(chunk.get("offset") or 0),
+                                       "duration": int(chunk.get("duration") or 0),
+                                       "text": str(chunk.get("text") or "")})
+        captions = word_boundaries_to_captions(boundaries, text=clean_text)
+        return {"file": output_file, "captions": captions, "word_count": len(captions)}
 
     @classmethod
     def synthesize_speech(

@@ -185,6 +185,69 @@ CONCEPT_PACKS: Dict[str, Dict[str, Any]] = {
             },
         },
     },
+    # 쇼츠(9:16) 정보형 — 작업계획서_쇼츠_자동화 7장 S-2. 서사 골격은 5씬 고정 순서이고,
+    # 씬당 5~8초·총 30~58초를 shorts 블록에 수치로 둔다(shorts_engine 이 길이 컷·훅·엔드 태그 기본값으로 읽는다).
+    "shorts_info": {
+        "name": "쇼츠 정보형 (9:16)",
+        "description": "2초 안에 멈추게 하는 훅 → 핵심 2개 → 반전/근거 → CTA. 세로 쇼츠 전용, 씬당 5~8초·총 30~58초",
+        "plot": "훅(1씬, 2초 안에 시선 고정) -> 핵심 1 -> 핵심 2 -> 반전/근거(사실은) -> CTA(구독·다음 편)",
+        "shorts": {
+            "format": "scene",
+            "scene_seconds": {"min": 5.0, "max": 8.0},
+            "total_seconds": {"min": 30.0, "max": 58.0},
+            "max_scenes": 6,
+            "min_scenes": 4,
+            "hook_words": {"min": 3, "max": 5},
+            "hook_seconds": 3.0,
+            # 한국어 초당 5.2자 기준: 30초 ≈ 70~80어절(≈155자), 60초 ≈ 125~150어절(≈310자)
+            "ko_chars_per_sec": 5.2,
+            "narration_chars_per_scene": {"min": 26, "max": 42},
+            "end_tag": {"text": "구독하고 다음 편 보기", "subtext": "", "seconds": 2.0},
+            "beats": ["훅", "핵심 1", "핵심 2", "반전/근거", "CTA"],
+            # 씬 종류(작업계획서 7b, PR #42): image 외에는 Remotion 이 그려 이미지 비용 0. shorts_engine.SCENE_KINDS 와 같은 목록.
+            "scene_kinds": ["image", "text_card", "stat_card", "bar_chart", "compare"],
+            "scene_kind_fields": ["palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows"],
+            "kind_guide": {
+                "image": "히어로 장면(피사체·공간이 중요할 때). 편당 1~2씬만 — 유일한 생성 비용",
+                "text_card": "훅·전환·결론 문장 (title ≤ 18자, subtitle ≤ 24자)",
+                "stat_card": "숫자 하나를 크게 (value 숫자, unit 단위, label 설명)",
+                "bar_chart": "2~5개 비교 (bars[{label, value, highlight}], unit)",
+                "compare": "전→후 변화 (rows[{label, from, to, unit}])",
+            },
+            "max_image_scenes": 2,
+        },
+        "image_aesthetic": {
+            "aesthetic": "bold vertical mobile-first editorial photography, one oversized subject filling the frame",
+            "palette": "high-contrast neutral base with one saturated accent color on the key object",
+            "framing": "vertical 9:16, subject centered in the middle 60% so top hook text and bottom captions stay clear",
+            "overall_mood": "punchy, instantly readable at phone size, zero clutter",
+        },
+        "image_constraints": [
+            "Do not render any text other than explicitly specified in text_layer",
+            "All text must strictly use English/Korean exactly as quoted in double quotes",
+            "Text strings must be under 10 characters",
+            "Keep the top 15% and bottom 20% of the frame free of important detail (overlay safe zones)",
+            "Single dominant subject, uncluttered background, readable on a phone screen over {style}",
+        ],
+        "render_style": "모바일 세로 화면용 굵고 선명한 에디토리얼 사진, 핵심 피사체 하나를 크게, 고대비, 배경 정리",
+        "image": {
+            "persona": "유튜브 쇼츠·릴스 전문 비주얼 디렉터이자 세로 구도 사진 감독",
+            "layers": ["scene", "text_layer"],
+            "thumbnail_rule": "세로 9:16, 피사체 하나를 화면 가운데 크게. 훅 단어 라벨 1개만 허용",
+            "scene_rule": "피사체 하나를 세로 화면 중앙 60% 안에 크게 배치. 상단·하단은 비워 둔다. 도면 그래픽 금지",
+            "schema_annotation": None,
+            "annotation_defaults": None,
+            "model_directive": "Vertical 9:16 photograph with one dominant subject; keep top and bottom margins clean for overlays. No diagram lines or HUD graphics.",
+            # 훅·자막은 Remotion 이 얹으므로 이미지에는 글자를 넣지 않는다
+            "text_policy": {"thumbnail": True, "scene": False},
+            "render_style_thumb": "bold vertical editorial photography, high contrast, phone-readable",
+            "render_style_scene": "bold vertical editorial still, subject centered, clean top and bottom margins",
+            "composition": {
+                "thumb_h": "vertical 9:16 mobile composition, oversized centered subject, clean top and bottom margins",
+                "scene_h": "vertical 9:16 framing, single subject in the central band, uncluttered surroundings",
+            },
+        },
+    },
 }
 
 
@@ -231,3 +294,17 @@ def image_constraints(key: str = None, style_text: str = "") -> List[str]:
     fallback = "high-detail realistic photography"
     style_text = (style_text or "").strip() or fallback
     return [c.replace("{style}", style_text) for c in get_pack(key)["image_constraints"]]
+
+
+DEFAULT_SHORTS_SPEC = CONCEPT_PACKS["shorts_info"]["shorts"]
+
+
+def is_shorts_pack(key: str = None) -> bool:
+    """쇼츠 전용 팩인지(shorts 블록 보유)."""
+    return bool(CONCEPT_PACKS.get(key or "", {}).get("shorts"))
+
+
+def shorts_spec(key: str = None) -> Dict[str, Any]:
+    """쇼츠 길이·훅·엔드 태그 규격. 쇼츠 팩이 아니면 shorts_info 의 기본 규격을 돌려준다."""
+    spec = get_pack(key).get("shorts") if key else None
+    return dict(spec or DEFAULT_SHORTS_SPEC)

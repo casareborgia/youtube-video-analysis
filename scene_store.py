@@ -23,6 +23,8 @@ AUDIO_DIR = os.path.join(BASE_DIR, "data", "audio")
 os.makedirs(SCENES_DIR, exist_ok=True)
 
 PLAN_ID_RE = re.compile(r"^scenes_[0-9]+(?:_[\w가-힣-]+)?$")
+# 쇼츠 씬 종류별 필드 (shorts_engine.SCENE_KIND_FIELDS 와 동일)
+SHORTS_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows")
 
 
 def _slug(text: str, limit: int = 24) -> str:
@@ -92,6 +94,12 @@ def build_plan(batch: Dict[str, Any], scene_seconds: float = 8.0) -> Dict[str, A
             "image_prompt_json": sc.get("first_frame_redline"),
             "visual_prompt": sc.get("prompt_en") or sc.get("visual_description_ko") or "",
         })
+        # 쇼츠 씬 종류(kind)와 종류별 필드 — 16:9 기획에는 없으므로 있을 때만 담는다 (shorts_engine 이 읽음)
+        if sc.get("kind"):
+            structured[-1]["kind"] = sc["kind"]
+            for k in SHORTS_KIND_FIELDS:
+                if sc.get(k) is not None:
+                    structured[-1][k] = sc[k]
         # 씬 기획 탭에서 이미 합성한 음성이 있으면 함께 넘긴다
         audio_file = _resolve_audio(sc)
         if audio_file:
@@ -117,6 +125,10 @@ def build_plan(batch: Dict[str, Any], scene_seconds: float = 8.0) -> Dict[str, A
         "pinned_comment": batch.get("pinned_comment", ""),
         "thumbnail_redline": batch.get("thumbnail_redline"),
         "thumbnail_prompt": batch.get("thumbnail_redline"),  # producer 가 읽는 이름
+        # 쇼츠(9:16) 기획서 전용 — shorts_engine.build_job_from_plan 이 훅·엔드 태그로 읽는다 (16:9 는 빈 값)
+        "hook_text": batch.get("hook_text", ""),
+        "end_tag_text": batch.get("end_tag_text", ""),
+        "end_tag_subtext": batch.get("end_tag_subtext", ""),
         "structured_scenes": structured,
         "audio_data": {"scenes_audio": audio_scenes},
         "created_at": time.time(),
