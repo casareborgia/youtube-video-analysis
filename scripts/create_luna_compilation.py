@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """
-에이전트 루나 (Agent Luna) - 롱폼 컴필레이션 플레이리스트 생성 유틸리티
+루나의 심야 서재 — 장르별 롱폼 컴필레이션(플레이리스트) 생성 유틸리티
 
-기존 51개 이상의 음원 자산 중 'Lo-Fi / Piano' 등 핵심 휴식 장르 트랙들을 선별하여,
-1시간 / 2시간 연속 재생 컴필레이션 오디오 및 비디오(MP4)를 자동 생성합니다.
-유튜브 업로드에 최적화된 트랙리스트 타임라인(Timeline)과 감성 설명란도 함께 출력합니다.
+data/luna_music 의 트랙을 장르 대표 룸(luna_engine.resolve_signature_bga) 기준으로 골라
+오디오를 이어 붙이고, 같은 룸의 대표 BGA 루프 영상을 입혀 롱폼 비디오(MP4)를 만든다.
+기본은 각 곡을 한 번씩만 싣는다(길이를 억지로 1시간에 맞추지 않음). --minutes 를 주면 그 길이까지 순환 반복.
+
+산출물은 data/luna_compilations/<장르>/ 에 저장한다 (기존 로파이 1시간본은 data/luna_compilations/ 루트에 그대로 둔다).
+- compilation_audio.mp3 / compilation_video.mp4
+- youtube_metadata.json (업로드 스크립트 입력) / youtube_metadata.txt (사람이 읽는 용)
 """
 
 import os
 import sys
 import json
+import hashlib
 import shutil
 import argparse
 import subprocess
@@ -17,20 +22,54 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE_DIR))
+
+import luna_engine  # noqa: E402  장르→대표 룸 매핑을 엔진과 하나로 쓴다
+
 DATA_DIR = BASE_DIR / "data"
 LUNA_DIR = DATA_DIR / "luna_music"
-DEFAULT_OUT_DIR = DATA_DIR / "luna_compilations"
-BGA_ASSETS_DIR = DATA_DIR / "bga_assets"
+COMPILATIONS_DIR = DATA_DIR / "luna_compilations"
 
-# 장르별 3대 시그니처 룸 BGA 루프 파일 매핑
-BGA_SIGNATURE_FILES = {
-    "lofi": BGA_ASSETS_DIR / "bga_lofi_study.mp4",
-    "piano": BGA_ASSETS_DIR / "bga_piano_moonlight.mp4",
-    "ambient": BGA_ASSETS_DIR / "bga_ambient_bedroom.mp4",
-    "sleep": BGA_ASSETS_DIR / "bga_ambient_bedroom.mp4",
-    "all_relax": BGA_ASSETS_DIR / "bga_lofi_study.mp4",
-    "all_sleep": BGA_ASSETS_DIR / "bga_piano_moonlight.mp4"
+CHANNEL_SUBSCRIBE_URL = luna_engine.LUNA_CHANNEL_SUBSCRIBE_URL
+
+# 묶음 장르 → (포함할 룸 키, 영상·썸네일로 쓸 룸 키)
+GROUP_GENRES = {
+    "all_relax": (("lofi", "piano", "ambient", "sleep"), "lofi"),
+    "all_sleep": (("piano", "ambient", "sleep"), "piano"),
 }
+
+# 장르 → (제목 상황 문구, 이모지, 설명 첫 문단, 해시태그, 태그)
+GENRE_COPY = {
+    "lofi": ("오늘 밤 생각 비우고 푹 쉬고 싶을 때 듣는 로파이", "🌧️",
+             "지친 하루의 끝, 조용한 위로와 온전한 쉼이 필요할 때 틀어두는 루나의 심야 서재 로파이 플레이리스트입니다. 🌙\n불을 끄고 침대에서, 혹은 깊은 공부와 작업 몰입에 함께하세요.",
+             "#로파이 #Chillhop #LoFiPlaylist", ["로파이", "Chillhop", "LoFiPlaylist", "공부할때듣는음악"]),
+    "piano": ("잠 못 드는 새벽, 마음을 가만히 쓰다듬는 피아노", "🌙",
+              "달빛이 스미는 창가, 오래된 피아노 앞에서 하루를 천천히 내려놓는 루나의 심야 서재 피아노 플레이리스트입니다. 🎹\n잠들기 전, 혹은 조용히 생각을 정리하고 싶은 밤에 틀어두세요.",
+              "#새벽피아노 #피아노연주곡 #PianoPlaylist", ["새벽피아노", "피아노연주곡", "감성피아노", "PianoPlaylist", "잔잔한피아노"]),
+    "ambient": ("깊은 밤 생각을 내려놓고 잠드는 앰비언트", "🌌",
+                "도시의 불빛마저 잦아든 자정, 넓게 퍼지는 공간의 울림 속에 몸을 맡기는 루나의 심야 서재 앰비언트 플레이리스트입니다. 🌌\n잠들기 전, 명상이나 깊은 몰입이 필요한 시간에 함께하세요.",
+                "#앰비언트 #명상음악 #AmbientPlaylist", ["앰비언트", "AmbientMusic", "명상음악", "AmbientPlaylist", "잠잘때듣는음악"]),
+    "sleep": ("깊은 잠으로 데려가는 수면 음악", "🌙",
+              "포근한 안식처에서 긴장을 풀고 깊은 잠에 드는 루나의 심야 서재 수면 플레이리스트입니다. 🌙",
+              "#수면음악 #SleepBGM #DeepSleep", ["수면음악", "DeepSleep", "잠잘때듣는음악"]),
+    "jazz": ("늦은 밤 재즈 카페에 홀로 앉아 듣는 재즈", "🎷",
+             "불빛이 낮게 깔린 심야 재즈 카페, 루나의 심야 서재 재즈 플레이리스트입니다. 🎷",
+             "#재즈 #카페음악 #JazzPlaylist", ["재즈", "카페음악", "JazzPlaylist"]),
+    "acoustic": ("햇살 드는 다락방에서 듣는 어쿠스틱", "☀️",
+                 "햇살이 스미는 다락방, 따뜻한 기타 선율의 루나의 심야 서재 어쿠스틱 플레이리스트입니다. ☀️",
+                 "#어쿠스틱 #통기타 #AcousticPlaylist", ["어쿠스틱", "통기타", "AcousticPlaylist"]),
+    "chill": ("도심 야경을 내려다보며 듣는 칠 플레이리스트", "🌃",
+              "불빛이 번지는 도심 발코니, 루나의 심야 서재 칠 플레이리스트입니다. 🌃",
+              "#칠아웃 #시티팝 #ChillPlaylist", ["칠아웃", "시티팝", "ChillPlaylist"]),
+}
+GROUP_COPY = {
+    "all_relax": ("하루 끝에 틀어두는 휴식 음악 모음", "🌙", GENRE_COPY["lofi"][2], "#로파이 #새벽피아노 #힐링음악", ["로파이", "새벽피아노", "힐링음악"]),
+    "all_sleep": ("잠들기 전 듣는 피아노 & 앰비언트 모음", "🌙", GENRE_COPY["piano"][2], "#수면음악 #새벽피아노 #SleepBGM", ["수면음악", "새벽피아노", "앰비언트"]),
+}
+# resolve_signature_bga 가 돌려주는 룸 키 (SIGNATURE_BGA_MAP 의 'rnb-chill' 같은 별칭은 제외)
+GENRE_CHOICES = tuple(GENRE_COPY) + tuple(GROUP_GENRES)
+BASE_TAGS = ["루나의심야서재", "LunasMidnightRoom", "플레이리스트", "수면음악", "새벽감성", "힐링음악", "SleepBGM", "BGM"]
+AUDIO_CANDIDATES = ("audio_mastered.wav", "audio_mastered_preview.mp3", "audio.mp3", "audio_raw.mp3")
 
 
 def run_ffmpeg(cmd: List[str], label: str) -> None:
@@ -41,301 +80,217 @@ def run_ffmpeg(cmd: List[str], label: str) -> None:
         raise RuntimeError(f"ffmpeg {label} 실패 (code {res.returncode}):\n{tail}")
 
 
-def get_audio_duration(file_path: Path) -> float:
-    """ffprobe를 이용해 오디오 재생 길이(초)를 정밀 측정합니다."""
-    ffprobe = shutil.which("ffprobe")
-    if not ffprobe:
-        return 180.0  # 기본값 3분
-    cmd = [
-        ffprobe, "-v", "error", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", str(file_path)
-    ]
+def get_audio_duration(file_path) -> float:
+    """ffprobe 로 재생 길이(초)를 잰다. 측정 실패 시 0 — 타임라인이 틀어지지 않도록 그 곡은 제외된다."""
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        res = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", str(file_path)],
+            capture_output=True, text=True, check=True,
+        )
         return float(res.stdout.strip())
     except Exception:
-        return 180.0
+        return 0.0
 
 
-def scan_available_tracks(genre_filter: str = "lofi") -> List[Dict[str, Any]]:
-    """luna_music 디렉토리 내의 트랙들을 스캔하고 장르 필터에 맞는 곡들을 반환합니다."""
-    tracks = []
-    if not LUNA_DIR.exists():
-        return tracks
+def room_keys_for(genre: str):
+    """장르 인자 → (포함할 룸 키 집합, 영상·썸네일 룸 키)."""
+    if genre in GROUP_GENRES:
+        keys, visual = GROUP_GENRES[genre]
+        return set(keys), visual
+    if genre not in GENRE_COPY:
+        raise ValueError(f"알 수 없는 장르: {genre} (선택: {', '.join(GENRE_CHOICES)})")
+    return {genre}, genre
 
-    genre_keywords = {
-        "lofi": ["lo-fi", "lofi", "chillhop"],
-        "piano": ["piano", "피아노"],
-        "ambient": ["ambient", "cinematic ambient"],
-        "sleep": ["sleep", "meditation", "delta"],
-        "all_relax": ["lo-fi", "lofi", "chillhop", "piano", "피아노", "ambient", "sleep"],
-        "all_sleep": ["piano", "피아노", "ambient", "sleep", "meditation", "delta"]
-    }.get(genre_filter.lower(), [genre_filter.lower()])
 
-    for track_dir in sorted(LUNA_DIR.glob("luna_*")):
+def scan_available_tracks(genre: str = "lofi", luna_dir: Optional[Path] = None) -> List[Dict[str, Any]]:
+    """장르 대표 룸이 일치하는 트랙을 생성 순(track_id 순)으로 반환한다."""
+    keys, _ = room_keys_for(genre)
+    tracks, seen_audio = [], {}
+    for track_dir in sorted(Path(luna_dir or LUNA_DIR).glob("luna_*")):
         meta_file = track_dir / "meta.json"
         if not meta_file.exists():
             continue
-
         try:
-            with open(meta_file, "r", encoding="utf-8") as f:
-                meta = json.load(f)
+            meta = json.loads(meta_file.read_text(encoding="utf-8"))
         except Exception:
             continue
-
-        genre_text = (meta.get("genre") or "").lower()
-        title = meta.get("title") or track_dir.name
-
-        # 장르 필터링
-        if not any(k in genre_text for k in genre_keywords):
+        if luna_engine.resolve_signature_bga(meta.get("genre") or "")["genre_key"] not in keys:
             continue
-
-        # 오디오 파일 찾기 (마스터링된 파일 최우선)
-        audio_file = None
-        for candidate in ["audio_mastered.wav", "audio_mastered_preview.mp3", "audio.mp3", "audio_raw.mp3"]:
-            p = track_dir / candidate
-            if p.exists() and p.stat().st_size > 10000:
-                audio_file = p
-                break
-
+        audio_file = next((track_dir / c for c in AUDIO_CANDIDATES
+                           if (track_dir / c).exists() and (track_dir / c).stat().st_size > 10000), None)
         if not audio_file:
             continue
-
-        # 커버 이미지 찾기
-        cover_file = track_dir / "cover.jpg"
-        if not cover_file.exists():
-            for img in track_dir.glob("*.jpg"):
-                cover_file = img
-                break
-
+        # 같은 음원이 트랙 폴더만 달리 두 번 저장된 경우가 있다 (예: Aetherial Drift) — 바이트가 같으면 한 번만 싣는다
+        digest = hashlib.md5(audio_file.read_bytes()).hexdigest()
+        if digest in seen_audio:
+            print(f"[!] 같은 음원 중복 제외: {track_dir.name} (= {seen_audio[digest]})")
+            continue
+        seen_audio[digest] = track_dir.name
         duration = get_audio_duration(audio_file)
-
+        if duration <= 0:
+            print(f"[!] 길이 측정 실패로 제외: {track_dir.name} ({audio_file.name})")
+            continue
         tracks.append({
             "track_id": track_dir.name,
-            "title": title,
-            "genre": meta.get("genre", "Lo-Fi"),
-            "mood": meta.get("mood", "새벽 감성"),
+            "title": meta.get("title") or track_dir.name,
+            "genre": meta.get("genre") or "",
             "audio_file": str(audio_file),
-            "cover_file": str(cover_file) if cover_file and cover_file.exists() else None,
             "duration": duration,
-            "story": meta.get("story", "")
+            "released": bool(meta.get("uploaded_video_id")),  # 단곡으로 이미 올라갔는지 (아니면 컴필레이션 최초 공개)
         })
-
     return tracks
 
 
-# 장르 필터 → (제목 라벨, 설명란 장르 해시태그)
-GENRE_TITLE_LABELS = {
-    "lofi": ("로파이 모음", "#로파이 #Chillhop #LoFiPlaylist"),
-    "piano": ("새벽 피아노 모음", "#새벽피아노 #피아노연주곡 #PianoPlaylist"),
-    "ambient": ("앰비언트 모음", "#앰비언트 #힐링음악 #AmbientPlaylist"),
-    "sleep": ("수면 음악 모음", "#수면음악 #SleepBGM #DeepSleep"),
-    "all_relax": ("휴식 음악 모음", "#로파이 #새벽피아노 #힐링음악"),
-    "all_sleep": ("수면 피아노 & 앰비언트 모음", "#수면음악 #새벽피아노 #SleepBGM #DeepSleep")
-}
+def build_playlist(tracks: List[Dict[str, Any]], target_seconds: float = 0) -> List[Dict[str, Any]]:
+    """target_seconds 가 0 이면 각 곡 한 번씩. 양수면 그 길이를 넘길 때까지 순환 반복."""
+    if not tracks:
+        raise ValueError("선별된 트랙이 없습니다.")
+    if target_seconds <= 0:
+        return list(tracks)
+    playlist, total = [], 0.0
+    while total < target_seconds:
+        for t in tracks:
+            playlist.append(t)
+            total += t["duration"]
+            if total >= target_seconds:
+                break
+    return playlist
 
 
 def format_timestamp(seconds: float) -> str:
     """초를 MM:SS 또는 HH:MM:SS 타임라인 형식으로 변환합니다."""
-    hrs = int(seconds // 3600)
-    mins = int((seconds % 3600) // 60)
-    secs = int(seconds % 60)
-    if hrs > 0:
-        return f"{hrs:02d}:{mins:02d}:{secs:02d}"
-    return f"{mins:02d}:{secs:02d}"
+    hrs, mins, secs = int(seconds // 3600), int((seconds % 3600) // 60), int(seconds % 60)
+    return f"{hrs:02d}:{mins:02d}:{secs:02d}" if hrs else f"{mins:02d}:{secs:02d}"
 
 
-def assemble_compilation(
-    tracks: List[Dict[str, Any]],
-    target_seconds: float = 3600.0,
-    output_dir: Path = DEFAULT_OUT_DIR,
-    compilation_title: str = "Lo-Fi Midnight Study",
-    render_video: bool = True,
-    genre_filter: str = "lofi",
-) -> Dict[str, Any]:
-    """선별된 트랙들을 묶어 롱폼 오디오/비디오 및 유튜브 메타데이터를 생성합니다."""
+def duration_label(seconds: float) -> str:
+    hours = int(seconds // 3600)
+    if hours >= 1:
+        return "[1 Hour Playlist]" if hours == 1 else f"[{hours} Hours Playlist]"
+    return f"[{int(seconds // 60)} Min Playlist]"
+
+
+def build_youtube_metadata(genre: str, playlist: List[Dict[str, Any]], total_seconds: float,
+                           channel_name: str = "루나의 심야 서재") -> Dict[str, Any]:
+    """제목·설명(타임라인)·태그. 단곡으로 아직 올라가지 않은 곡은 ★ 로 '플레이리스트 최초 공개' 표시."""
+    phrase, emoji, intro, hashtags, genre_tags = (GROUP_COPY.get(genre) or GENRE_COPY[genre])
+    has_new = any(not t["released"] for t in playlist)
+    title = f"{duration_label(total_seconds)} {phrase} {emoji}{' (미발표곡 포함)' if has_new else ''} | {channel_name}"
+    if len(title) > 100:  # 유튜브 제목 한도
+        title = f"{duration_label(total_seconds)} {phrase} {emoji} | {channel_name}"
+
+    lines, t = [], 0.0
+    for item in playlist:
+        lines.append(f"{format_timestamp(t)} {item['title']}{'' if item['released'] else ' ★'}")
+        t += item["duration"]
+    new_note = "\n★ 표시는 이 플레이리스트에서 처음 공개하는 곡입니다.\n" if has_new else ""
+
+    description = f"""{intro}
+
+[Tracklist / 타임라인]
+{chr(10).join(lines)}
+{new_note}
+[Credits]
+음악: 루나의 심야 서재 (Luna's Midnight Room)
+
+채널 구독으로 루나의 따뜻한 서재에 매일 밤 머물러보세요 🐾
+{CHANNEL_SUBSCRIBE_URL}
+
+#루나의심야서재 #플레이리스트 #수면음악 #새벽감성 {hashtags}"""
+    tags = list(dict.fromkeys(BASE_TAGS + genre_tags))[:15]
+    return {"youtube_title": title, "youtube_description": description, "youtube_tags": tags}
+
+
+def assemble_compilation(tracks: List[Dict[str, Any]], genre: str, target_seconds: float = 0,
+                         output_dir: Optional[Path] = None, render_video: bool = True) -> Dict[str, Any]:
+    """오디오 concat → 대표 BGA 루프 합성 → 업로드용 메타데이터 저장."""
+    output_dir = Path(output_dir or COMPILATIONS_DIR / genre)
     output_dir.mkdir(parents=True, exist_ok=True)
-    ffmpeg = shutil.which("ffmpeg")
-    if not ffmpeg:
+    if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg가 설치되어 있지 않습니다.")
 
-    if not tracks:
-        raise ValueError("선별된 트랙이 없습니다.")
+    playlist = build_playlist(tracks, target_seconds)
+    print(f"[*] {len(playlist)}곡 배치 (고유 {len({t['track_id'] for t in playlist})}곡)")
 
-    # 목표 길이에 맞게 트랙 리스트 채우기 (곡 수가 적으면 순환 반복)
-    playlist = []
-    accumulated_time = 0.0
-    while accumulated_time < target_seconds:
-        for t in tracks:
-            playlist.append(t)
-            accumulated_time += t["duration"]
-            if accumulated_time >= target_seconds:
-                break
-
-    print(f"[*] 총 {len(playlist)}개 트랙 배치 (총 예상 재생시간: {int(accumulated_time // 60)}분 {int(accumulated_time % 60)}초)")
-
-    # 1. 타임라인 계산 + 입력 목록
-    timeline_entries = []
-    current_time = 0.0
-    for item in playlist:
-        timeline_entries.append(f"{format_timestamp(current_time)} {item['title']}")
-        current_time += item["duration"]
-
+    # 1. 오디오 — 트랙마다 포맷이 다를 수 있다(audio_mastered.wav 48k / audio.mp3 44.1k 혼재).
+    # concat demuxer 는 코덱·샘플레이트가 같아야 해서, 입력별로 44.1kHz 스테레오로 맞춘 뒤 filter_complex concat 으로 묶는다.
     out_audio = output_dir / "compilation_audio.mp3"
-    print(f"[*] 오디오 스트림 Concat 진행 중 -> {out_audio}")
-
-    # 트랙마다 포맷이 다를 수 있다(audio_mastered.wav 48k / audio.mp3 44.1k 혼재).
-    # concat demuxer 는 코덱·샘플레이트가 같아야 해서 섞이면 깨지므로, 입력별로 44.1kHz 스테레오로
-    # 리샘플한 뒤 filter_complex concat 으로 묶는다 (경로 인용 문제도 없음).
-    cmd_audio = [ffmpeg, "-y"]
+    cmd_audio = ["ffmpeg", "-y"]
     for item in playlist:
         cmd_audio += ["-i", os.path.abspath(item["audio_file"])]
     n = len(playlist)
-    filter_parts = [f"[{i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a{i}]" for i in range(n)]
-    filter_parts.append("".join(f"[a{i}]" for i in range(n)) + f"concat=n={n}:v=0:a=1[out]")
-    cmd_audio += [
-        "-filter_complex", ";".join(filter_parts), "-map", "[out]",
-        "-c:a", "libmp3lame", "-b:a", "320k", "-ar", "44100", str(out_audio)
-    ]
+    parts = [f"[{i}:a]aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo[a{i}]" for i in range(n)]
+    parts.append("".join(f"[a{i}]" for i in range(n)) + f"concat=n={n}:v=0:a=1[out]")
+    cmd_audio += ["-filter_complex", ";".join(parts), "-map", "[out]",
+                  "-c:a", "libmp3lame", "-b:a", "320k", "-ar", "44100", str(out_audio)]
+    print(f"[*] 오디오 concat -> {out_audio}")
     run_ffmpeg(cmd_audio, "오디오 concat")
+    actual_duration = get_audio_duration(out_audio) or sum(t["duration"] for t in playlist)
 
-    actual_duration = get_audio_duration(out_audio)
-
-    # 2. 비디오 렌더링 (3대 시그니처 룸 BGA 루프 비디오 우선, 없으면 커버 이미지 스틸 폴백)
+    # 2. 비디오 — 장르 대표 룸 BGA 루프 (엔진과 같은 1:1 매핑). 없으면 커버로 바꾸지 않고 중단한다.
+    _, visual_key = room_keys_for(genre)
+    sig = luna_engine.resolve_signature_bga(visual_key, ensure_exists=render_video)
     out_video = output_dir / "compilation_video.mp4"
-    bga_video = BGA_SIGNATURE_FILES.get(genre_filter)
-    video_rendered = False
-
     if render_video:
-        if bga_video and bga_video.exists():
-            print(f"[*] 3대 시그니처 룸 BGA 무한 루프 합성 시작 -> {bga_video.name}")
-            common_head = [ffmpeg, "-y", "-stream_loop", "-1", "-i", str(bga_video), "-i", str(out_audio),
-                           "-map", "0:v:0", "-map", "1:a:0"]
-            common_tail = ["-c:a", "aac", "-b:a", "320k", "-t", f"{actual_duration:.3f}", "-shortest",
-                           "-movflags", "+faststart", str(out_video)]
-            # 1차: 비디오 스트림 복사 (재인코딩 없음 → 화질 손실 0, 1~2시간도 수 분 내 조립)
-            try:
-                run_ffmpeg(common_head + ["-c:v", "copy"] + common_tail, "BGA 루프(stream copy)")
-                print(f"[+] 시그니처 룸 BGA 무한 루프 비디오 생성 완료 (무손실 복사): {out_video}")
-            except RuntimeError as e:
-                # 2차: 컨테이너/코덱 호환이 안 되는 에셋이면 1080p 로 재인코딩 (4K 에셋도 1080p 로 맞춤)
-                print(f"[!] 스트림 복사 불가 → 1080p 재인코딩으로 전환\n    {e}")
-                run_ffmpeg(
-                    common_head + [
-                        "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
-                        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p",
-                    ] + common_tail,
-                    "BGA 루프(재인코딩)",
-                )
-                print(f"[+] 시그니처 룸 BGA 무한 루프 비디오 생성 완료 (재인코딩): {out_video}")
-            video_rendered = True
-        else:
-            # 커버 이미지 기반 stillimage 루프 폴백
-            cover_image = None
-            for p in playlist:
-                if p.get("cover_file") and os.path.exists(p["cover_file"]):
-                    cover_image = p["cover_file"]
-                    break
+        if not sig.get("video_path"):
+            raise RuntimeError(f"대표 BGA 영상이 없습니다 ({sig['room_name']}). scripts/generate_signature_bga_assets.py 로 먼저 생성하세요.")
+        head = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", sig["video_path"], "-i", str(out_audio), "-map", "0:v:0", "-map", "1:a:0"]
+        tail = ["-c:a", "aac", "-b:a", "320k", "-t", f"{actual_duration:.3f}", "-shortest", "-movflags", "+faststart", str(out_video)]
+        print(f"[*] 대표 BGA({sig['room_name']}) 루프 합성 -> {out_video}")
+        try:
+            # 재인코딩 없이 복사 → 화질 손실 0, 1시간도 수 분 내 조립
+            run_ffmpeg(head + ["-c:v", "copy"] + tail, "BGA 루프(stream copy)")
+        except RuntimeError as e:
+            print(f"[!] 스트림 복사 불가 → 1080p 재인코딩\n    {e}")
+            run_ffmpeg(head + ["-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+                               "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20", "-pix_fmt", "yuv420p"] + tail,
+                       "BGA 루프(재인코딩)")
 
-            if cover_image:
-                print(f"[*] 1080p 스틸 롱폼 비디오 렌더링 시작 (커버: {os.path.basename(cover_image)})...")
-                cmd_video = [
-                    ffmpeg, "-y",
-                    "-loop", "1", "-framerate", "2", "-i", str(cover_image),
-                    "-i", str(out_audio),
-                    "-c:v", "libx264", "-tune", "stillimage", "-preset", "ultrafast",
-                    "-crf", "22", "-pix_fmt", "yuv420p",
-                    "-c:a", "aac", "-b:a", "320k",
-                    "-t", f"{actual_duration:.3f}", "-shortest",
-                    str(out_video)
-                ]
-                run_ffmpeg(cmd_video, "스틸 커버 비디오")
-                print(f"[+] 스틸 커버 비디오 생성 완료: {out_video}")
-                video_rendered = True
-
-    # 3. 유튜브 메타데이터 생성 (모바일 최적화 제목 및 타임라인 설명)
-    timeline_text = "\n".join(timeline_entries)
-    hours_int = int(actual_duration // 3600)
-    if hours_int >= 1:
-        duration_label = f"[{hours_int} Hour Playlist]" if hours_int == 1 else f"[{hours_int} Hours Playlist]"
-    else:
-        duration_label = f"[{int(actual_duration // 60)} Min Playlist]"
-
-    genre_label, genre_hashtags = GENRE_TITLE_LABELS.get(genre_filter, GENRE_TITLE_LABELS["lofi"])
-    yt_title = f"{duration_label} 오늘 밤 생각 비우고 푹 쉬고 싶을 때 듣는 {genre_label} 🌧️ | {compilation_title}"
-    yt_description = f"""지친 하루의 끝, 조용한 위로와 온전한 쉼이 필요할 때 틀어두는 루나의 심야 서재 플레이리스트입니다. 🌙
-불을 끄고 침대에서, 혹은 깊은 공부와 작업 몰입에 함께하세요.
-
-[Tracklist / 타임라인]
-{timeline_text}
-
-음악: 루나의 심야 서재 (Luna's Midnight Room)
-기획 & 큐레이션: 에이전트 레오 (Agent Leo)
-사운드 마스터링: 베가 (Vega)
-
-#루나의심야서재 #플레이리스트 #수면음악 #공부할때듣는음악 #새벽감성 {genre_hashtags}
-"""
-
-    meta_txt_file = output_dir / "youtube_metadata.txt"
-    with open(meta_txt_file, "w", encoding="utf-8") as f:
-        f.write(f"=== 유튜브 업로드 권장 제목 ===\n{yt_title}\n\n")
-        f.write(f"=== 유튜브 설명란 (복사하여 사용) ===\n{yt_description}\n")
-
-    print(f"[+] 유튜브 메타데이터 저장 완료: {meta_txt_file}")
-
-    return {
-        "status": "success",
+    # 3. 메타데이터
+    meta = build_youtube_metadata(genre, playlist, actual_duration)
+    meta.update({
+        "genre": genre,
+        "room_name": sig["room_name"],
+        "video_file": str(out_video) if render_video else None,
         "audio_file": str(out_audio),
-        "video_file": str(out_video) if video_rendered else None,
-        "metadata_file": str(meta_txt_file),
-        "total_tracks": len(playlist),
-        "duration_seconds": actual_duration,
-        "youtube_title": yt_title
-    }
+        "thumbnail_file": sig.get("thumbnail_path"),
+        "duration_seconds": round(actual_duration, 2),
+        "tracks": [{"track_id": t["track_id"], "title": t["title"], "released": t["released"]} for t in playlist],
+    })
+    (output_dir / "youtube_metadata.json").write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    (output_dir / "youtube_metadata.txt").write_text(
+        f"=== 제목 ===\n{meta['youtube_title']}\n\n=== 설명란 ===\n{meta['youtube_description']}\n\n=== 태그 ===\n{', '.join(meta['youtube_tags'])}\n",
+        encoding="utf-8")
+    print(f"[+] 메타데이터 저장: {output_dir / 'youtube_metadata.json'}")
+    return meta
 
 
 def main():
-    parser = argparse.ArgumentParser(description="에이전트 루나 롱폼 컴필레이션 플레이리스트 생성기")
-    parser.add_argument("--genre", type=str, default="lofi", choices=["lofi", "piano", "ambient", "sleep", "all_relax", "all_sleep"],
-                        help="필터링할 장르 (기본: lofi)")
-    parser.add_argument("--minutes", type=int, default=60, help="목표 재생 시간(분) (기본: 60)")
-    parser.add_argument("--title", type=str, default="Cozy Midnight Lo-Fi Room", help="컴필레이션 테마 제목")
-    parser.add_argument("--no-video", action="store_true", help="비디오 렌더링을 건너뛰고 오디오만 생성")
-    parser.add_argument("--out-dir", type=str, default=str(DEFAULT_OUT_DIR), help="출력 디렉토리")
-
+    parser = argparse.ArgumentParser(description="루나의 심야 서재 장르별 롱폼 컴필레이션 생성기")
+    parser.add_argument("--genre", default="lofi", choices=GENRE_CHOICES, help="장르 대표 룸 키 또는 묶음(all_relax·all_sleep)")
+    parser.add_argument("--minutes", type=int, default=0, help="목표 길이(분). 0(기본)이면 각 곡 한 번씩, 반복 없음")
+    parser.add_argument("--no-video", action="store_true", help="비디오 없이 오디오·메타데이터만")
+    parser.add_argument("--dry-run", action="store_true", help="곡 목록·제목만 출력하고 파일은 만들지 않음")
+    parser.add_argument("--out-dir", default=None, help="출력 디렉토리 (기본: data/luna_compilations/<장르>)")
     args = parser.parse_args()
 
-    print(f"=== [루나의 심야 서재] 롱폼 컴필레이션 제작 시작 ===")
-    print(f"- 장르 필터: {args.genre}")
-    print(f"- 목표 시간: {args.minutes}분 ({args.minutes * 60}초)")
-
-    used_genre = args.genre
     tracks = scan_available_tracks(args.genre)
-    print(f"- 사용 가능한 매칭 트랙 수: {len(tracks)}곡")
-
+    print(f"=== [루나의 심야 서재] {args.genre} 컴필레이션 — 매칭 {len(tracks)}곡, "
+          f"고유 합계 {sum(t['duration'] for t in tracks) / 60:.1f}분 ===")
     if not tracks:
-        print(f"[경고] {args.genre} 장르와 일치하는 트랙이 없습니다. all_relax 로 재시도합니다.")
-        used_genre = "all_relax"
-        tracks = scan_available_tracks("all_relax")
-        print(f"- all_relax 대체 매칭 트랙 수: {len(tracks)}곡")
-
-    if not tracks:
-        print("[오류] data/luna_music 디렉토리에 사용할 수 있는 오디오 트랙이 없습니다.")
+        print("[오류] 조건에 맞는 트랙이 없습니다.")
         sys.exit(1)
 
-    result = assemble_compilation(
-        tracks=tracks,
-        target_seconds=args.minutes * 60.0,
-        output_dir=Path(args.out_dir),
-        compilation_title=args.title,
-        render_video=not args.no_video,
-        genre_filter=used_genre,
-    )
+    if args.dry_run:
+        playlist = build_playlist(tracks, args.minutes * 60)
+        meta = build_youtube_metadata(args.genre, playlist, sum(t["duration"] for t in playlist))
+        print(f"\n제목: {meta['youtube_title']}\n\n{meta['youtube_description']}\n\n태그: {', '.join(meta['youtube_tags'])}")
+        return
 
-    print(f"\n[완료] 롱폼 컴필레이션 생성이 성공적으로 끝났습니다!")
-    print(f"- 제목: {result['youtube_title']}")
-    print(f"- 총 재생 시간: {int(result['duration_seconds'] // 60)}분 {int(result['duration_seconds'] % 60)}초")
-    print(f"- 메타데이터 파일: {result['metadata_file']}")
+    meta = assemble_compilation(tracks, args.genre, args.minutes * 60,
+                                Path(args.out_dir) if args.out_dir else None, render_video=not args.no_video)
+    print(f"\n[완료] {meta['youtube_title']}\n- 길이: {int(meta['duration_seconds'] // 60)}분 {int(meta['duration_seconds'] % 60)}초"
+          f"\n- 영상: {meta['video_file']}\n- 썸네일: {meta['thumbnail_file']}")
 
 
 if __name__ == "__main__":

@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-루나의 심야 서재 1시간 롱폼 컴필레이션 유튜브 예약 업로드 스크립트
-- 오늘 밤 22:00 KST (10시) 예약 공개
-- 미발표 선공개 트랙 2곡 하이라이트 안내
-- 배너 싱크 잠자는 삼색 고양이 썸네일 자동 적용
+루나의 심야 서재 장르별 롱폼 컴필레이션 유튜브 업로드 스크립트
+
+scripts/create_luna_compilation.py 가 만든 data/luna_compilations/<장르>/youtube_metadata.json 을 읽어
+제목·설명(타임라인)·태그·장르 대표 썸네일로 업로드한다. 기본은 계획만 출력(dry-run), --execute 로 실제 업로드.
+
+※ 2026-10-11 로파이 1시간본(HzfRkSiTyeI)은 이 스크립트의 이전 버전으로 data/luna_compilations/ 루트에서 올렸다.
 """
 
-import os
 import sys
 import json
 import argparse
@@ -15,124 +16,97 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-import uploader
-
+COMPILATIONS_DIR = BASE_DIR / "data" / "luna_compilations"
 CHANNEL_ID = "UCowTfbpKpXDBF3Mc50H4iGQ"
-VIDEO_PATH = BASE_DIR / "data" / "luna_compilations" / "compilation_video.mp4"
-THUMBNAIL_PATH = BASE_DIR / "data" / "bga_assets" / "thumb_lofi_cat.jpg"
-# 업로드 완료 마커: 같은 컴필레이션을 두 번 올리는 사고(1.8GB 재업로드 + 쿼터 1,600) 방지
-RESULT_FILE = BASE_DIR / "data" / "luna_compilations" / "upload_result.json"
-
-# 기본 예약 시각 (2026-10-11 22:00 KST 에 1회 업로드 완료: HzfRkSiTyeI). 재사용 시 --publish-at 으로 지정.
-PUBLISH_AT = "2026-10-11T22:00:00+09:00"
-
-TITLE = "[1 Hour Playlist] 오늘 밤 생각 비우고 푹 쉬고 싶을 때 듣는 로파이 🌧️ (미발표 선공개곡 포함) | 루나의 심야 서재"
-
-DESCRIPTION = """지친 하루의 끝, 조용한 위로와 온전한 쉼이 필요할 때 틀어두는 루나의 심야 서재 1시간 롱폼 플레이리스트입니다. 🌙
-불을 끄고 침대에서, 혹은 깊은 공부와 작업 몰입에 함께하세요.
-
-✨ [수록곡 안내 (미발표 선공개곡 포함)]
-- 05:43 Petrichor Reverie (빗소리에 젖어드는 회상) ★ 컴필레이션 최초 공개
-- 26:06 Blue Hour Reverie (새벽빛의 온기) ★ 컴필레이션 최초 공개
-
-[Tracklist / 타임라인]
-00:00 Starlight Serenade (새벽)
-02:56 Trace of Tomorrow (어른이 된 우리에게)
-05:43 Petrichor Reverie (빗소리에 젖어드는 회상) ★
-08:30 Traces Left in the Blue (새벽이 머물다 간 자리)
-11:07 Faded Blue Ink (어스름에 적신 편지)
-14:07 Paper Planes in the Rain (빗속의 종이비행기)
-17:07 Glasshouse Solitude (4시의 식물원)
-20:08 Echoes of Adagio (차가운 밤을 감싸는 온기)
-23:05 Smudged Numbers (번진 영수증의 무게)
-26:06 Blue Hour Reverie (새벽빛의 온기) ★
-29:06 Starlight Serenade (새벽)
-32:03 Trace of Tomorrow (어른이 된 우리에게)
-34:49 Petrichor Reverie (빗소리에 젖어드는 회상) ★
-37:36 Traces Left in the Blue (새벽이 머물다 간 자리)
-40:13 Faded Blue Ink (어스름에 적신 편지)
-43:14 Paper Planes in the Rain (빗속의 종이비행기)
-46:13 Glasshouse Solitude (4시의 식물원)
-49:14 Echoes of Adagio (차가운 밤을 감싸는 온기)
-52:12 Smudged Numbers (번진 영수증의 무게)
-55:12 Blue Hour Reverie (새벽빛의 온기) ★
-58:12 Starlight Serenade (새벽)
-
-[Credits]
-음악: 루나의 심야 서재 (Luna's Midnight Room)
-기획 & 큐레이션: 에이전트 레오 (Agent Leo)
-사운드 마스터링: 베가 (Vega) -16 LUFS True-Peak Mastered
-
-채널 구독으로 루나의 따뜻한 서재에 매일 밤 머물러보세요 🐾
-https://www.youtube.com/channel/UCowTfbpKpXDBF3Mc50H4iGQ?sub_confirmation=1
-
-#루나의심야서재 #로파이 #플레이리스트 #수면음악 #공부할때듣는음악 #새벽감성 #Chillhop #LoFiPlaylist #SleepBGM"""
-
-# 채널 정책: 'AgentLuna', 'AI음악' 등 기계적 수식어는 공개 메타데이터에 넣지 않는다 (luna_engine.build_luna_metadata 와 동일)
-TAGS = [
-    "루나의심야서재", "로파이", "플레이리스트", "수면음악", "공부할때듣는음악",
-    "새벽감성", "Chillhop", "LoFiPlaylist", "SleepBGM", "BGM",
-    "힐링음악", "선공개", "미발표곡", "빗소리", "서재"
-]
+# 채널 정책: 공개 메타데이터에 넣지 않는 기계적 수식어·AI 페르소나 표기
+BANNED_WORDS = ("Agent Luna", "에이전트 루나", "에이전트루나", "AgentLuna", "AI음악", "에이전트 레오", "Agent Leo")
 
 
-def progress_cb(step, msg, pct):
-    print(f"[{pct}%] {msg}")
+def load_plan(genre: str, comp_dir: Path = COMPILATIONS_DIR) -> dict:
+    """업로드 계획을 읽고 검증한다. 문제가 있으면 ValueError."""
+    out_dir = comp_dir / genre
+    meta_file = out_dir / "youtube_metadata.json"
+    if not meta_file.exists():
+        raise ValueError(f"메타데이터가 없습니다: {meta_file} — 먼저 create_luna_compilation.py --genre {genre} 를 실행하세요.")
+    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+    video = Path(meta.get("video_file") or "")
+    if not video.is_file():
+        raise ValueError(f"영상 파일이 없습니다: {video}")
+    public_text = " ".join([meta["youtube_title"], meta["youtube_description"], *meta["youtube_tags"]])
+    hits = [w for w in BANNED_WORDS if w.lower() in public_text.lower()]
+    if hits:
+        raise ValueError(f"공개 메타데이터에 금지 표기가 있습니다: {hits}")
+    if len(meta["youtube_title"]) > 100:
+        raise ValueError(f"제목이 100자를 넘습니다 ({len(meta['youtube_title'])}자)")
+    meta["_result_file"] = str(out_dir / "upload_result.json")
+    return meta
 
 
 def main():
-    parser = argparse.ArgumentParser(description="루나 1시간 컴필레이션 예약 업로드")
+    parser = argparse.ArgumentParser(description="루나 장르별 컴필레이션 업로드")
+    parser.add_argument("--genre", required=True, help="data/luna_compilations/<genre> (예: piano, ambient)")
     parser.add_argument("--execute", action="store_true", help="실제 업로드 실행 (없으면 계획만 출력)")
-    parser.add_argument("--publish-at", default=PUBLISH_AT, help="예약 공개 일시 ISO 8601 (예: 2026-10-18T22:00:00+09:00)")
-    parser.add_argument("--force", action="store_true", help="이미 업로드 마커가 있어도 다시 업로드")
+    parser.add_argument("--publish-at", default=None, help="예약 공개 일시 ISO 8601 (예: 2026-10-25T22:00:00+09:00). 주면 private+예약")
+    parser.add_argument("--privacy", default="private", choices=["private", "unlisted", "public"], help="예약이 없을 때 공개 범위 (기본 private)")
+    parser.add_argument("--playlist-id", default=None, help="업로드 후 추가할 재생목록 ID")
+    parser.add_argument("--force", action="store_true", help="이미 업로드 마커가 있어도 다시 업로드 (중복 영상 주의)")
     args = parser.parse_args()
-    publish_at = args.publish_at
 
-    if not VIDEO_PATH.exists():
-        print(f"[Error] 비디오 파일이 없습니다: {VIDEO_PATH}")
+    try:
+        meta = load_plan(args.genre)
+    except ValueError as e:
+        print(f"[Error] {e}")
         sys.exit(1)
-
-    if RESULT_FILE.exists() and not args.force:
-        prev = json.load(open(RESULT_FILE, encoding="utf-8"))
+    result_file = Path(meta["_result_file"])
+    # 업로드 완료 마커: 같은 컴필레이션을 두 번 올리는 사고(수 GB 재업로드 + 쿼터 1,600) 방지
+    if result_file.exists() and not args.force:
+        prev = json.loads(result_file.read_text(encoding="utf-8"))
         print(f"[=] 이미 업로드된 컴필레이션입니다: {prev.get('url')} (publish_at {prev.get('publish_at')})")
-        print("    다시 올리려면 --force 를 주세요 (중복 영상 주의).")
         sys.exit(0)
 
+    privacy = "private" if args.publish_at else args.privacy
+    video = Path(meta["video_file"])
     print("=" * 65)
-    print("🚀 루나의 심야 서재 1시간 컴필레이션 유튜브 예약 업로드")
+    print(f"루나의 심야 서재 {args.genre} 컴필레이션 업로드 계획")
     print("=" * 65)
-    print(f"- 영상 파일: {VIDEO_PATH} ({VIDEO_PATH.stat().st_size / (1024*1024*1024):.2f} GB)")
-    print(f"- 썸네일: {THUMBNAIL_PATH}")
-    print(f"- 예약 일시: {publish_at}")
-    print(f"- 제목: {TITLE}")
+    print(f"- 영상: {video} ({video.stat().st_size / 1024 ** 3:.2f} GB, {meta['duration_seconds'] / 60:.1f}분)")
+    print(f"- 룸 / 썸네일: {meta['room_name']} / {meta.get('thumbnail_file')}")
+    print(f"- 공개: {privacy}" + (f" (예약 {args.publish_at})" if args.publish_at else ""))
+    print(f"- 제목: {meta['youtube_title']}")
+    print(f"- 태그: {', '.join(meta['youtube_tags'])}")
     print("-" * 65)
-
+    print(meta["youtube_description"])
+    print("-" * 65)
     if not args.execute:
         print("[dry-run] 실제 업로드는 --execute 를 붙여 실행하세요.")
         return
 
+    import uploader  # 실제 업로드 때만 (dry-run 은 구글 라이브러리 없이도 돈다)
+
+    def progress_cb(step, msg, pct):
+        print(f"[{pct}%] {msg}")
+
     res = uploader.upload_video(
-        video_path=str(VIDEO_PATH),
-        title=TITLE,
-        description=DESCRIPTION,
-        tags=TAGS,
-        privacy="private",
-        publish_at=publish_at,
-        thumbnail_path=str(THUMBNAIL_PATH) if THUMBNAIL_PATH.exists() else None,
+        video_path=str(video),
+        title=meta["youtube_title"],
+        description=meta["youtube_description"],
+        tags=meta["youtube_tags"],
+        privacy=privacy,
+        publish_at=args.publish_at,
+        thumbnail_path=meta.get("thumbnail_file"),
         category_id="10",
         channel_id=CHANNEL_ID,
-        progress=progress_cb
+        playlist_id=args.playlist_id,
+        progress=progress_cb,
     )
-
-    RESULT_FILE.parent.mkdir(parents=True, exist_ok=True)
-    json.dump({"video_id": res.get("video_id"), "url": res.get("url"), "publish_at": publish_at,
-               "video_file": str(VIDEO_PATH), "title": TITLE},
-              open(RESULT_FILE, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
-
-    print("\n[✔] 업로드 및 예약 설정 성공!")
-    print(f"- Video ID: {res.get('video_id')}")
-    print(f"- YouTube URL: {res.get('url')}")
-    print(f"- 썸네일 등록 여부: {res.get('thumbnail_set')}")
+    result_file.write_text(json.dumps({
+        "video_id": res.get("video_id"), "url": res.get("url"), "publish_at": args.publish_at, "privacy": privacy,
+        "video_file": str(video), "title": meta["youtube_title"], "thumbnail_set": res.get("thumbnail_set"),
+        "playlist_added": res.get("playlist_added"),
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\n[✔] 업로드 완료: {res.get('url')} (썸네일 {res.get('thumbnail_set')})")
+    for w in res.get("warnings") or []:
+        print(f"[!] {w}")
 
 
 if __name__ == "__main__":

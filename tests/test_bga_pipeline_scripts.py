@@ -24,13 +24,17 @@ def _load(name):
 
 
 class UploadScriptPolicyTests(unittest.TestCase):
-    def test_compilation_upload_metadata_has_no_ai_wording(self):
-        m = _load("upload_luna_compilation.py")
-        for w in BANNED:
-            self.assertNotIn(w, m.DESCRIPTION, w)
-            self.assertNotIn(w, m.TITLE, w)
-            self.assertFalse(any(w in t for t in m.TAGS), w)
-        self.assertTrue(str(m.THUMBNAIL_PATH).startswith(BASE), m.THUMBNAIL_PATH)
+    def test_compilation_metadata_has_no_ai_wording_or_persona_credit(self):
+        m = _load("create_luna_compilation.py")
+        for genre in m.GENRE_CHOICES:
+            playlist = [{"title": "A (가)", "duration": 180.0, "released": True},
+                        {"title": "B (나)", "duration": 200.0, "released": False}]
+            meta = m.build_youtube_metadata(genre, playlist, 380.0)
+            text = " ".join([meta["youtube_title"], meta["youtube_description"], *meta["youtube_tags"]])
+            for w in BANNED + ("에이전트 레오", "Agent Leo"):
+                self.assertNotIn(w, text, (genre, w))
+            self.assertLessEqual(len(meta["youtube_title"]), 100, meta["youtube_title"])
+            self.assertLessEqual(len(meta["youtube_tags"]), 15)
 
     def test_replace_script_metadata_has_no_ai_wording(self):
         m = _load("replace_scheduled_videos_with_bga.py")
