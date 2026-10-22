@@ -226,9 +226,11 @@ class RealFfmpegRenderTests(unittest.TestCase):
         subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=6", "-c:a", "libmp3lame", "-b:a", "96k", audio], check=True, capture_output=True)
         subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "color=c=0x334455:s=640x360:d=1", "-frames:v", "1", cover], check=True, capture_output=True)
         track = {"track_id": "luna_r", "title": "Render Test", "audio_file": audio, "cover_file": cover, "duration_seconds": 6}
-        with patch.object(luna_engine, "LUNA_DIR", tmp):
+        assets = os.path.join(tmp, "assets"); os.makedirs(assets)  # 대표 BGA 에셋이 없는 환경 → 앨범 커버 폴백
+        with patch.object(luna_engine, "LUNA_DIR", tmp), patch.object(luna_engine, "BGA_ASSETS_DIR", assets):
             track = luna_engine.extract_audio_highlight(track, duration=15, start_override=1)
             track = luna_engine.render_luna_shorts_video(track)
+        self.assertEqual(track["shorts"]["video_source"], "cover")
         out = track["shorts"]["video_file"]
         self.assertTrue(os.path.exists(out))
         probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", out], capture_output=True, text=True, check=True)
@@ -239,6 +241,28 @@ class RealFfmpegRenderTests(unittest.TestCase):
         with patch.object(luna_engine, "LUNA_DIR", tmp):
             levels = luna_engine._measure_loudness_timeline(audio)
         self.assertGreaterEqual(len(levels), 5)
+
+    def test_render_uses_genre_signature_bga_loop(self):
+        """숏폼 배경도 롱폼과 같은 장르 대표 BGA 루프 영상을 쓴다."""
+        tmp = tempfile.mkdtemp(); self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        d = os.path.join(tmp, "luna_p"); os.makedirs(d)
+        assets = os.path.join(tmp, "assets"); os.makedirs(assets)
+        audio = os.path.join(d, "audio.mp3")
+        subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=6", "-c:a", "libmp3lame", "-b:a", "96k", audio], check=True, capture_output=True)
+        subprocess.run(["ffmpeg", "-y", "-f", "lavfi", "-i", "testsrc=s=640x360:d=2:r=25", "-pix_fmt", "yuv420p",
+                        os.path.join(assets, "bga_piano_moonlight.mp4")], check=True, capture_output=True)
+        track = {"track_id": "luna_p", "title": "Piano Test", "genre": "Emotional Piano Solo", "audio_file": audio, "duration_seconds": 6}
+        with patch.object(luna_engine, "LUNA_DIR", tmp), patch.object(luna_engine, "BGA_ASSETS_DIR", assets), \
+                patch.object(luna_engine, "_MIN_BGA_BYTES", 0):
+            track = luna_engine.extract_audio_highlight(track, duration=15, start_override=1)
+            track = luna_engine.render_luna_shorts_video(track)
+        self.assertEqual(track["shorts"]["video_source"], "signature_bga")
+        self.assertEqual(track["shorts"]["signature_bga_room"], "달밤 창가 피아노 (Piano)")
+        probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration",
+                                "-of", "json", track["shorts"]["video_file"]], capture_output=True, text=True, check=True)
+        info = json.loads(probe.stdout)
+        self.assertEqual((info["streams"][0]["width"], info["streams"][0]["height"]), (1080, 1920))
+        self.assertAlmostEqual(float(info["format"]["duration"]), 6, delta=0.5)  # 2초 루프가 음원 길이만큼 반복
 
 
 if __name__ == "__main__":

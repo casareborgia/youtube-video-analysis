@@ -1435,6 +1435,13 @@ async def generate_luna_track(req: LunaTrackGenerateRequest):
         meta = luna_engine.build_luna_metadata(full_track)
         full_track["metadata"] = meta
         luna_engine.save_track(full_track)
+
+        # [BGA 무결성 보장] 곡 생성 즉시 장르 1:1 시그니처 BGA 영상 자동 렌더링
+        try:
+            full_track = luna_engine.render_luna_video(full_track, quality="1080p")
+        except Exception as vid_err:
+            print(f"[LunaEngine] 곡 생성 시 BGA 비디오 자동 렌더링 지연: {vid_err}")
+
         return full_track
 
     try:

@@ -433,7 +433,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
   "lyrics": "가사 전문, 연주곡이면 null"
 }}"""
 
-    prompt = f"""당신은 글로벌 AI 음악 아티스트 '에이전트 루나(Agent Luna)'의 수석 총괄 프로듀서이자 작곡가입니다.
+    prompt = f"""당신은 따뜻한 휴식과 평온한 수면을 선물하는 유튜브 음악 채널 '루나의 심야 서재(Luna's Midnight Room)'의 수석 총괄 프로듀서이자 작곡가입니다.
 새로운 싱글 음원을 위해 주어진 장르 고유의 음악적 정체성을 지키면서, 이전 곡들과 뚜렷하게 구별되는 독창적인 사운드와 작곡 프롬프트를 완성하세요.
 
 [사운드 디자인 기본 참고 (영감 풀 — 그대로 복사하지 말고 창의적으로 재조합할 것)]
@@ -454,6 +454,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
 3. 에이전트 레오의 트렌드 브리프(테마, 시청자 반응, 추천 앵글)의 정서를 악기 선택과 리듬 편곡(그루브)에 직접 녹여내어 독창적인 곡으로 완성하세요.
 4. 곡 제목(title): 장르와 무드의 정서를 압축한 감각적인 '영문 제목 (한글 부제)' 형식.
    - 흔해 빠진 클리셰 단어(Starlight, Midnight, Cafe 등)의 기계적 반복을 금지하고 독창적인 단어를 선택할 것.
+   - '에이전트 루나'나 'Agent Luna' 같은 수식어는 곡 제목에 절대 넣지 마십시오.
    - 레오의 브리프에 '곡 제목 컨셉'이 있으면 그 컨셉을 기반으로 다듬을 것 (브리프의 핵심 이미지가 제목에 남아 있어야 함).
 5. 앨범 커버 프롬프트(visual_prompt): 나노바나나/Imagen 생성용 영문 프롬프트 (16:9 와이드, 8k, no text, no watermark).
    - [★ 채널 시각적 정체성 절대 원칙 (필독)]:
@@ -467,7 +468,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
 {json_schema_example}"""
 
     messages = [
-        {"role": "system", "content": "You are the chief producer of AI music artist Agent Luna. Output pure JSON only."},
+        {"role": "system", "content": "You are the chief producer of Luna's Midnight Room (루나의 심야 서재). Output pure JSON only."},
         {"role": "user", "content": prompt}
     ]
 
@@ -1024,7 +1025,7 @@ def generate_luna_cover(track_data, progress_cb=None):
 
     # 폴백 그라디언트 앨범아트 생성 (안전장치)
     step(60, "아름다운 코스믹 그라디언트 앨범 커버 렌더링 중...")
-    _generate_fallback_cover_image(cover_path, track_data.get("title", "Agent Luna"))
+    _generate_fallback_cover_image(cover_path, track_data.get("title", "루나의 심야 서재"))
     track_data["cover_file"] = cover_path
     track_data["cover_url"] = f"/data/luna_music/{track_id}/cover.jpg"
     step(100, "앨범 아트 준비 완료!")
@@ -1093,41 +1094,100 @@ SIGNATURE_BGA_MAP = {
 }
 
 
-def resolve_signature_bga(genre: str) -> dict:
-    """장르 키 또는 텍스트를 분석하여 1:1 대응되는 대표 BGA 영상과 썸네일 경로를 반환합니다."""
+_MIN_BGA_BYTES = 100_000  # 이보다 작은 mp4 는 깨진 파일로 본다
+
+
+def ensure_signature_bga_asset(genre_key: str) -> Optional[str]:
+    """장르 키의 대표 BGA 루프 mp4 가 없거나 깨졌으면 같은 장르 썸네일로 16초 심리스 루프를 만든다.
+    (scripts/generate_signature_bga_assets.py 와 같은 줌 루프. mp4 는 gitignore 대상이라 새 클론에는 없다)
+    다른 장르 썸네일로 대신 만들면 그 파일명에 엉뚱한 룸이 영구히 박히므로, 해당 장르 썸네일이 없으면 만들지 않는다.
+    """
+    spec = SIGNATURE_BGA_MAP.get(genre_key)
+    if not spec:
+        return None
+    bga_file = os.path.join(BGA_ASSETS_DIR, spec["video"])
+    if os.path.exists(bga_file) and os.path.getsize(bga_file) > _MIN_BGA_BYTES:
+        return bga_file
+
+    thumb_file = os.path.join(BGA_ASSETS_DIR, spec["thumbnail"])
+    if not os.path.exists(thumb_file):
+        return None
+
+    duration_sec, fps = 16, 30
+    total_frames = duration_sec * fps
+    zoom_expr = f"1.0+0.028*sin(PI*on/{total_frames})"
+    tmp_file = bga_file + ".tmp.mp4"  # 렌더 도중 다른 요청이 반쯤 쓰인 파일을 집어가지 않도록 임시 파일 후 교체
+    cmd = [
+        "ffmpeg", "-y", "-loop", "1", "-i", thumb_file,
+        "-vf", (
+            f"scale=1920:1080:force_original_aspect_ratio=increase,"
+            f"crop=1920:1080,"
+            f"zoompan=z='{zoom_expr}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={total_frames}:s=1920x1080:fps={fps},"
+            f"scale=in_range=full:out_range=limited,format=yuv420p"
+        ),
+        "-color_range", "tv", "-c:v", "libx264", "-preset", "veryfast", "-crf", "18",
+        "-t", str(duration_sec), "-movflags", "+faststart", tmp_file
+    ]
+    try:
+        os.makedirs(BGA_ASSETS_DIR, exist_ok=True)
+        res = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        if res.returncode == 0 and os.path.exists(tmp_file) and os.path.getsize(tmp_file) > _MIN_BGA_BYTES:
+            os.replace(tmp_file, bga_file)
+            print(f"[LunaEngine] 시그니처 BGA 에셋 자동 생성 완료: {bga_file}")
+            return bga_file
+        print(f"[LunaEngine] BGA 에셋 자동 생성 실패 ({genre_key}): {(res.stderr or '')[-200:].strip()}")
+    except Exception as e:
+        print(f"[LunaEngine] BGA 에셋 자동 생성 실패 ({genre_key}): {e}")
+    finally:
+        if os.path.exists(tmp_file):
+            os.remove(tmp_file)
+    return None
+
+
+# 장르 텍스트 → 룸 키. 위에서부터 먼저 걸리는 쪽이 이긴다.
+# 한 글자·범용어('칠', '잠', '기타'=etc., '힐링')와 채널명/룸 이름에 들어 있는 '서재'는 오매칭을 부르므로 넣지 않는다.
+_SIGNATURE_GENRE_KEYWORDS = (
+    ("lofi", ("lofi", "lo-fi", "chillhop", "로파이", "칠홉")),
+    ("piano", ("piano", "피아노", "건반", "felt", "neoclassical", "뉴에이지")),
+    ("sleep", ("sleep", "delta", "meditation", "수면", "명상", "델타", "자장가")),
+    ("ambient", ("ambient", "앰비언트", "drone", "드론", "사운드스케이프")),
+    ("jazz", ("jazz", "재즈", "swing", "bossa", "스윙", "보사노바")),
+    ("acoustic", ("acoustic", "folk", "guitar", "어쿠스틱", "포크", "통기타", "어쿠스틱 기타")),
+    # R&B Chill 및 보관 장르(Synthwave, Citypop)는 도심 야경 발코니 룸
+    ("chill", ("chill", "rnb", "r&b", "synth", "city pop", "citypop", "시티팝", "신스", "알앤비", "칠아웃")),
+)
+
+
+def resolve_signature_bga(genre: str, ensure_exists: bool = False) -> dict:
+    """장르 키 또는 텍스트를 분석하여 1:1 대응되는 대표 BGA 영상과 썸네일 경로를 반환합니다.
+    ensure_exists=True 면 루프 mp4 가 없을 때 ensure_signature_bga_asset 으로 만든다 (ffmpeg 수십 초 — 렌더·업로드 경로에서만 켠다).
+    """
     g = (genre or "").strip().lower()
-    key = "lofi"
-    if "lofi" in g or "lo-fi" in g or "chillhop" in g:
-        key = "lofi"
-    elif "piano" in g:
-        key = "piano"
-    elif "sleep" in g or "delta" in g or "meditation" in g:
-        key = "sleep"
-    elif "ambient" in g:
-        key = "ambient"
-    elif "jazz" in g:
-        key = "jazz"
-    elif "chill" in g or "rnb" in g or "synth" in g or "city" in g:
-        # R&B Chill 과 보관 장르(synthwave·citypop)는 도심 야경 발코니 룸으로 (lofi 책상 서재보다 정서가 맞음)
-        key = "chill"
-    elif "acoustic" in g or "folk" in g:
-        key = "acoustic"
+    key = next((k for k, words in _SIGNATURE_GENRE_KEYWORDS if any(w in g for w in words)), "lofi")
 
     spec = SIGNATURE_BGA_MAP.get(key, SIGNATURE_BGA_MAP["lofi"])
     bga_file = os.path.join(BGA_ASSETS_DIR, spec["video"])
     thumb_file = os.path.join(BGA_ASSETS_DIR, spec["thumbnail"])
+
+    if ensure_exists:
+        bga_file = ensure_signature_bga_asset(key) or bga_file
+
     return {
         "genre_key": key,
         "room_name": spec["room_name"],
-        "video_path": bga_file if os.path.exists(bga_file) else None,
+        "video_path": bga_file if os.path.exists(bga_file) and os.path.getsize(bga_file) > _MIN_BGA_BYTES else None,
         "thumbnail_path": thumb_file if os.path.exists(thumb_file) else None,
     }
+
+
+# render_luna_video 가 남기는 대표 룸 영상 출처 (루프 합성 / 같은 룸 썸네일 켄번즈)
+SIGNATURE_VIDEO_SOURCES = ("signature_bga", "signature_thumbnail")
 
 
 def render_luna_video(track_data, quality="1080p", progress_cb=None):
     """
     장르별 대표 BGA(심리스 루프 영상)를 우선 탐색하여 음원과 완벽히 동기화 합성합니다.
-    대표 BGA가 없는 경우 고화질 앨범 커버에 켄번즈(Ken Burns) 효과를 적용한 비디오로 폴백합니다.
+    어떤 상황에서도 장르별 1:1 시그니처 BGA가 유지되도록 다중 방어 로직을 적용합니다.
     """
     def step(pct, msg):
         if progress_cb:
@@ -1149,14 +1209,16 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
     duration = producer.audio_duration(audio_path) or track_data.get("duration_seconds") or 180
     genre = track_data.get("genre") or ""
 
-    # 1. 장르별 대표 BGA 심리스 루프 영상 우선 매핑 및 합성
-    sig = resolve_signature_bga(genre)
-    if sig["video_path"] and os.path.exists(sig["video_path"]):
+    # 1. 장르별 대표 BGA 심리스 루프 영상 우선 매핑 및 합성 (어떤 상황에서든 1:1 BGA 보장)
+    sig = resolve_signature_bga(genre, ensure_exists=True)
+    bga_video = sig.get("video_path")
+
+    if bga_video and os.path.exists(bga_video):
         step(20, f"루나의 심야 서재 대표 BGA({sig['room_name']}) 심리스 루프 합성 시작 ({duration:.1f}초)...")
         res_map = {"1080p": (1920, 1080), "720p": (1280, 720), "360p": (640, 360)}
         w, h = res_map.get(quality, (1920, 1080))
-        # BGA 에셋에 오디오 스트림이 있어도 음원만 쓰도록 스트림을 명시하고, -shortest 만으로는 수 프레임 넘칠 수 있어 -t 로 길이를 고정한다
-        head = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", sig["video_path"], "-i", audio_path,
+        # BGA 에셋에 오디오 스트림이 있어도 음원만 쓰도록 스트림을 명시하고, -t 로 길이를 고정한다
+        head = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", bga_video, "-i", audio_path,
                 "-map", "0:v:0", "-map", "1:a:0"]
         tail = ["-c:a", "aac", "-b:a", "192k", "-t", f"{duration:.3f}", "-shortest",
                 "-movflags", "+faststart", video_path]
@@ -1168,13 +1230,20 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
             "-vf", f"scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p",
         ] + tail))
+        # 3차 방어: 단순 스케일 재인코딩
+        attempts.append(("단순 스케일 재인코딩", head + [
+            "-vf", f"scale={w}:{h}",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "22", "-pix_fmt", "yuv420p",
+        ] + tail))
+
         rendered = False
         for label, cmd_bga in attempts:
             proc = subprocess.run(cmd_bga, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-            if proc.returncode == 0:
+            if proc.returncode == 0 and os.path.exists(video_path) and os.path.getsize(video_path) > _MIN_BGA_BYTES:
                 rendered = True
                 break
             print(f"[LunaVideo] 대표 BGA {label} 실패 -> 다음 방법 시도: {(proc.stderr or '')[-200:].strip()}")
+
         if rendered:
             track_data["video_file"] = video_path
             track_data["video_url"] = f"/data/luna_music/{track_id}/video.mp4"
@@ -1187,13 +1256,15 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
             save_track(track_data)
             step(100, f"대표 BGA({sig['room_name']}) 비디오 렌더링 완성!")
             return track_data
-        print("[LunaVideo] 대표 BGA 렌더 전부 실패 -> 앨범 커버 모드로 폴백")
+        print("[LunaVideo] 대표 BGA 루프 합성 실패 -> 시그니처 썸네일 기반 안전 렌더링으로 폴백")
 
-    # 2. 폴백: 앨범 커버 기반 켄번즈 렌더러
-    if not os.path.exists(cover_path):
-        raise FileNotFoundError(f"앨범 커버 이미지를 찾을 수 없습니다: {cover_path}")
+    # 2. BGA 루프 영상 실패 시 같은 룸의 시그니처 썸네일로 켄번즈 (룸은 유지). 썸네일도 없을 때만 앨범 커버.
+    use_signature_thumb = bool(sig.get("thumbnail_path"))
+    bga_source_img = sig["thumbnail_path"] if use_signature_thumb else cover_path
+    if not os.path.exists(bga_source_img):
+        raise FileNotFoundError(f"비디오 렌더링에 사용할 소스 이미지를 찾을 수 없습니다: {bga_source_img}")
 
-    step(25, f"앨범 커버 켄번즈 영상 렌더링 시작 ({duration:.1f}초, {quality})...")
+    step(25, f"시그니처 룸 기반 영상 렌더링 시작 ({duration:.1f}초, {quality})...")
 
     # 해상도 설정
     res_map = {"1080p": (1920, 1080), "720p": (1280, 720), "360p": (640, 360)}
@@ -1211,7 +1282,7 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
 
     cmd = [
         "ffmpeg", "-y",
-        "-loop", "1", "-i", cover_path,
+        "-loop", "1", "-i", bga_source_img,
         "-i", audio_path,
         "-vf", vf_filter,
         "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
@@ -1224,7 +1295,7 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
     if proc.returncode != 0:
         cmd_simple = [
             "ffmpeg", "-y",
-            "-loop", "1", "-i", cover_path,
+            "-loop", "1", "-i", bga_source_img,
             "-i", audio_path,
             "-vf", f"scale={w}:{h},fade=t=in:st=0:d=2,fade=t=out:st={max(duration-3, 1)}:d=3",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
@@ -1238,10 +1309,18 @@ def render_luna_video(track_data, quality="1080p", progress_cb=None):
     track_data["video_url"] = f"/data/luna_music/{track_id}/video.mp4"
     track_data.pop("video_stale", None)
     track_data["rendered_at"] = time.time()
-    track_data["video_source"] = "cover"
+    # 루프 영상이 아닌 정지 이미지 켄번즈라 signature_bga 와 구분해 기록한다 (업로드 검증·UI 가 실패를 알아볼 수 있게)
+    if use_signature_thumb:
+        track_data["video_source"] = "signature_thumbnail"
+        track_data["signature_bga_room"] = sig["room_name"]
+        track_data["signature_thumbnail"] = sig["thumbnail_path"]
+    else:
+        track_data["video_source"] = "cover"
+        track_data.pop("signature_bga_room", None)
+        track_data.pop("signature_thumbnail", None)
     save_track(track_data)
 
-    step(100, "음악 영상 렌더링 완성!")
+    step(100, f"영상 렌더링 완성 ({sig['room_name'] if use_signature_thumb else '앨범 커버'})!")
     return track_data
 
 
@@ -1485,7 +1564,7 @@ def _shorts_filter_graph(title_safe, clip_len, with_text=True, with_wave=True):
         last = "wv"
     if with_text:
         parts.append(
-            f"[{last}]drawtext=text='AGENT LUNA':fontcolor=white@0.9:fontsize={h//30}:x=(w-text_w)/2:y=h*0.11:shadowcolor=black@0.6:shadowx=2:shadowy=2,"
+            f"[{last}]drawtext=text='루나의 심야 서재':fontcolor=white@0.9:fontsize={h//30}:x=(w-text_w)/2:y=h*0.11:shadowcolor=black@0.6:shadowx=2:shadowy=2,"
             f"drawtext=text='{title_safe}':fontcolor=0xa5b4fc@0.95:fontsize={h//42}:x=(w-text_w)/2:y=h*0.15:shadowcolor=black@0.6:shadowx=2:shadowy=2[tx]"
         )
         last = "tx"
@@ -1494,7 +1573,9 @@ def _shorts_filter_graph(title_safe, clip_len, with_text=True, with_wave=True):
 
 
 def render_luna_shorts_video(track_data, progress_cb=None):
-    """하이라이트 음원 + 앨범 커버로 1080x1920 세로 숏폼 영상을 만든다 (video_shorts.mp4)."""
+    """하이라이트 음원 + 장르 대표 BGA 로 1080x1920 세로 숏폼 영상을 만든다 (video_shorts.mp4).
+    롱폼과 같은 룸을 쓴다: 대표 BGA 루프 영상 → 같은 룸 썸네일(정지) → 앨범 커버 순으로 폴백.
+    """
     def step(pct, msg):
         if progress_cb:
             progress_cb("shorts_render", msg, pct)
@@ -1509,17 +1590,26 @@ def render_luna_shorts_video(track_data, progress_cb=None):
     cover_path = track_data.get("cover_file") or os.path.join(t_dir, "cover.jpg")
     if not os.path.exists(audio_path):
         raise FileNotFoundError("하이라이트 음원이 없습니다. 먼저 [하이라이트 추출]을 실행해주세요.")
-    if not os.path.exists(cover_path):
-        raise FileNotFoundError(f"앨범 커버 이미지를 찾을 수 없습니다: {cover_path}")
+
+    sig = resolve_signature_bga(track_data.get("genre") or "", ensure_exists=True)
+    sources = []  # (video_source, 입력 옵션)
+    if sig.get("video_path"):
+        sources.append(("signature_bga", ["-stream_loop", "-1", "-i", sig["video_path"]]))
+    if sig.get("thumbnail_path"):
+        sources.append(("signature_thumbnail", ["-loop", "1", "-i", sig["thumbnail_path"]]))
+    if os.path.exists(cover_path):
+        sources.append(("cover", ["-loop", "1", "-i", cover_path]))
+    if not sources:
+        raise FileNotFoundError(f"숏폼 배경으로 쓸 대표 BGA·썸네일·앨범 커버가 모두 없습니다: {cover_path}")
 
     clip_len = float(producer.audio_duration(audio_path) or shorts.get("duration") or SHORTS_DEFAULT_DURATION)
     clip_len = min(clip_len, SHORTS_MAX_DURATION)  # 쇼츠 판정 보장
     out_path = os.path.join(t_dir, "video_shorts.mp4")
-    title_safe = re.sub(r"['\":]", "", track_data.get("title") or "Agent Luna")
+    title_safe = re.sub(r"['\":]", "", track_data.get("title") or "루나의 심야 서재")
 
-    def run(with_text, with_wave):
+    def run(input_args, with_text, with_wave):
         cmd = [
-            "ffmpeg", "-y", "-loop", "1", "-i", cover_path, "-i", audio_path,
+            "ffmpeg", "-y", *input_args, "-i", audio_path,
             "-filter_complex", _shorts_filter_graph(title_safe, clip_len, with_text, with_wave),
             "-map", "[v]", "-map", "1:a",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "22", "-r", "25",
@@ -1527,30 +1617,58 @@ def render_luna_shorts_video(track_data, progress_cb=None):
         ]
         return subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
 
-    step(20, f"9:16 숏폼 렌더링 시작 ({clip_len:.1f}초)...")
-    proc = run(True, True)
-    if proc.returncode != 0:
+    used_source, proc = None, None
+    for source, input_args in sources:
+        step(20, f"9:16 숏폼 렌더링 시작 ({clip_len:.1f}초, 배경: {source} / {sig['room_name']})...")
         # 폰트(drawtext) 문제가 흔하므로 롱폼과 같은 방식으로 단순 모드 폴백
-        print(f"[LunaShorts] 필터 경고 -> 단순 모드 재시도: {proc.stderr[-150:]}")
-        proc = run(False, True)
-        if proc.returncode != 0:
-            proc = run(False, False)
-            if proc.returncode != 0:
-                raise RuntimeError(f"숏폼 렌더링 실패: {proc.stderr[-300:]}")
+        for with_text, with_wave in ((True, True), (False, True), (False, False)):
+            proc = run(input_args, with_text, with_wave)
+            if proc.returncode == 0:
+                used_source = source
+                break
+            print(f"[LunaShorts] {source} 필터 경고 -> 단순 모드 재시도: {proc.stderr[-150:]}")
+        if used_source:
+            break
+    if not used_source:
+        raise RuntimeError(f"숏폼 렌더링 실패: {proc.stderr[-300:]}")
 
+    shorts["video_source"] = used_source
+    if used_source in SIGNATURE_VIDEO_SOURCES:
+        shorts["signature_bga_room"] = sig["room_name"]
+    else:
+        shorts.pop("signature_bga_room", None)
     shorts["video_file"] = out_path
     shorts["video_url"] = f"/data/luna_music/{track_id}/video_shorts.mp4"
     shorts["rendered_at"] = time.time()
     shorts.pop("video_stale", None)
     track_data["shorts"] = shorts
     save_track(track_data)
-    step(100, "숏폼 영상 렌더링 완성!")
+    step(100, f"숏폼 영상 렌더링 완성! ({sig['room_name'] if used_source in SIGNATURE_VIDEO_SOURCES else '앨범 커버'})")
     return track_data
+
+
+# 채널 개편(루나의 심야 서재) 이전 수식어 — 공개 메타데이터(제목·설명·태그)에 남아 있으면 업로드 전에 재생성한다
+BANNED_BRAND_WORDS = ("에이전트 루나", "에이전트루나", "Agent Luna", "AgentLuna", "AGENT LUNA", "AI음악")
+
+
+def _contains_banned_brand(text) -> bool:
+    return any(b.lower() in (text or "").lower() for b in BANNED_BRAND_WORDS)
+
+
+def metadata_has_banned_brand(meta) -> bool:
+    """롱폼·숏폼 제목/설명/태그 어디든 구형 수식어가 있으면 True."""
+    meta = meta or {}
+    for m in (meta, meta.get("shorts") or {}):
+        if _contains_banned_brand(m.get("youtube_title")) or _contains_banned_brand(m.get("youtube_description")):
+            return True
+        if any(_contains_banned_brand(t) for t in (m.get("youtube_tags") or [])):
+            return True
+    return False
 
 
 def build_luna_shorts_metadata(track_data, base_meta):
     """숏폼용 제목·설명·태그·고정 댓글. 롱폼 링크는 업로드 시점에 플레이스홀더를 치환한다."""
-    title = (track_data.get("title") or "Agent Luna").strip()
+    title = (track_data.get("title") or "루나의 심야 서재").strip()
     suffix = " (Highlight) #Shorts"
     yt_title = truncate_title(title, suffix=suffix)
 
@@ -1807,7 +1925,8 @@ def build_luna_metadata(track_data):
     else:
         base_tags += ["공부할때듣는음악", "순수연주곡", "피아노연주곡"]
 
-    custom_tags = track_data.get("tags") or []
+    # 기획 단계(LLM)가 붙인 태그에 구형 수식어('에이전트루나' 등)가 섞여 들어오는 경우가 있어 걸러낸다
+    custom_tags = [t for t in (track_data.get("tags") or []) if not _contains_banned_brand(t)]
     merged_tags = list(dict.fromkeys(base_tags + custom_tags))[:15]
 
     meta = {
@@ -1998,6 +2117,34 @@ def recommend_playlist_for_track(track, playlists):
     }
 
 
+def _needs_signature_rerender(info, video_path, room_name) -> bool:
+    """영상이 없거나, 장르 대표 룸 영상이 아니거나(Veo·Remotion BGA·앨범 커버 등), 낡았거나, 룸이 다르면 True."""
+    return (
+        not os.path.exists(video_path)
+        or info.get("video_source") not in SIGNATURE_VIDEO_SOURCES
+        or bool(info.get("video_stale"))
+        or info.get("signature_bga_room") != room_name
+    )
+
+
+def _rerender_with_backup(video_path, old_source, render):
+    """기존 영상(유료 Veo 생성분 포함)을 1회 백업한 뒤 render() 로 다시 만든다.
+    실패한 ffmpeg 가 파일을 반쯤 덮어썼을 수 있어 백업을 되돌리고, 룸이 다른 영상은 올리지 않도록 예외를 던진다.
+    """
+    backup_path = None
+    if os.path.exists(video_path) and old_source not in SIGNATURE_VIDEO_SOURCES:
+        stem, ext = os.path.splitext(video_path)
+        backup_path = f"{stem}_{old_source or 'unknown'}_backup{ext}"
+        if not os.path.exists(backup_path):
+            shutil.copy(video_path, backup_path)
+    try:
+        return render()
+    except Exception as ren_err:
+        if backup_path and os.path.exists(backup_path):
+            shutil.copy(backup_path, video_path)
+        raise RuntimeError(f"업로드 전 대표 BGA 렌더링 실패 — 업로드를 중단합니다: {ren_err}") from ren_err
+
+
 def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, publish_at=None, playlist_id=None, pinned_comment=None, with_shorts=False):
     """
     렌더링된 루나 음악 영상을 유튜브 채널로 업로드하고,
@@ -2017,13 +2164,21 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, 
 
     video_path = track.get("video_file") or os.path.join(LUNA_DIR, track_id, "video.mp4")
     cover_path = track.get("cover_file") or os.path.join(LUNA_DIR, track_id, "cover.jpg")
+    audio_path = track.get("audio_file") or os.path.join(LUNA_DIR, track_id, "audio.mp3")
+    # [BGA 1:1 보장] 음원이 있는데 영상이 없거나, 장르 룸과 다른 영상(Veo·Remotion BGA·앨범 커버 등)이면 대표 BGA 로 다시 렌더링
+    has_audio = os.path.exists(audio_path)
+    sig = resolve_signature_bga(track.get("genre") or "", ensure_exists=has_audio)
+    if has_audio and _needs_signature_rerender(track, video_path, sig["room_name"]):
+        step(10, f"장르({track.get('genre')}) 대표 BGA({sig['room_name']}) 로 영상 재렌더링...")
+        track = _rerender_with_backup(video_path, track.get("video_source"), lambda: render_luna_video(track))
+        video_path = track.get("video_file") or video_path
 
     if not os.path.exists(video_path):
         raise FileNotFoundError("렌더링된 비디오 파일이 없습니다. 먼저 비디오를 렌더링해주세요.")
 
-    # 1. 메타데이터 확보: 기존 저장된 메타데이터가 있으면 우선 활용하여 불필요한 재생성 및 문장 유실 방지
+    # 1. 메타데이터 확보: 기존 메타데이터를 우선 쓰되, 제목·설명·태그에 구형 '에이전트 루나' 수식어가 남아 있으면 개편 규격으로 재생성
     existing_meta = track.get("metadata") or {}
-    if not existing_meta.get("youtube_title"):
+    if not existing_meta.get("youtube_title") or metadata_has_banned_brand(existing_meta):
         meta = build_luna_metadata(track)
     else:
         meta = dict(existing_meta)
@@ -2041,13 +2196,8 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, 
 
     step(20, f"유튜브 채널 업로드 준비 중: '{meta['youtube_title']}'...")
     
-    # 썸네일 결정 (1순위: 장르별 시그니처 대표 썸네일, 2순위: 트랙 커버 이미지)
-    sig = resolve_signature_bga(track.get("genre") or "")
-    thumb_path = None
-    if sig.get("thumbnail_path") and os.path.exists(sig["thumbnail_path"]):
-        thumb_path = sig["thumbnail_path"]
-    elif cover_path and os.path.exists(cover_path):
-        thumb_path = cover_path
+    # 썸네일 결정 (장르별 1:1 시그니처 대표 썸네일 최우선 강제 적용)
+    thumb_path = sig.get("thumbnail_path") or (cover_path if cover_path and os.path.exists(cover_path) else None)
 
     result = uploader.upload_video(
         video_path=video_path,
@@ -2120,6 +2270,15 @@ def _upload_luna_shorts(track, longform_meta, longform_video_id, privacy_status,
     track_id = track.get("track_id")
     shorts = dict(track.get("shorts") or {})
     video_path = shorts.get("video_file") or os.path.join(LUNA_DIR, track_id, "video_shorts.mp4")
+    # 숏폼도 롱폼과 같은 장르 대표 룸이어야 한다 — 하이라이트 음원이 있으면 아니면 다시 렌더
+    shorts_audio = shorts.get("audio_file") or os.path.join(LUNA_DIR, track_id, "audio_shorts.mp3")
+    has_audio = os.path.exists(shorts_audio)
+    sig = resolve_signature_bga(track.get("genre") or "", ensure_exists=has_audio)
+    if has_audio and _needs_signature_rerender(shorts, video_path, sig["room_name"]):
+        step(88, f"숏폼을 대표 BGA({sig['room_name']}) 로 재렌더링...")
+        track = _rerender_with_backup(video_path, shorts.get("video_source"), lambda: render_luna_shorts_video(track))
+        shorts = dict(track.get("shorts") or {})
+        video_path = shorts.get("video_file") or video_path
     if not os.path.exists(video_path):
         raise FileNotFoundError("숏폼 영상이 없습니다. 먼저 [하이라이트 추출] → [9:16 렌더]를 실행해주세요.")
 
@@ -2165,7 +2324,9 @@ def upload_luna_shorts_standalone(track_id, privacy_status="public", progress_cb
         raise ValueError("트랙 정보를 찾을 수 없습니다.")
 
     longform_video_id = track.get("uploaded_video_id")
-    longform_meta = track.get("metadata") or build_luna_metadata(track)
+    longform_meta = track.get("metadata") or {}
+    if not longform_meta.get("youtube_title") or metadata_has_banned_brand(longform_meta):
+        longform_meta = build_luna_metadata(track)  # 숏폼 메타가 여기서 파생되므로 구형 수식어가 있으면 새로 만든다
 
     step(10, "숏폼 업로드 준비 중...")
     res = _upload_luna_shorts(
