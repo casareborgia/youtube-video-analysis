@@ -1,7 +1,11 @@
 """장르별 대표 BGA(시그니처 룸) 자동 매핑 및 렌더러 단위 테스트."""
 import os
+import shutil
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import luna_engine
 
@@ -45,6 +49,11 @@ class SignatureBgaEngineTests(unittest.TestCase):
             ("시티팝 & 드라이브", "chill", "도심 야경 발코니 (Chill)"),
             ("신스웨이브 밤 드라이브", "chill", "도심 야경 발코니 (Chill)"),
             ("앰비언트 사운드스케이프", "ambient", "자정의 침실 (Ambient)"),
+            ("햇살 다락방 서재 (Acoustic)", "acoustic", "햇살 다락방 서재 (Acoustic)"),  # 룸 이름의 '서재'가 lofi 로 새지 않음
+            ("힐링 재즈 피아노", "piano", "달밤 창가 피아노 (Piano)"),
+            ("힐링 재즈", "jazz", "심야 재즈 카페 (Jazz)"),            # '힐링'은 범용어라 수면으로 끌고 가지 않음
+            ("기타 장르", "lofi", "책상 서재 (Lo-Fi)"),                # '기타'(etc.)를 어쿠스틱 기타로 오인하지 않음
+            ("Electricity Pulse", "lofi", "책상 서재 (Lo-Fi)"),       # 'city' 부분 일치로 발코니가 되지 않음
             ("unknown_custom_genre", "lofi", "책상 서재 (Lo-Fi)"),  # fallback
         ]
         for raw_genre, expected_key, expected_room in test_cases:
@@ -65,6 +74,105 @@ class SignatureBgaEngineTests(unittest.TestCase):
             t_path = os.path.join(luna_engine.BGA_ASSETS_DIR, item["thumbnail"])
             self.assertTrue(v_path.startswith(str(BASE_DIR)))
             self.assertTrue(t_path.startswith(str(BASE_DIR)))
+
+
+
+def _ffmpeg_ok():
+    return shutil.which("ffmpeg") is not None
+
+
+class SignatureAssetGenerationTests(unittest.TestCase):
+    """루프 mp4 자동 생성은 같은 장르 썸네일로만, 그리고 렌더·업로드 경로에서만 일어난다."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.dp = patch.object(luna_engine, "BGA_ASSETS_DIR", self.tmp)
+        self.dp.start()
+
+    def tearDown(self):
+        self.dp.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_resolve_does_not_generate_by_default(self):
+        with patch.object(luna_engine, "ensure_signature_bga_asset") as ens:
+            res = luna_engine.resolve_signature_bga("Emotional Piano Solo")
+        ens.assert_not_called()
+        self.assertIsNone(res["video_path"])
+
+    def test_missing_thumbnail_never_borrows_another_room(self):
+        # lofi 썸네일만 있을 때 piano 루프를 lofi 그림으로 만들면 bga_piano_moonlight.mp4 에 엉뚱한 룸이 영구히 박힌다
+        shutil.copy(BGA_DIR / "thumb_lofi_cat.jpg", os.path.join(self.tmp, "thumb_lofi_cat.jpg"))
+        with patch.object(luna_engine.subprocess, "run") as run:
+            self.assertIsNone(luna_engine.ensure_signature_bga_asset("piano"))
+        run.assert_not_called()
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "bga_piano_moonlight.mp4")))
+
+    def test_failed_generation_leaves_no_file(self):
+        shutil.copy(BGA_DIR / "thumb_piano_cat.jpg", os.path.join(self.tmp, "thumb_piano_cat.jpg"))
+        fail = subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="boom")
+        with patch.object(luna_engine.subprocess, "run", return_value=fail):
+            self.assertIsNone(luna_engine.ensure_signature_bga_asset("piano"))
+        self.assertEqual(sorted(os.listdir(self.tmp)), ["thumb_piano_cat.jpg"])
+
+
+@unittest.skipUnless(_ffmpeg_ok(), "ffmpeg 필요")
+class RenderFallbackSourceTests(unittest.TestCase):
+    """루프 합성이 안 될 때의 폴백 영상은 signature_bga 로 위장하지 않는다."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.assets = os.path.join(self.tmp, "assets")
+        os.makedirs(self.assets)
+        self.lp = patch.object(luna_engine, "LUNA_DIR", self.tmp)
+        self.dp = patch.object(luna_engine, "BGA_ASSETS_DIR", self.assets)
+        self.ep = patch.object(luna_engine, "ensure_signature_bga_asset", return_value=None)
+        for p in (self.lp, self.dp, self.ep):
+            p.start()
+        t_dir = os.path.join(self.tmp, "t1")
+        os.makedirs(t_dir)
+        self.audio = os.path.join(t_dir, "audio.mp3")
+        self.cover = os.path.join(t_dir, "cover.jpg")
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=f=440:d=2", self.audio], check=True)
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=gray:s=320x180",
+                        "-frames:v", "1", self.cover], check=True)
+        self.track = {"track_id": "t1", "genre": "Emotional Piano Solo", "title": "T",
+                      "audio_file": self.audio, "cover_file": self.cover, "duration_seconds": 2}
+
+    def tearDown(self):
+        for p in (self.lp, self.dp, self.ep):
+            p.stop()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_signature_thumbnail_fallback_is_labelled(self):
+        shutil.copy(self.cover, os.path.join(self.assets, "thumb_piano_cat.jpg"))
+        res = luna_engine.render_luna_video(dict(self.track), quality="360p")
+        self.assertEqual(res["video_source"], "signature_thumbnail")
+        self.assertEqual(res["signature_bga_room"], "달밤 창가 피아노 (Piano)")
+        self.assertIn(res["video_source"], luna_engine.SIGNATURE_VIDEO_SOURCES)
+
+    def test_cover_fallback_does_not_claim_a_room(self):
+        t = dict(self.track, video_source="signature_bga", signature_bga_room="달밤 창가 피아노 (Piano)")
+        res = luna_engine.render_luna_video(t, quality="360p")
+        self.assertEqual(res["video_source"], "cover")
+        self.assertNotIn("signature_bga_room", res)
+        self.assertNotIn(res["video_source"], luna_engine.SIGNATURE_VIDEO_SOURCES)
+
+
+class BannedBrandMetadataTests(unittest.TestCase):
+    def test_detects_old_brand_in_description_and_tags_not_only_title(self):
+        clean = {"youtube_title": "[Piano] Felt", "youtube_description": "음악: 루나의 심야 서재", "youtube_tags": ["수면음악"]}
+        self.assertFalse(luna_engine.metadata_has_banned_brand(clean))
+        self.assertTrue(luna_engine.metadata_has_banned_brand(dict(clean, youtube_description="- 작곡: 에이전트 루나 (Agent Luna)")))
+        self.assertTrue(luna_engine.metadata_has_banned_brand(dict(clean, youtube_tags=["에이전트루나"])))
+        self.assertTrue(luna_engine.metadata_has_banned_brand(dict(clean, shorts={"youtube_description": "#Shorts #AgentLuna"})))
+
+    def test_concept_tags_with_old_brand_are_dropped(self):
+        track = {"title": "Felt (펠트)", "genre": "Emotional Piano Solo", "mood": "새벽", "story": "이야기",
+                 "has_lyrics": False, "duration": 180, "tags": ["에이전트루나", "AgentLuna", "피아노"]}
+        with patch.object(luna_engine.llm_client, "call_llm_json", side_effect=RuntimeError("down")):
+            meta = luna_engine.build_luna_metadata(track)
+        self.assertFalse(luna_engine.metadata_has_banned_brand(meta), meta["youtube_tags"])
+        self.assertIn("피아노", meta["youtube_tags"])
 
 
 if __name__ == "__main__":
