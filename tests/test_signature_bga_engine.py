@@ -158,6 +158,71 @@ class RenderFallbackSourceTests(unittest.TestCase):
         self.assertNotIn(res["video_source"], luna_engine.SIGNATURE_VIDEO_SOURCES)
 
 
+class UploadSignatureRerenderTests(unittest.TestCase):
+    """업로드 전: 장르 대표 룸이 아닌 롱폼·숏폼 영상은 백업 후 대표 BGA 로 다시 렌더하고, 실패하면 올리지 않는다."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        for p in (patch.object(luna_engine, "LUNA_DIR", self.tmp),
+                  patch.object(luna_engine, "ensure_signature_bga_asset", return_value=None)):
+            p.start(); self.addCleanup(p.stop)
+        self.d = os.path.join(self.tmp, "luna_v"); os.makedirs(self.d)
+        for name, body in (("audio.mp3", b"a"), ("audio_shorts.mp3", b"a"), ("video.mp4", b"veo"), ("video_shorts.mp4", b"cover")):
+            open(os.path.join(self.d, name), "wb").write(body)
+        self.track = {
+            "track_id": "luna_v", "title": "Song", "genre": "Emotional Piano Solo", "video_source": "bga-remotion",
+            "metadata": {"youtube_title": "[Piano] Song", "youtube_description": "desc", "youtube_tags": ["t"], "pinned_comment": "pin"},
+            "shorts": {"video_file": os.path.join(self.d, "video_shorts.mp4"), "audio_file": os.path.join(self.d, "audio_shorts.mp3"),
+                       "video_source": "cover"},
+        }
+        luna_engine.save_track(self.track)
+        self.room = "달밤 창가 피아노 (Piano)"
+
+    def _fake_render(self, key):
+        def render(track, *a, **kw):
+            info = track if key is None else track.setdefault(key, {})
+            info.update(video_source="signature_bga", signature_bga_room=self.room)
+            return track
+        return render
+
+    def _fake_upload(self, **kw):
+        return {"video_id": "VID", "url": "https://youtu.be/VID", "comment_posted": True, "warnings": []}
+
+    def test_longform_and_shorts_are_rerendered_with_backup(self):
+        with patch.object(luna_engine, "render_luna_video", side_effect=self._fake_render(None)) as rl, \
+                patch.object(luna_engine, "render_luna_shorts_video", side_effect=self._fake_render("shorts")) as rs, \
+                patch.object(luna_engine.uploader, "upload_video", side_effect=self._fake_upload):
+            res = luna_engine.upload_luna_to_youtube("luna_v", with_shorts=True)
+        rl.assert_called_once()
+        rs.assert_called_once()
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(open(os.path.join(self.d, "video_bga-remotion_backup.mp4"), "rb").read(), b"veo")
+        self.assertEqual(open(os.path.join(self.d, "video_shorts_cover_backup.mp4"), "rb").read(), b"cover")
+
+    def test_already_signature_videos_are_not_rerendered(self):
+        self.track.update(video_source="signature_bga", signature_bga_room=self.room)
+        self.track["shorts"].update(video_source="signature_thumbnail", signature_bga_room=self.room)
+        luna_engine.save_track(self.track)
+        with patch.object(luna_engine, "render_luna_video") as rl, \
+                patch.object(luna_engine, "render_luna_shorts_video") as rs, \
+                patch.object(luna_engine.uploader, "upload_video", side_effect=self._fake_upload):
+            luna_engine.upload_luna_to_youtube("luna_v", with_shorts=True)
+        rl.assert_not_called()
+        rs.assert_not_called()
+
+    def test_failed_rerender_restores_video_and_aborts_upload(self):
+        def broken(track, *a, **kw):
+            open(os.path.join(self.d, "video.mp4"), "wb").write(b"half")
+            raise RuntimeError("ffmpeg died")
+        with patch.object(luna_engine, "render_luna_video", side_effect=broken), \
+                patch.object(luna_engine.uploader, "upload_video") as up:
+            with self.assertRaises(RuntimeError):
+                luna_engine.upload_luna_to_youtube("luna_v")
+        up.assert_not_called()
+        self.assertEqual(open(os.path.join(self.d, "video.mp4"), "rb").read(), b"veo")
+
+
 class BannedBrandMetadataTests(unittest.TestCase):
     def test_detects_old_brand_in_description_and_tags_not_only_title(self):
         clean = {"youtube_title": "[Piano] Felt", "youtube_description": "음악: 루나의 심야 서재", "youtube_tags": ["수면음악"]}
