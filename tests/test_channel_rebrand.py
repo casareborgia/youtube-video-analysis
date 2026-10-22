@@ -74,15 +74,16 @@ class FallbackConceptTagTests(unittest.TestCase):
 class LeoGenrePolicyTests(unittest.TestCase):
     def test_active_genres_exclude_zero_weight(self):
         active = trend_scout.active_luna_genres()
-        for g in ("synthwave", "citypop", "rnb-chill", "dark-ambient"):
+        for g in ("synthwave", "citypop", "dark-ambient"):
             self.assertNotIn(g, active)
         self.assertIn("lofi", active)
         self.assertIn("piano", active)
 
     def test_core_list_matches_weights(self):
-        # 3대 코어 잠금: 가중치 > 0 인 장르 집합과 CORE_LUNA_GENRES 가 어긋나면 폴백 경로가 다른 장르를 고르게 된다
+        # 7개 장르 고정: 가중치 > 0 인 장르, CORE_LUNA_GENRES, 생성 허용 장르(대표 BGA 룸)가 모두 같아야 한다
         self.assertEqual(set(trend_scout.active_luna_genres()), set(trend_scout.CORE_LUNA_GENRES))
-        self.assertEqual(set(trend_scout.CORE_LUNA_GENRES), {"lofi", "piano", "ambient", "sleep"})
+        self.assertEqual(set(trend_scout.CORE_LUNA_GENRES), set(luna_engine.ALLOWED_GENRE_IDS))
+        self.assertEqual(len(trend_scout.CORE_LUNA_GENRES), 7)
 
     def test_preset_labels_follow_lock(self):
         active = set(trend_scout.active_luna_genres())
@@ -90,11 +91,22 @@ class LeoGenrePolicyTests(unittest.TestCase):
             if preset["id"] in active:
                 self.assertIn("핵심 주력", preset["desc"], preset)
                 self.assertNotIn("보관", preset["desc"], preset)
-            elif preset["id"] in luna_engine.ALLOWED_GENRE_IDS:
-                # 대표 BGA 룸이 있어 직접 만들 수는 있지만 레오 브리프는 고르지 않는 장르 (재즈·어쿠스틱·R&B)
-                self.assertNotIn("보관", preset["desc"], preset)
             else:
                 self.assertIn("보관", preset["desc"], preset)
+
+    def test_production_stats_count_real_track_genre_names(self):
+        # 트랙 genre 는 luna_engine 프리셋 이름이다 — 예전엔 piano·jazz·sleep 이 LUNA_GENRES 표기와 달라 0으로 집계됐다
+        import json, tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            for i, g in enumerate(["Emotional Piano Solo", "Late Night Jazz Cafe", "Deep Sleep / Meditation", "Slow R&B Chillout"]):
+                d = Path(tmp) / "luna_music" / f"luna_{i}"
+                d.mkdir(parents=True)
+                (d / "meta.json").write_text(json.dumps({"genre": g}), encoding="utf-8")
+            with patch.object(trend_scout, "DATA_DIR", Path(tmp)):
+                stats = trend_scout.get_production_genre_stats()
+        for g in ("piano", "jazz", "sleep", "rnb-chill"):
+            self.assertEqual(stats[g], 1, g)
 
     def test_pick_balanced_never_returns_excluded(self):
         for _ in range(50):
