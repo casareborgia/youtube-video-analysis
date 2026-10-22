@@ -37,6 +37,14 @@ class SignatureBgaEngineTests(unittest.TestCase):
             ("Synthwave / Cyberpunk", "chill", "도심 야경 발코니 (Chill)"),   # 보관 장르 → 발코니
             ("Nostalgic City Pop", "chill", "도심 야경 발코니 (Chill)"),
             ("Cinematic Felt Piano & Neoclassical", "piano", "달밤 창가 피아노 (Piano)"),
+            ("감성 로파이 비트", "lofi", "책상 서재 (Lo-Fi)"),
+            ("새벽 감성 피아노 연주곡", "piano", "달밤 창가 피아노 (Piano)"),
+            ("깊은 수면과 명상을 위한 델타파", "sleep", "포근한 수면 안식처 (Sleep)"),
+            ("심야 재즈 바", "jazz", "심야 재즈 카페 (Jazz)"),
+            ("어쿠스틱 통기타", "acoustic", "햇살 다락방 서재 (Acoustic)"),
+            ("시티팝 & 드라이브", "chill", "도심 야경 발코니 (Chill)"),
+            ("신스웨이브 밤 드라이브", "chill", "도심 야경 발코니 (Chill)"),
+            ("앰비언트 사운드스케이프", "ambient", "자정의 침실 (Ambient)"),
             ("unknown_custom_genre", "lofi", "책상 서재 (Lo-Fi)"),  # fallback
         ]
         for raw_genre, expected_key, expected_room in test_cases:

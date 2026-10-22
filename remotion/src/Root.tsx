@@ -16,7 +16,7 @@ const defaultProps: LunaBgaProps = {
   loopUnitSeconds: 22.0,
   audio: "luna/luna_demo/audio.mp3",
   durationSeconds: 180.0,
-  title: "Agent Luna BGA",
+  title: "루나의 심야 서재 BGA",
   subtitle: "Midnight Chill & Synthwave BGM",
   accent: "#a5b4fc",
   spectrum: true,

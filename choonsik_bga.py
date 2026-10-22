@@ -524,7 +524,7 @@ def render_bga_remotion(track_data: dict, progress_cb=None, timeout: int = 1800,
     audio_rel = f"luna/{track_id}/{os.path.basename(audio_file)}"
 
     # 2. 메타데이터 및 props 준비
-    title_full = (track_data.get("title") or "Agent Luna").strip()
+    title_full = (track_data.get("title") or "루나의 심야 서재").strip()
     if "(" in title_full:
         parts = title_full.split("(", 1)
         title_clean = parts[0].strip()

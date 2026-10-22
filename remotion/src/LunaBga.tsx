@@ -166,7 +166,7 @@ export const LunaBga: React.FC<LunaBgaProps> = ({
             textTransform: "uppercase",
           }}
         >
-          AGENT LUNA
+          루나의 심야 서재
         </div>
         <div
           style={{
