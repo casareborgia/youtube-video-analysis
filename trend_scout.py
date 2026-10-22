@@ -422,22 +422,32 @@ recommended_topics 는 서로 다른 소재로 반드시 3개를 채워주세요
 
 # ── 레오의 음악 트렌드 스카우터 & 루나 기획 브리프 연동 ─────────────────
 
-# ── 3대 코어 장르 완전 잠금 (Tri-Core Lock: Lo-Fi, Piano, Ambient/Sleep 외 전면 차단) ────
-CORE_LUNA_GENRES = ["lofi", "piano", "ambient", "sleep"]
+# ── 7개 장르 고정 (장르 대표 BGA 룸이 있는 장르만 — luna_engine.ALLOWED_GENRE_IDS 와 같아야 한다) ────
+# 2026-10-23 사용자 확정: 로파이·피아노·앰비언트·수면·재즈·어쿠스틱·R&B 칠을 같은 비중으로 돌리고,
+# 실제 비중은 pick_balanced_genres 가 최근 제작 빈도로 조절한다. 신스웨이브·시티팝·다크 앰비언트는 보관(0.0).
+CORE_LUNA_GENRES = ["lofi", "piano", "ambient", "sleep", "jazz", "acoustic", "rnb-chill"]
 SECONDARY_LUNA_GENRES = []
 
-# 장르 가중치 (3대 수면/집중 코어만 활성화, 어쿠스틱/재즈/신스웨이브 등은 0.0으로 완전 잠금)
 GENRE_BASE_WEIGHTS = {
-    "lofi": 3.0,            # 코어 1: Lo-Fi / Chillhop (공부/코딩/책상 서재)
-    "piano": 2.5,           # 코어 2: Neoclassical Piano Solo (새벽 감성/사색)
-    "ambient": 2.0,         # 코어 3: Cinematic Ambient (깊은 이완/공간감)
-    "sleep": 1.5,           # 코어 3: Deep Sleep / Delta Wave (완전 수면)
-    "jazz": 0.0,            # (완전 잠금: 롱폼 제작 집중)
-    "acoustic": 0.0,        # (완전 잠금: 어택감 배제 및 수면 보호)
-    "rnb-chill": 0.0,       # (완전 잠금)
-    "synthwave": 0.0,       # (완전 잠금)
-    "citypop": 0.0,         # (완전 잠금)
-    "dark-ambient": 0.0     # (완전 잠금)
+    "lofi": 2.0,            # 책상 서재
+    "piano": 2.0,           # 달밤 창가 피아노
+    "ambient": 2.0,         # 자정의 침실
+    "sleep": 2.0,           # 포근한 수면 안식처
+    "jazz": 2.0,            # 심야 재즈 카페
+    "acoustic": 2.0,        # 햇살 다락방 서재
+    "rnb-chill": 2.0,       # 도심 야경 발코니
+    "synthwave": 0.0,       # 보관
+    "citypop": 0.0,         # 보관
+    "dark-ambient": 0.0     # 보관
+}
+
+
+# luna_engine.GENRE_PRESETS 이름 → id (trend_scout 는 luna_engine 을 import 하지 않으므로 이름을 그대로 적는다)
+_PRESET_NAME_TO_ID = {
+    "lo-fi / chillhop": "lofi", "emotional piano solo": "piano", "cinematic ambient": "ambient",
+    "deep sleep / meditation": "sleep", "late night jazz cafe": "jazz", "warm acoustic / folk": "acoustic",
+    "slow r&b chillout": "rnb-chill", "synthwave / cyberpunk": "synthwave", "nostalgic city pop": "citypop",
+    "dark atmospheric ambient": "dark-ambient",
 }
 
 
@@ -460,11 +470,13 @@ def get_production_genre_stats(limit: int = 30) -> Dict[str, int]:
                 d = json.load(f)
                 raw_g = (d.get("genre") or "").strip().lower()
                 leo_g = (d.get("leo_brief", {}).get("genre") or "").strip().lower()
-                matched = None
+                # 트랙 genre 는 luna_engine 프리셋 이름("Emotional Piano Solo" 등)이라 LUNA_GENRES 표기와 다를 수 있다
+                matched = _PRESET_NAME_TO_ID.get(raw_g)
                 for k, v in LUNA_GENRES.items():
+                    if matched:
+                        break
                     if k == raw_g or k == leo_g or v.lower() in raw_g:
                         matched = k
-                        break
                 if matched:
                     counts[matched] += 1
         except Exception:
@@ -480,7 +492,7 @@ def active_luna_genres() -> List[str]:
 
 def pick_balanced_genres(count: int = 2, stats: Optional[Dict[str, int]] = None) -> List[str]:
     """
-    채널 3대 코어 장르 잠금(Lo-Fi / Piano / Ambient·Sleep)에 따라,
+    채널 7개 장르 고정(대표 BGA 룸이 있는 장르)에 따라,
     가중치가 유효한 후보 중에서 최근 제작 빈도의 역가중치를 적용하여 선별합니다.
     """
     if stats is None:
@@ -577,8 +589,8 @@ def analyze_music_trends_for_luna(region_code: str = "KR", force_refresh: bool =
     allowed_moods_str = ", ".join(f'"{k}"({v})' for k, v in LUNA_MOODS.items())
 
     system_prompt = f"""당신은 유튜브 알고리즘 및 글로벌 음악 트렌드 분석 전문가 '에이전트 레오(Agent Leo)'입니다.
-'루나의 심야 서재' 채널의 공식 음악 정체성은 밤의 안식과 수면, 깊은 집중을 위한 **Lo-Fi Chillhop, Neoclassical Piano, Deep Ambient & Sleep** 3대 코어 장르 전문 채널입니다.
-현재 실시간 유튜브 음악 급상승 차트를 분석하여 대중의 심리적 갈증과 감정선을 포착하되, 우리 채널의 3대 코어 장르(Lo-Fi / Piano / Ambient·Sleep)에 완벽히 녹여낸 [음악 기획 브리프 3선]을 도출해야 합니다.
+'루나의 심야 서재' 채널의 공식 음악 정체성은 밤의 안식과 수면, 깊은 집중입니다. 다루는 장르는 다음 7개로 고정되어 있습니다: {allowed_genres_str}.
+현재 실시간 유튜브 음악 급상승 차트를 분석하여 대중의 심리적 갈증과 감정선을 포착하되, 이 7개 장르 안에서 완벽히 녹여낸 [음악 기획 브리프 3선]을 도출해야 합니다.
 
 [장르 및 무드 배정 지침 (필수 준수)]
 1. **브리프 1 배정**:

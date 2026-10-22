@@ -28,23 +28,23 @@ os.makedirs(LUNA_DIR, exist_ok=True)
 LUNA_CHANNEL_ID = "UCowTfbpKpXDBF3Mc50H4iGQ"
 LUNA_CHANNEL_SUBSCRIBE_URL = f"https://www.youtube.com/channel/{LUNA_CHANNEL_ID}?sub_confirmation=1"
 
-# ── 장르 및 무드 독립 스펙 (3대 코어 잠금: Lo-Fi / Piano / Ambient·Sleep — trend_scout.GENRE_BASE_WEIGHTS 와 동기) ───
+# ── 장르 및 무드 독립 스펙 (7개 장르 고정: ALLOWED_GENRE_IDS — trend_scout.CORE_LUNA_GENRES·GENRE_BASE_WEIGHTS 와 동기) ───
 GENRE_PRESETS = [
     {"id": "lofi", "name": "Lo-Fi / Chillhop", "desc": "따뜻한 바이닐 노이즈와 칠한 비트, 공부/코딩/휴식용 (핵심 주력)"},
     {"id": "piano", "name": "Emotional Piano Solo", "desc": "한 편의 영화 같은 서정적이고 감동적인 피아노 멜로디 (핵심 주력)"},
     {"id": "ambient", "name": "Cinematic Ambient", "desc": "깊은 공간감과 서정적인 패드 사운드, 명상/수면용 (핵심 주력)"},
     {"id": "sleep", "name": "Deep Sleep / Meditation", "desc": "432Hz 델타파 기반의 극도의 이완과 힐링 사운드스케이프 (핵심 주력)"},
-    {"id": "jazz", "name": "Late Night Jazz Cafe", "desc": "감미로운 피아노 트리오와 잔잔한 콘트라베이스"},
-    {"id": "acoustic", "name": "Warm Acoustic / Folk", "desc": "따스한 핑거스타일 어쿠스틱 기타와 서정적 첼로 선율, 힐링 포크"},
+    {"id": "jazz", "name": "Late Night Jazz Cafe", "desc": "감미로운 피아노 트리오와 잔잔한 콘트라베이스 (핵심 주력)"},
+    {"id": "acoustic", "name": "Warm Acoustic / Folk", "desc": "따스한 핑거스타일 어쿠스틱 기타와 서정적 첼로 선율, 힐링 포크 (핵심 주력)"},
     {"id": "dark-ambient", "name": "Dark Atmospheric Ambient", "desc": "심해와 우주의 신비로운 초저역 펄스, 극도의 딥워크 집중용 (보관)"},
     {"id": "synthwave", "name": "Synthwave / Cyberpunk", "desc": "80년대 레트로 아날로그 신디사이저와 드라이브 비트 (보관)"},
     {"id": "citypop", "name": "Nostalgic City Pop", "desc": "80s 레트로 신스 브라스와 경쾌한 슬랩 베이스, 도심 드라이브 감성 (보관)"},
-    {"id": "rnb-chill", "name": "Slow R&B Chillout", "desc": "몽환적인 808 서브 베이스와 세련된 어번 네오소울 건반 그루브"}
+    {"id": "rnb-chill", "name": "Slow R&B Chillout", "desc": "몽환적인 808 서브 베이스와 세련된 어번 네오소울 건반 그루브 (핵심 주력)"}
 ]
 
 # 새 곡을 만들 수 있는 장르 — 장르 대표 BGA 룸(SIGNATURE_BGA_MAP)이 각자 있는 7개 (2026-10-23 사용자 확정).
 # 다크 앰비언트·신스웨이브·시티팝은 보관 장르라 기존 곡 표시용으로만 남기고 새로 만들지 않는다.
-# (레오 브리프의 장르 가중치는 trend_scout.GENRE_BASE_WEIGHTS 가 이 안에서 따로 정한다)
+# 레오 브리프·일일 루틴도 이 7개를 돌린다 (trend_scout.CORE_LUNA_GENRES).
 ALLOWED_GENRE_IDS = ("lofi", "piano", "ambient", "sleep", "jazz", "acoustic", "rnb-chill")
 ACTIVE_GENRE_PRESETS = [g for g in GENRE_PRESETS if g["id"] in ALLOWED_GENRE_IDS]
 
