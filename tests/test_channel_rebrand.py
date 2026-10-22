@@ -90,6 +90,9 @@ class LeoGenrePolicyTests(unittest.TestCase):
             if preset["id"] in active:
                 self.assertIn("핵심 주력", preset["desc"], preset)
                 self.assertNotIn("보관", preset["desc"], preset)
+            elif preset["id"] in luna_engine.ALLOWED_GENRE_IDS:
+                # 대표 BGA 룸이 있어 직접 만들 수는 있지만 레오 브리프는 고르지 않는 장르 (재즈·어쿠스틱·R&B)
+                self.assertNotIn("보관", preset["desc"], preset)
             else:
                 self.assertIn("보관", preset["desc"], preset)
 

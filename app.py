@@ -1370,7 +1370,7 @@ class BatchAssignPlaylistsRequest(BaseModel):
 async def get_luna_presets():
     """루나 장르 및 무드 프리셋 목록"""
     return {
-        "genres": luna_engine.GENRE_PRESETS,
+        "genres": luna_engine.ACTIVE_GENRE_PRESETS,  # 보관 장르는 새 곡 선택지에서 뺀다
         "moods": luna_engine.MOOD_PRESETS
     }
 
@@ -1405,6 +1405,11 @@ async def generate_luna_track(req: LunaTrackGenerateRequest):
     레오의 트렌드 브리프와 장르 독립 스펙을 결합하여
     음원 콘셉트 기획, 가사 생성(필요시), Lyria 3 Pro 완곡 음원, Imagen 앨범아트, 레오의 고정댓글 메타데이터까지 자동 생성
     """
+    try:
+        luna_engine.ensure_allowed_genre(req.genre)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     # Lyria 작곡·마스터링·커버까지 수 분이 걸리는 동기 작업 — 이벤트 루프를 막지 않도록 스레드에서 실행
     def _run():
         concept = luna_engine.generate_music_concept(
