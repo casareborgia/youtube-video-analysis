@@ -84,12 +84,22 @@ class LeoBriefIntoConceptTests(unittest.TestCase):
         self.assertIn("펠트피아노", c["tags"])
         self.assertIn("Theme:", c["lyria_prompt"])
 
-    def test_llm_failure_without_brief_uses_genre_template_including_dark_ambient(self):
-        with patch.object(luna_engine.llm_client, "call_llm_json", side_effect=RuntimeError("down")):
-            c = luna_engine.generate_music_concept(genre="dark-ambient", mood="focus", vocal_mode="auto")
-        self.assertEqual(c["concept_source"], "fallback")
-        self.assertNotIn("Velvet Afterglow", c["title"])   # 예전엔 lofi 템플릿으로 떨어졌다
-        self.assertIn("Abyssal", c["title"])
+    def test_archived_genres_are_rejected_instead_of_falling_back_to_lofi(self):
+        # 보관 장르(대표 BGA 룸이 따로 없음)는 새 곡으로 만들지 않는다 — 예전엔 조용히 만들어지거나 lofi 템플릿으로 떨어졌다
+        for genre in ("dark-ambient", "synthwave", "citypop", "kpop"):
+            with patch.object(luna_engine.llm_client, "call_llm_json") as llm:
+                with self.assertRaises(ValueError, msg=genre):
+                    luna_engine.generate_music_concept(genre=genre, mood="focus", vocal_mode="auto")
+            llm.assert_not_called()
+
+    def test_allowed_genres_match_signature_rooms_and_presets(self):
+        self.assertEqual(set(luna_engine.ALLOWED_GENRE_IDS),
+                         {"lofi", "piano", "ambient", "sleep", "jazz", "acoustic", "rnb-chill"})
+        self.assertEqual([g["id"] for g in luna_engine.ACTIVE_GENRE_PRESETS
+                          if g["id"] not in luna_engine.ALLOWED_GENRE_IDS], [])
+        rooms = {luna_engine.resolve_signature_bga(luna_engine.GENRE_SPECS[g]["name"])["genre_key"]
+                 for g in luna_engine.ALLOWED_GENRE_IDS}
+        self.assertEqual(rooms, {"lofi", "piano", "ambient", "sleep", "jazz", "acoustic", "chill"})  # 7개 룸 1:1
 
 
 # ── 버그 2: Lyria 입력에 가사 포함 ───────────────────────────────────────

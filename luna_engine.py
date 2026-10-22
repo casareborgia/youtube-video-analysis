@@ -34,13 +34,27 @@ GENRE_PRESETS = [
     {"id": "piano", "name": "Emotional Piano Solo", "desc": "한 편의 영화 같은 서정적이고 감동적인 피아노 멜로디 (핵심 주력)"},
     {"id": "ambient", "name": "Cinematic Ambient", "desc": "깊은 공간감과 서정적인 패드 사운드, 명상/수면용 (핵심 주력)"},
     {"id": "sleep", "name": "Deep Sleep / Meditation", "desc": "432Hz 델타파 기반의 극도의 이완과 힐링 사운드스케이프 (핵심 주력)"},
-    {"id": "jazz", "name": "Late Night Jazz Cafe", "desc": "감미로운 피아노 트리오와 잔잔한 콘트라베이스 (보관)"},
-    {"id": "acoustic", "name": "Warm Acoustic / Folk", "desc": "따스한 핑거스타일 어쿠스틱 기타와 서정적 첼로 선율, 힐링 포크 (보관)"},
+    {"id": "jazz", "name": "Late Night Jazz Cafe", "desc": "감미로운 피아노 트리오와 잔잔한 콘트라베이스"},
+    {"id": "acoustic", "name": "Warm Acoustic / Folk", "desc": "따스한 핑거스타일 어쿠스틱 기타와 서정적 첼로 선율, 힐링 포크"},
     {"id": "dark-ambient", "name": "Dark Atmospheric Ambient", "desc": "심해와 우주의 신비로운 초저역 펄스, 극도의 딥워크 집중용 (보관)"},
     {"id": "synthwave", "name": "Synthwave / Cyberpunk", "desc": "80년대 레트로 아날로그 신디사이저와 드라이브 비트 (보관)"},
     {"id": "citypop", "name": "Nostalgic City Pop", "desc": "80s 레트로 신스 브라스와 경쾌한 슬랩 베이스, 도심 드라이브 감성 (보관)"},
-    {"id": "rnb-chill", "name": "Slow R&B Chillout", "desc": "몽환적인 808 서브 베이스와 세련된 어번 네오소울 건반 그루브 (보관)"}
+    {"id": "rnb-chill", "name": "Slow R&B Chillout", "desc": "몽환적인 808 서브 베이스와 세련된 어번 네오소울 건반 그루브"}
 ]
+
+# 새 곡을 만들 수 있는 장르 — 장르 대표 BGA 룸(SIGNATURE_BGA_MAP)이 각자 있는 7개 (2026-10-23 사용자 확정).
+# 다크 앰비언트·신스웨이브·시티팝은 보관 장르라 기존 곡 표시용으로만 남기고 새로 만들지 않는다.
+# (레오 브리프의 장르 가중치는 trend_scout.GENRE_BASE_WEIGHTS 가 이 안에서 따로 정한다)
+ALLOWED_GENRE_IDS = ("lofi", "piano", "ambient", "sleep", "jazz", "acoustic", "rnb-chill")
+ACTIVE_GENRE_PRESETS = [g for g in GENRE_PRESETS if g["id"] in ALLOWED_GENRE_IDS]
+
+
+def ensure_allowed_genre(genre) -> str:
+    """생성 요청 장르 id 를 검증한다. 비어 있으면 lofi, 보관·미지원 장르면 ValueError."""
+    g = (genre or "lofi").strip()
+    if g not in ALLOWED_GENRE_IDS:
+        raise ValueError(f"'{g}' 장르는 새 곡으로 만들 수 없습니다 (허용: {', '.join(ALLOWED_GENRE_IDS)})")
+    return g
 
 GENRE_SPECS = {
     "lofi": {
@@ -282,7 +296,7 @@ def generate_music_concept(genre="lofi", mood="dawn", custom_topic="", leo_brief
     LLM(Gemini 3.6 Flash)을 활용하여 장르별 독립 스펙과 레오의 트렌드 브리프를 결합,
     하드코딩 닻내림 없는 독창적인 곡 제목, 감성 서사, 가사(Lyrics, 필요시), Lyria 3 작곡 프롬프트, 앨범아트 프롬프트를 생성합니다.
     """
-    genre_key = genre if genre in GENRE_SPECS else "lofi"
+    genre_key = ensure_allowed_genre(genre)  # 보관 장르가 조용히 lofi 로 바뀌거나 그대로 만들어지지 않도록
     genre_spec = GENRE_SPECS[genre_key]
     genre_info = next((g for g in GENRE_PRESETS if g["id"] == genre_key), GENRE_PRESETS[0])
     mood_info = next((m for m in MOOD_PRESETS if m["id"] == mood), MOOD_PRESETS[0])
@@ -1989,6 +2003,9 @@ def list_tracks():
                 "created_at": d.get("created_at") or os.path.getmtime(p),
                 "uploaded_video_id": d.get("uploaded_video_id"),
                 "uploaded_url": d.get("uploaded_url"),
+                # 일일 루틴의 '오늘 이미 발행' 판단용 (업로드 시각·예약 공개 시각)
+                "uploaded_at": d.get("uploaded_at"),
+                "publish_at": d.get("publish_at"),
                 "pinned_comment": meta.get("pinned_comment") or d.get("pinned_comment"),
                 "comment_posted": d.get("comment_posted", False),
                 "studio_comment_url": f"https://studio.youtube.com/video/{d.get('uploaded_video_id')}/comments" if d.get("uploaded_video_id") else "",

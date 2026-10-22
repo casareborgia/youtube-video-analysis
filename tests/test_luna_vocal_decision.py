@@ -74,11 +74,16 @@ class VocalKeywordDetectorTests(unittest.TestCase):
         self.assertIn("75 bpm", low)
 
 
+def _allowed_specs():
+    """새 곡으로 만들 수 있는 장르만 (보관 장르는 generate_music_concept 가 거부한다)."""
+    return [(g, s) for g, s in luna_engine.GENRE_SPECS.items() if g in luna_engine.ALLOWED_GENRE_IDS]
+
+
 class AutoModeAffinityTests(unittest.TestCase):
     """auto 모드에서 장르 vocal_affinity 가 판정을 결정하는지 (10개 장르 전수)."""
 
     def test_affinity_none_forces_instrumental_even_if_llm_sends_lyrics(self):
-        for genre, spec in luna_engine.GENRE_SPECS.items():
+        for genre, spec in _allowed_specs():
             if spec["vocal_affinity"] != "none":
                 continue
             with self.subTest(genre=genre), patch.object(luna_engine.llm_client, "call_llm_json", return_value=_llm_vocal_response()):
@@ -94,7 +99,7 @@ class AutoModeAffinityTests(unittest.TestCase):
             self.assertNotIn("singing", low)
 
     def test_affinity_high_forces_lyrics_even_if_llm_sends_instrumental(self):
-        for genre, spec in luna_engine.GENRE_SPECS.items():
+        for genre, spec in _allowed_specs():
             if spec["vocal_affinity"] != "high":
                 continue
             with self.subTest(genre=genre), patch.object(luna_engine.llm_client, "call_llm_json", return_value=_llm_inst_response()):
@@ -105,7 +110,7 @@ class AutoModeAffinityTests(unittest.TestCase):
             self.assertIn("korean", c["lyria_prompt"].lower())
 
     def test_affinity_optional_trusts_llm(self):
-        optional = [g for g, s in luna_engine.GENRE_SPECS.items() if s["vocal_affinity"] == "optional"]
+        optional = [g for g, s in _allowed_specs() if s["vocal_affinity"] == "optional"]
         self.assertTrue(optional)
         for genre in optional:
             with self.subTest(genre=genre, llm="vocal"), patch.object(luna_engine.llm_client, "call_llm_json", return_value=_llm_vocal_response()):
@@ -139,7 +144,7 @@ class AutoModeAffinityTests(unittest.TestCase):
 class ExplicitModeTests(unittest.TestCase):
     def test_instrumental_mode_overrides_llm_lyrics(self):
         with patch.object(luna_engine.llm_client, "call_llm_json", return_value=_llm_vocal_response()):
-            c = luna_engine.generate_music_concept(genre="citypop", mood="dawn", vocal_mode="instrumental")
+            c = luna_engine.generate_music_concept(genre="rnb-chill", mood="dawn", vocal_mode="instrumental")
         self.assertFalse(c["has_lyrics"])
         self.assertIsNone(c["lyrics"])
         self.assertEqual(c["vocal_mode"], "instrumental")
@@ -172,7 +177,7 @@ class ExplicitModeTests(unittest.TestCase):
 class KeywordPriorityTests(unittest.TestCase):
     def test_inst_keyword_beats_affinity_high(self):
         with patch.object(luna_engine.llm_client, "call_llm_json", return_value=_llm_vocal_response()):
-            c = luna_engine.generate_music_concept(genre="citypop", mood="dawn", custom_topic="피아노 독주", vocal_mode="auto")
+            c = luna_engine.generate_music_concept(genre="rnb-chill", mood="dawn", custom_topic="피아노 독주", vocal_mode="auto")
         self.assertFalse(c["has_lyrics"])
         self.assertEqual(c["vocal_decision"]["reason"], "keyword:피아노 독주")
 
@@ -184,7 +189,7 @@ class KeywordPriorityTests(unittest.TestCase):
 
     def test_install_does_not_trigger_inst(self):
         with patch.object(luna_engine.llm_client, "call_llm_json", return_value=_llm_vocal_response()):
-            c = luna_engine.generate_music_concept(genre="citypop", mood="dawn", custom_topic="install guide", vocal_mode="auto")
+            c = luna_engine.generate_music_concept(genre="rnb-chill", mood="dawn", custom_topic="install guide", vocal_mode="auto")
         self.assertTrue(c["has_lyrics"])
         self.assertEqual(c["vocal_decision"]["reason"], "affinity:high")
 
@@ -206,7 +211,7 @@ class FallbackTests(unittest.TestCase):
 
     def test_llm_failure_keeps_explicit_lyrics(self):
         with patch.object(luna_engine.llm_client, "call_llm_json", side_effect=RuntimeError("down")):
-            c = luna_engine.generate_music_concept(genre="citypop", mood="dawn", vocal_mode="lyrics")
+            c = luna_engine.generate_music_concept(genre="rnb-chill", mood="dawn", vocal_mode="lyrics")
         self.assertTrue(c["has_lyrics"])
         self.assertTrue(c["lyrics"])
         self.assertEqual(c["vocal_decision"]["reason"], "explicit_mode")
@@ -228,6 +233,18 @@ class ListTracksExposureTests(unittest.TestCase):
         self.assertIsNone(rows["luna_legacy"]["vocal_decision"])
         self.assertEqual(rows["luna_new"]["vocal_mode"], "auto")
         self.assertEqual(rows["luna_new"]["vocal_decision"]["reason"], "affinity:none")
+
+    def test_list_tracks_exposes_upload_and_publish_times(self):
+        """일일 루틴이 '오늘 이미 발행(예약 포함)'을 history 만으로 판단할 수 있어야 한다."""
+        import json, os, tempfile
+        with tempfile.TemporaryDirectory() as tmp, patch.object(luna_engine, "LUNA_DIR", tmp):
+            os.makedirs(os.path.join(tmp, "luna_up"))
+            with open(os.path.join(tmp, "luna_up", "meta.json"), "w", encoding="utf-8") as f:
+                json.dump({"track_id": "luna_up", "uploaded_video_id": "VID", "uploaded_at": 1792679999.5,
+                           "publish_at": "2026-10-23T12:00:00.000Z"}, f)
+            rows = {t["track_id"]: t for t in luna_engine.list_tracks()}
+        self.assertEqual(rows["luna_up"]["uploaded_at"], 1792679999.5)
+        self.assertEqual(rows["luna_up"]["publish_at"], "2026-10-23T12:00:00.000Z")
 
 
 if __name__ == "__main__":
