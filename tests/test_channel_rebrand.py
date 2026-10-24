@@ -63,6 +63,33 @@ class GenreTitleTagTests(unittest.TestCase):
             self.assertEqual(luna_engine.genre_title_tag(names[gid]), tag, names[gid])
 
 
+class ShortTrackTitleTests(unittest.TestCase):
+    def test_strips_trailing_korean_subtitle(self):
+        self.assertEqual(luna_engine.short_track_title("Raindroplets on the Zinc Awning (함석지붕 처마를 두드리는 빗방울)"),
+                         "Raindroplets on the Zinc Awning")
+
+    def test_keeps_title_without_parens_or_only_parens(self):
+        self.assertEqual(luna_engine.short_track_title("Velvet Midnight"), "Velvet Midnight")
+        self.assertEqual(luna_engine.short_track_title("(빗방울)"), "(빗방울)")
+
+    def test_llm_title_with_full_title_is_not_double_parenthesized(self):
+        track = {"title": "Raindroplets on the Zinc Awning (함석지붕 처마를 두드리는 빗방울)", "genre": "Deep Sleep / Meditation",
+                 "mood": "비 오는 창가", "story": "이야기", "has_lyrics": False, "duration_seconds": 170}
+        llm_out = {"youtube_title": "[Sleep] 빗소리 🌙 깊은 밤 (Raindroplets on the Zinc Awning (함석지붕 처마를 두드리는 빗방울))",
+                   "pinned_comment": "어떤 순간이 남으셨나요?", "youtube_description": "이야기"}
+        with patch.object(luna_engine.llm_client, "call_llm_json", return_value=(llm_out, "")) as m:
+            meta = luna_engine.build_luna_metadata(track)
+        self.assertEqual(meta["youtube_title"], "[Sleep] 빗소리 🌙 깊은 밤 (Raindroplets on the Zinc Awning)")
+        self.assertIn("(Raindroplets on the Zinc Awning)' 형식", m.call_args[0][0][1]["content"])
+
+    def test_fallback_title_uses_short_title(self):
+        track = {"title": "Old Bookstore (헌책방 햇살)", "genre": "Warm Acoustic / Folk", "mood": "아련한 그리움",
+                 "story": "이야기", "has_lyrics": False, "duration_seconds": 180}
+        with patch.object(luna_engine.llm_client, "call_llm_json", side_effect=RuntimeError("down")):
+            meta = luna_engine.build_luna_metadata(track)
+        self.assertTrue(meta["youtube_title"].endswith("(Old Bookstore)"), meta["youtube_title"])
+
+
 class EnforceGenreTitleTagTests(unittest.TestCase):
     def test_replaces_wrong_tag(self):
         self.assertEqual(luna_engine.enforce_genre_title_tag("[Lo-Fi] 비 오는 밤 🌙 (X)", "Chill"), "[Chill] 비 오는 밤 🌙 (X)")
