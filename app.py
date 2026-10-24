@@ -1323,6 +1323,10 @@ class LunaUploadRequest(BaseModel):
     pinned_comment: Optional[str] = None
     with_shorts: Optional[bool] = False          # 하이라이트 숏폼 연계 업로드 (기본 꺼짐, 업로드 할당량 2배)
 
+class LunaCommentRetryRequest(BaseModel):
+    max_age_days: Optional[float] = 7            # 최근 N일 안에 올린 트랙만 (오래된 영상에 한꺼번에 달리지 않도록)
+    dry_run: Optional[bool] = False
+
 class LunaShortsExtractRequest(BaseModel):
     track_id: str
     duration: Optional[int] = 45                 # 15~59초
@@ -1553,6 +1557,17 @@ async def upload_luna_music_video(req: LunaUploadRequest):
         return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"루나 유튜브 업로드 실패: {e}")
+
+@app.post("/api/luna/comments/retry")
+async def retry_luna_pending_comments(req: LunaCommentRetryRequest):
+    """예약 업로드라 등록하지 못한 롱폼·숏폼 댓글을 공개된 영상에 다시 등록 (고정은 Studio 에서 수동)"""
+    try:
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, lambda: luna_engine.retry_pending_comments(max_age_days=req.max_age_days or 7, dry_run=bool(req.dry_run))
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"댓글 재등록 실패: {e}")
 
 @app.post("/api/luna/shorts/extract")
 async def extract_luna_shorts_highlight(req: LunaShortsExtractRequest):

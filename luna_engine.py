@@ -2343,6 +2343,86 @@ def _upload_luna_shorts(track, longform_meta, longform_video_id, privacy_status,
             "publish_at": res.get("publish_at"), "comment_posted": res.get("comment_posted", False)}
 
 
+def _pending_comment_jobs(track):
+    """트랙에서 아직 댓글이 안 붙은 업로드(롱폼·숏폼)를 (종류, video_id, 댓글 문구) 로 뽑는다."""
+    meta = track.get("metadata") or {}
+    jobs = []
+    vid = track.get("uploaded_video_id")
+    if vid and not track.get("comment_posted"):
+        text = track.get("pinned_comment") or meta.get("pinned_comment")
+        if text:
+            jobs.append(("longform", vid, sanitize_pinned_comment(text)))
+    shorts_yt = (track.get("shorts") or {}).get("youtube") or {}
+    svid = shorts_yt.get("video_id")
+    if svid and not shorts_yt.get("comment_posted"):
+        sm = meta.get("shorts") or {}
+        if sm.get("pinned_comment"):
+            longform_vid = shorts_yt.get("longform_video_id") or vid
+            text = _fill_shorts_placeholders(sm["pinned_comment"], longform_vid, track.get("playlist_id"))
+            jobs.append(("shorts", svid, sanitize_pinned_comment(text)))
+    return jobs
+
+
+def retry_pending_comments(max_age_days=7, dry_run=False):
+    """예약 공개라 업로드 때 등록하지 못한 댓글을, 영상이 공개된 뒤 다시 등록한다.
+
+    업로드 시점엔 영상이 비공개라 YouTube 가 댓글을 403 으로 막는다(예약 업로드 31건 전부 실패).
+    최근 max_age_days 일 안에 올린 트랙만 보고, 공개(public) 상태이면서 채널 댓글이 아직 없는 영상에만 단다.
+    '고정'은 API 로 불가하므로 Studio 에서 직접 해야 한다.
+    """
+    cutoff = time.time() - float(max_age_days) * 86400
+    candidates = []
+    for p in glob.glob(os.path.join(LUNA_DIR, "*", "meta.json")):
+        try:
+            with open(p, encoding="utf-8") as f:
+                track = json.load(f)
+        except Exception:
+            continue
+        try:
+            uploaded_at = float(track.get("uploaded_at") or 0)
+        except (TypeError, ValueError):
+            uploaded_at = 0.0
+        if uploaded_at < cutoff:
+            continue
+        for kind, vid, text in _pending_comment_jobs(track):
+            candidates.append((track.get("track_id"), kind, vid, text))
+
+    results = []
+    if not candidates:
+        return {"checked": 0, "posted": 0, "results": results}
+
+    statuses = uploader.get_video_statuses([c[2] for c in candidates])
+    posted = 0
+    for track_id, kind, vid, text in candidates:
+        item = {"track_id": track_id, "kind": kind, "video_id": vid}
+        privacy = (statuses.get(vid) or {}).get("privacy")
+        if privacy != "public":
+            item["status"] = "skipped"
+            item["reason"] = "삭제됨" if privacy is None else f"아직 {privacy}"
+            results.append(item)
+            continue
+        try:
+            already = uploader.channel_has_own_comment(vid)
+            if not already and not dry_run:
+                uploader.post_comment(vid, text)
+                posted += 1
+            item["status"] = "already" if already else ("would_post" if dry_run else "posted")
+            if not dry_run:
+                track = load_track(track_id) or {}
+                if kind == "longform":
+                    track["comment_posted"] = True
+                else:
+                    shorts = dict(track.get("shorts") or {})
+                    shorts["youtube"] = dict(shorts.get("youtube") or {}, comment_posted=True)
+                    track["shorts"] = shorts
+                save_track(track)
+        except Exception as e:
+            item["status"] = "error"
+            item["reason"] = str(e)[:200]
+        results.append(item)
+    return {"checked": len(candidates), "posted": posted, "results": results}
+
+
 def upload_luna_shorts_standalone(track_id, privacy_status="public", progress_cb=None, publish_at=None, playlist_id=None):
     """이미 롱폼이 업로드된 트랙(또는 단독)에 대해 숏폼만 유튜브로 업로드한다."""
     def step(pct, msg):
