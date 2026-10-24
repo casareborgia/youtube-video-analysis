@@ -416,6 +416,47 @@ class SynthesizeJobAudioTests(ShortsS2Base):
         self.assertEqual(job["audio"]["bgm"], bgm)
         self.assertEqual(job["audio"]["bgm_track_id"], "t1")
 
+    def _bgm_file(self, data=b"luna-mp3"):
+        bgm = os.path.join(self.tmp, "luna_audio.mp3")
+        with open(bgm, "wb") as f:
+            f.write(data)
+        return bgm
+
+    def test_bgm_volume_keeps_narration_gap(self):
+        job = self.make_job(2)
+        bgm = self._bgm_file()
+        levels = {"narration.mp3": -19.6, "luna_audio.mp3": -12.4}
+        job = shorts_engine.synthesize_job_audio(job, synth=_fake_synth(), merger=_fake_merge,
+                                                 bgm_picker=lambda tid: {"track_id": "t1", "file": bgm, "title": "Synth"},
+                                                 lufs_probe=lambda path, seconds=None: levels[os.path.basename(path)])
+        audio = job["audio"]
+        self.assertEqual(audio["bgm_under_lu"], 22.0)
+        self.assertEqual(audio["bgm_lufs"], -12.4)
+        self.assertEqual(audio["bgm_volume"], round(10 ** ((-19.6 - 22.0 + 12.4) / 20), 4))   # 0.0347
+        with open(bgm, "rb") as f:
+            self.assertEqual(f.read(), b"luna-mp3")   # 루나 원곡은 읽기만 한다
+
+    def test_bgm_gap_override_and_cap(self):
+        job = self.make_job(2)
+        job["audio"]["bgm_under_lu"] = 18
+        bgm = self._bgm_file()
+        levels = {"narration.mp3": -19.6, "luna_audio.mp3": -12.4}
+        job = shorts_engine.synthesize_job_audio(job, synth=_fake_synth(), merger=_fake_merge,
+                                                 bgm_picker=lambda tid: {"track_id": "t1", "file": bgm, "title": "Synth"},
+                                                 lufs_probe=lambda path, seconds=None: levels[os.path.basename(path)])
+        self.assertEqual(job["audio"]["bgm_volume"], 0.055)
+        # 아주 조용한 곡이어도 기존 배율(0.16)보다 크게 키우지 않는다
+        self.assertEqual(shorts_engine.bgm_volume_for(-19.6, -45.0), shorts_engine.DEFAULT_BGM_VOLUME)
+
+    def test_bgm_volume_falls_back_when_unmeasurable(self):
+        job = self.make_job(2)
+        bgm = self._bgm_file()
+        job = shorts_engine.synthesize_job_audio(job, synth=_fake_synth(), merger=_fake_merge,
+                                                 bgm_picker=lambda tid: {"track_id": "t1", "file": bgm, "title": "Synth"},
+                                                 lufs_probe=lambda path, seconds=None: None)
+        self.assertEqual(job["audio"]["bgm_volume"], shorts_engine.BGM_FALLBACK_VOLUME)
+        self.assertTrue(any("BGM 음량" in w for w in job["warnings"]))
+
     def test_pick_bgm_filters_vocal_mode(self):
         fake_luna = MagicMock()
         fake_luna.LUNA_DIR = self.tmp
@@ -449,6 +490,23 @@ class SynthesizeJobAudioTests(ShortsS2Base):
             shorts_engine.synthesize_job_audio(job, synth=_fake_synth(), merger=_fake_merge, bgm_picker=lambda tid: None)
 
 # ── 4b. edge-tts 끝 무음 자르기 (InJoon 은 끝에 약 1.2초 무음을 붙인다) ─────────
+
+class IntegratedLufsTests(unittest.TestCase):
+    def test_measures_real_file_and_handles_missing(self):
+        ff = producer.ffmpeg_path()
+        if not ff:
+            self.skipTest("ffmpeg 없음")
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, ignore_errors=True)
+        loud, quiet = os.path.join(d, "loud.mp3"), os.path.join(d, "quiet.mp3")
+        for path, vol in ((loud, "0dB"), (quiet, "-12dB")):
+            subprocess.run([ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+                            "-af", f"volume={vol}", "-c:a", "libmp3lame", "-q:a", "2", path], check=True)
+        a, b = shorts_engine.integrated_lufs(loud), shorts_engine.integrated_lufs(quiet)
+        self.assertIsInstance(a, float)
+        self.assertAlmostEqual(a - b, 12.0, delta=0.5)
+        self.assertIsNone(shorts_engine.integrated_lufs(os.path.join(d, "none.mp3")))
+
 
 class TrimTrailingSilenceTests(unittest.TestCase):
     def setUp(self):
@@ -531,7 +589,7 @@ class QcJobTests(ShortsS2Base):
     GOOD = {"width": 1080, "height": 1920, "duration": 42.3, "fps": 30.0, "audio_present": True, "audio_codec": "aac"}
 
     def test_pass(self):
-        job = shorts_engine.qc_job(self.make_rendered(), probe=self.GOOD, brightness=88.0, loudness={"lufs": -14.4, "true_peak": -1.2})
+        job = shorts_engine.qc_job(self.make_rendered(), probe=self.GOOD, brightness=88.0, loudness={"lufs": -18.4, "true_peak": -1.2})
         self.assertTrue(job["qc"]["passed"])
         self.assertEqual(job["status"], "qc_passed")
         self.assertEqual(job["qc"]["failed"], [])
@@ -541,7 +599,7 @@ class QcJobTests(ShortsS2Base):
 
     def test_fail_collects_items(self):
         bad = dict(self.GOOD, duration=61.0, width=1920, height=1080, audio_present=False)
-        job = shorts_engine.qc_job(self.make_rendered(), probe=bad, brightness=3.0, loudness={"lufs": -19.0, "true_peak": -1.0})
+        job = shorts_engine.qc_job(self.make_rendered(), probe=bad, brightness=3.0, loudness={"lufs": -21.0, "true_peak": -1.0})
         self.assertFalse(job["qc"]["passed"])
         self.assertEqual(job["status"], "failed")
         self.assertEqual(set(job["qc"]["failed"]), {"duration<=60", "1080x1920", "audio_present", "first_frame_not_black", "lufs_within_1db"})
@@ -573,9 +631,9 @@ class QcJobTests(ShortsS2Base):
         self.assertEqual(shorts_engine.first_frame_brightness(__file__, ff="/fake/ffmpeg", runner=runner), 100.0)
         self.assertIsNone(shorts_engine.first_frame_brightness(__file__, ff=None))
 
-    def test_normalize_loudness_runs_loudnorm_when_out_of_range(self):
+    def test_normalize_loudness_uses_plain_gain_when_peak_allows(self):
         job = self.make_rendered()
-        measured = iter([{"lufs": -20.0, "true_peak": -3.0, "silent": False}, {"lufs": -14.1, "true_peak": -1.0, "silent": False}])
+        measured = iter([{"lufs": -20.0, "true_peak": -3.0, "silent": False}, {"lufs": -18.1, "true_peak": -1.0, "silent": False}])
         calls = {}
         def runner(cmd, capture_output=None, text=None, timeout=None):
             calls["cmd"] = cmd
@@ -586,16 +644,33 @@ class QcJobTests(ShortsS2Base):
         with patch.object(producer, "ffmpeg_path", lambda: "/fake/ffmpeg"):
             job = shorts_engine.normalize_loudness(job, measurer=lambda p: next(measured), runner=runner)
         self.assertTrue(job["audio"]["loudnorm_applied"])
+        self.assertEqual(job["audio"]["loudness_method"], "gain")
         self.assertEqual(job["audio"]["lufs_before"], -20.0)
-        self.assertEqual(job["audio"]["lufs"], -14.1)
-        self.assertIn("loudnorm=I=-14.0:TP=-1.0:LRA=11", " ".join(calls["cmd"]))
+        self.assertEqual(job["audio"]["lufs"], -18.1)
+        af = calls["cmd"][calls["cmd"].index("-af") + 1]
+        self.assertEqual(af, "volume=2.00dB")   # 대사 강약을 누르지 않고 볼륨만 올린다
         with open(job["render"]["file"], "rb") as f:
             self.assertEqual(f.read(), b"normalized")
+
+    def test_normalize_loudness_falls_back_to_loudnorm_when_peak_would_clip(self):
+        job = self.make_rendered()
+        measured = iter([{"lufs": -24.0, "true_peak": -2.0, "silent": False}, {"lufs": -18.0, "true_peak": -1.0, "silent": False}])
+        calls = {}
+        def runner(cmd, capture_output=None, text=None, timeout=None):
+            calls["cmd"] = cmd
+            with open(cmd[-1], "wb") as f:
+                f.write(b"normalized")
+            r = MagicMock(); r.returncode = 0
+            return r
+        with patch.object(producer, "ffmpeg_path", lambda: "/fake/ffmpeg"):
+            job = shorts_engine.normalize_loudness(job, measurer=lambda p: next(measured), runner=runner)
+        self.assertEqual(job["audio"]["loudness_method"], "loudnorm")
+        self.assertIn("loudnorm=I=-18.0:TP=-1.0:LRA=11", " ".join(calls["cmd"]))
 
     def test_normalize_loudness_skips_when_in_range_or_unmeasurable(self):
         job = self.make_rendered()
         runner = MagicMock()
-        job = shorts_engine.normalize_loudness(job, measurer=lambda p: {"lufs": -13.6, "true_peak": -1.0, "silent": False}, runner=runner)
+        job = shorts_engine.normalize_loudness(job, measurer=lambda p: {"lufs": -17.6, "true_peak": -1.0, "silent": False}, runner=runner)
         self.assertFalse(job["audio"]["loudnorm_applied"])
         runner.assert_not_called()
         job = shorts_engine.normalize_loudness(job, measurer=lambda p: None, runner=runner)
@@ -694,7 +769,7 @@ class BuildJobTests(ShortsS2Base):
 
     def hooks(self, **over):
         h = {"synth": _fake_synth(), "merger": _fake_merge, "bgm_picker": lambda tid: None, "renderer_fn": self.fake_renderer,
-             "measurer": lambda p: {"lufs": -14.2, "true_peak": -1.1, "silent": False},
+             "measurer": lambda p: {"lufs": -18.2, "true_peak": -1.1, "silent": False},
              "qc_kwargs": {"brightness": 90.0}}
         h.update(over)
         return h
@@ -707,7 +782,7 @@ class BuildJobTests(ShortsS2Base):
         job = shorts_engine.build_job(job, options={"confirm": False}, progress_cb=lambda s, m, p: prog.append((s, p)), **self.hooks())
         self.assertEqual(job["status"], "qc_passed", job.get("error"))
         self.assertEqual(job["caption_source"], "edge_tts")
-        self.assertEqual(job["audio"]["lufs"], -14.2)
+        self.assertEqual(job["audio"]["lufs"], -18.2)
         self.assertTrue(job["qc"]["passed"])
         pcts = [p for _, p in prog]
         self.assertEqual(pcts, sorted(pcts))
