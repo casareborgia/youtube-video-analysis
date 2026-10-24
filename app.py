@@ -1428,6 +1428,8 @@ async def generate_luna_track(req: LunaTrackGenerateRequest):
         concept["created_at"] = time.time()
         if req.leo_brief:
             concept["leo_brief"] = req.leo_brief
+        # 결정 기록 (정책 추천·선택 확률 → data/luna_music/decisions.jsonl, meta.json 에 decision_id)
+        luna_engine.attach_track_decision(concept, req.leo_brief, genre=req.genre or "lofi", mood=req.mood)
 
         # 음원 생성 (Lyria 3 Pro / 오토 신스)
         track_with_audio = luna_engine.generate_luna_audio(
