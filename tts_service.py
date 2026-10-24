@@ -251,6 +251,19 @@ def merge_audio_files(input_files: List[str], output_file: str) -> bool:
         return False
 
 
+def _runner_error(proc) -> str:
+    """qwen_tts_runner 가 stdout 마지막 줄에 남긴 {"status": "error", "error": ...} 를 꺼낸다. 없으면 stderr 끝줄."""
+    for line in reversed((proc.stdout or "").strip().splitlines()):
+        try:
+            data = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(data, dict) and data.get("error"):
+            return str(data["error"])
+    tail = [l for l in (proc.stderr or "").strip().splitlines() if l.strip()]
+    return tail[-1] if tail else f"종료 코드 {proc.returncode}"
+
+
 class TTSService:
     @staticmethod
     def get_registered_voices() -> List[Dict[str, Any]]:
@@ -440,23 +453,17 @@ class TTSService:
                 "--instruct", voice_config.get("instruct", "")
             ])
 
+        # 지난 실행의 같은 이름 파일이 남아 있으면 실패가 성공으로 보이므로 먼저 지운다
+        if out_path.exists():
+            out_path.unlink()
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            if out_path.exists():
-                return {
-                    "status": "success",
-                    "scene_index": scene_index,
-                    "voice_id": voice_id,
-                    "voice_name": voice_config["name"],
-                    "audio_url": f"/api/audio/{out_filename}",
-                    "filename": out_filename,
-                    "engine": "qwen-tts"
-                }
+        except subprocess.TimeoutExpired:
+            return {"status": "error", "engine": "qwen-tts", "message": "Qwen-TTS 합성 실패: 120초 안에 끝나지 않았습니다 (시간 초과)."}
         except Exception as e:
-            print(f"[Qwen-TTS Run Error] {e}")
+            return {"status": "error", "engine": "qwen-tts", "message": f"Qwen-TTS 실행 실패: {e}"}
 
-        # 파일이 생성되었는지 최종 확인
-        if out_path.exists():
+        if proc.returncode == 0 and out_path.exists():
             return {
                 "status": "success",
                 "scene_index": scene_index,
@@ -466,8 +473,7 @@ class TTSService:
                 "filename": out_filename,
                 "engine": "qwen-tts"
             }
-
-        return {"status": "error", "message": "음성 합성에 실패했습니다."}
+        return {"status": "error", "engine": "qwen-tts", "message": f"Qwen-TTS 합성 실패: {_runner_error(proc)}"}
 
     @classmethod
     def generate_all_scenes_audio_batch(
@@ -491,6 +497,7 @@ class TTSService:
         results = []
         audio_files_for_merge = []
         edge_tasks = []
+        errors = []
 
         for i, scene in enumerate(scenes, 1):
             scene_num = scene.get("scene_num") or scene.get("scene_index", i)
@@ -519,9 +526,14 @@ class TTSService:
             else:
                 # Qwen-TTS 단일 생성
                 res = cls.synthesize_speech(clean_text, voice_id=voice_id, scene_index=scene_num, topic_slug=safe_topic)
-                if res.get("status") == "success":
-                    if os.path.exists(res.get("filename", "")):
-                        shutil.move(res["filename"], str(out_path))
+                src = AUDIO_DIR / (res.get("filename") or "")
+                if res.get("status") == "success" and src.is_file():
+                    shutil.move(str(src), str(out_path))
+                else:
+                    item["error"] = res.get("message") or "음성 합성에 실패했습니다."
+                    errors.append({"scene_num": scene_num, "message": item["error"]})
+                    results.append(item)
+                    continue
 
             item["audio_url"] = f"/api/audio/{safe_topic}/{filename}"
             results.append(item)
@@ -577,10 +589,16 @@ class TTSService:
             script_zinfo.flag_bits |= 0x800
             zipf.writestr(script_zinfo, script_content.encode("utf-8"))
 
+        made = [r for r in results if r.get("audio_url")]
+        if errors and not made:
+            return {"status": "error", "message": errors[0]["message"], "errors": errors, "scenes_audio": results,
+                    "topic": topic, "voice_id": voice_id, "total_scenes": len(results)}
+
         return {
             "status": "success",
             "topic": topic,
             "voice_id": voice_id,
+            "errors": errors,
             "scenes_audio": results,
             "full_audio_url": f"/api/audio/{safe_topic}/{full_filename}",
             "zip_download_url": f"/api/audio/zip/{zip_filename}",

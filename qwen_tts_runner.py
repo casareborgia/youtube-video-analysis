@@ -20,6 +20,9 @@ def main():
     text = args.text.strip()
     output_path = args.output
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    # 지난 실행의 파일이 남아 있으면 이번 실패가 성공으로 보이므로 먼저 지운다
+    if os.path.exists(output_path):
+        os.remove(output_path)
 
     try:
         import torch
@@ -83,23 +86,18 @@ def main():
             return
 
     except Exception as e:
-        print(f"[Qwen-TTS Fallback/Log] {str(e)}", file=sys.stderr)
-        
+        # 시스템 음성(say)으로 대신 만들지 않는다 — 다른 목소리가 "성공"으로 나가면 고장을 알아챌 수 없다.
+        reason = f"{type(e).__name__}: {e}"
         try:
-            import subprocess
-            aiff_tmp = output_path + ".aiff"
-            subprocess_voice = "Yuna"
-            subprocess.run(["say", "-v", subprocess_voice, text, "-o", aiff_tmp], check=False)
-            if os.path.exists(aiff_tmp):
-                subprocess.run(["ffmpeg", "-y", "-i", aiff_tmp, output_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-                if os.path.exists(aiff_tmp):
-                    os.remove(aiff_tmp)
-                print(json.dumps({"status": "success", "output": output_path, "note": "fallback_system_tts"}))
-                return
+            import transformers
+            reason += f" (transformers {transformers.__version__})"
         except Exception:
             pass
-            
-        print(json.dumps({"status": "error", "error": str(e)}))
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        print(f"[Qwen-TTS 실패] {reason}", file=sys.stderr)
+        print(json.dumps({"status": "error", "error": reason}, ensure_ascii=False))
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
