@@ -122,5 +122,22 @@ class BatchEdgeTests(unittest.TestCase):
         self.assertFalse((topic_dir / "scene_01.mp3").exists())
 
 
+class SceneEndpointTests(unittest.TestCase):
+    """/api/tts/generate-scene 은 이벤트 루프 안에서 asyncio.run() 을 부르면 안 된다 (서버에서 edge-tts 가 항상 실패하던 원인)."""
+
+    def test_edge_voice_works_through_api(self):
+        from fastapi.testclient import TestClient
+        import app as app_module
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, ignore_errors=True)
+        with patch.object(tts_service, "AUDIO_DIR", tmp), \
+             patch.object(tts_service.edge_tts, "Communicate", _FakeCommunicate), \
+             patch.object(tts_service.subprocess, "run", side_effect=AssertionError("Qwen 으로 넘어가면 안 된다")):
+            r = TestClient(app_module.app).post("/api/tts/generate-scene", json={
+                "text": "정상 시험 문장", "voice_id": "edge_injoon", "scene_index": 1, "topic_slug": "t"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(r.json()["engine"], "edge-tts")
+
+
 if __name__ == "__main__":
     unittest.main()

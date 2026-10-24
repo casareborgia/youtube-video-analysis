@@ -541,8 +541,12 @@ async def upload_voice_clone(
         raise HTTPException(status_code=500, detail=f"보이스 등록 실패: {str(e)}")
 
 @app.post("/api/tts/generate-scene")
-async def generate_scene_tts(req: TTSSceneRequest):
-    """단일 씬 음성 합성 (Edge-TTS 고속 또는 Qwen-TTS)"""
+def generate_scene_tts(req: TTSSceneRequest):
+    """단일 씬 음성 합성 (Edge-TTS 고속 또는 Qwen-TTS)
+
+    일반 함수로 두어 FastAPI 가 스레드에서 돌리게 한다. synthesize_speech 가 asyncio.run() 으로 edge-tts 를
+    부르므로, async 엔드포인트(이벤트 루프 안)에서 부르면 항상 실패한다(전에는 그 실패가 Qwen 으로 조용히 대체됐다).
+    """
     if not req.text or not req.text.strip():
         raise HTTPException(status_code=400, detail="합성할 텍스트가 없습니다.")
 
