@@ -149,6 +149,24 @@ class LeoGenrePolicyTests(unittest.TestCase):
         for g in ("piano", "jazz", "sleep", "rnb-chill"):
             self.assertEqual(stats[g], 1, g)
 
+    def test_production_stats_use_created_at_not_mtime(self):
+        # meta.json 이 일괄 보정으로 다시 쓰여도(mtime 역전) 최근 N곡은 생성 시각 기준이어야 한다
+        import json, os, tempfile
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            tracks = [("old", 1000.0, "Lo-Fi / Chillhop"), ("new", 2000.0, "Emotional Piano Solo")]
+            for name, created, g in tracks:
+                d = Path(tmp) / "luna_music" / name
+                d.mkdir(parents=True)
+                (d / "meta.json").write_text(json.dumps({"genre": g, "created_at": created}), encoding="utf-8")
+            os.utime(Path(tmp) / "luna_music" / "old" / "meta.json", (9999999999, 9999999999))  # 옛 곡이 방금 수정된 상태
+            (Path(tmp) / "luna_music" / "broken").mkdir()
+            (Path(tmp) / "luna_music" / "broken" / "meta.json").write_text("{", encoding="utf-8")
+            with patch.object(trend_scout, "DATA_DIR", Path(tmp)):
+                stats = trend_scout.get_production_genre_stats(limit=1)
+        self.assertEqual(stats["piano"], 1)
+        self.assertEqual(stats["lofi"], 0)
+
     def test_pick_balanced_never_returns_excluded(self):
         for _ in range(50):
             picked = trend_scout.pick_balanced_genres(2, stats={})

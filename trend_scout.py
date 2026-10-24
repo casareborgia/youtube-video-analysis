@@ -458,29 +458,35 @@ def get_production_genre_stats(limit: int = 30) -> Dict[str, int]:
     if not luna_dir.exists():
         return counts
 
-    meta_files = sorted(
-        luna_dir.glob("*/meta.json"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True
-    )[:limit]
-
-    for mf in meta_files:
+    # 최근 순서는 생성 시각(created_at)으로 정한다. meta.json 은 업로드·일괄 보정 때마다 다시 쓰여
+    # mtime 이 한꺼번에 같아지므로(2026-10-22 65개 동시 수정) mtime 정렬로는 "최근 N곡"이 무작위가 된다.
+    metas = []
+    for mf in luna_dir.glob("*/meta.json"):
         try:
             with open(mf, "r", encoding="utf-8") as f:
                 d = json.load(f)
-                raw_g = (d.get("genre") or "").strip().lower()
-                leo_g = (d.get("leo_brief", {}).get("genre") or "").strip().lower()
-                # 트랙 genre 는 luna_engine 프리셋 이름("Emotional Piano Solo" 등)이라 LUNA_GENRES 표기와 다를 수 있다
-                matched = _PRESET_NAME_TO_ID.get(raw_g)
-                for k, v in LUNA_GENRES.items():
-                    if matched:
-                        break
-                    if k == raw_g or k == leo_g or v.lower() in raw_g:
-                        matched = k
-                if matched:
-                    counts[matched] += 1
         except Exception:
             continue
+        try:
+            created = float(d.get("created_at") or 0)
+        except (TypeError, ValueError):
+            created = 0.0
+        metas.append((created or mf.stat().st_mtime, d))
+    metas.sort(key=lambda x: x[0], reverse=True)
+
+    for _, d in metas[:limit]:
+        raw_g = str(d.get("genre") or "").strip().lower()
+        leo_brief = d.get("leo_brief") if isinstance(d.get("leo_brief"), dict) else {}
+        leo_g = str(leo_brief.get("genre") or "").strip().lower()
+        # 트랙 genre 는 luna_engine 프리셋 이름("Emotional Piano Solo" 등)이라 LUNA_GENRES 표기와 다를 수 있다
+        matched = _PRESET_NAME_TO_ID.get(raw_g)
+        for k, v in LUNA_GENRES.items():
+            if matched:
+                break
+            if k == raw_g or k == leo_g or v.lower() in raw_g:
+                matched = k
+        if matched:
+            counts[matched] += 1
     return counts
 
 
