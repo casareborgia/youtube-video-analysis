@@ -1262,17 +1262,26 @@ document.addEventListener('DOMContentLoaded', () => {
         })
       });
 
-      if (!res.ok) throw new Error('일괄 음성 합성 실패');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || '일괄 음성 합성 실패');
+      }
 
       const data = await res.json();
       currentZipDownloadUrl = data.zip_download_url;
+      const failed = data.errors || [];
 
       // ZIP 다운로드 버튼 표시
       if (btnDownloadZip && currentZipDownloadUrl) {
         btnDownloadZip.style.display = 'inline-flex';
       }
 
-      alert(`🎉 전체 ${data.total_scenes}개 씬의 음성 및 마스터 오디오 완결! [전체 ZIP 다운로드]를 클릭해 일괄 다운로드할 수 있습니다.`);
+      if (failed.length) {
+        alert(`⚠️ ${data.total_scenes}개 씬 중 ${failed.length}개는 음성을 만들지 못했습니다.\n` +
+          failed.map(f => `씬 ${f.scene_num}: ${f.message}`).join('\n'));
+      } else {
+        alert(`🎉 전체 ${data.total_scenes}개 씬의 음성 및 마스터 오디오 완결! [전체 ZIP 다운로드]를 클릭해 일괄 다운로드할 수 있습니다.`);
+      }
       
       // 씬 카드별 플레이어 갱신
       (data.scenes_audio || []).forEach((item, idx) => {

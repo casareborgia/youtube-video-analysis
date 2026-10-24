@@ -573,9 +573,11 @@ async def generate_all_scenes_tts(req: TTSBatchRequest):
             req.topic or "custom_topic",
             req.voice_id
         )
-        return res
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"일괄 음성 합성 실패: {str(e)}")
+    if res.get("status") == "error":   # 모든 씬 실패 — 이유를 화면까지 전달한다
+        raise HTTPException(status_code=500, detail=res.get("message") or "일괄 음성 합성 실패")
+    return res
 
 @app.get("/api/audio/{filename:path}")
 async def get_audio_file(filename: str):
