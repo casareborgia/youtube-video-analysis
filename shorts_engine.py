@@ -558,6 +558,8 @@ USD_KRW = 1400
 
 MIN_SCENE_SECONDS = 3.0            # 60초 컷 때 씬을 이보다 짧게 줄이지 않는다
 SCENE_PAD_SECONDS = 0.35           # 씬 나레이션 뒤 숨 고르기(무음). 자막·씬 시각은 이 패드를 포함한 길이로 계산
+TRIM_SILENCE_DB = -40.0            # edge-tts 끝 무음 판정 기준
+TRIM_KEEP_SECONDS = 0.08           # 끝 무음을 자를 때 남겨 두는 꼬리(말끝이 뚝 끊기지 않게)
 DEFAULT_VOICE_ID = "edge_injoon"   # 2026-10-19 사용자 결정 ②: 기본 성우 edge-tts
 TARGET_LUFS = -14.0                # 작업계획서 5.3
 TARGET_TRUE_PEAK = -1.0
@@ -1024,7 +1026,10 @@ def _default_synth(voice_id: str) -> Callable:
                 text, voice_code=code, rate=conf.get("default_rate", "+5%"), output_file=out, with_word_boundaries=True))
             if not res or not os.path.exists(out):
                 raise RuntimeError(f"씬 {scene_num} edge-tts 합성 실패")
-            return {"file": out, "captions": res.get("captions") or None, "engine": "edge-tts"}
+            caps = res.get("captions") or None
+            last_end = max(float(c.get("endMs") or 0) for c in caps) / 1000.0 if caps else 0.0
+            _trim_trailing_silence(producer.ffmpeg_path(), out, min_seconds=last_end)
+            return {"file": out, "captions": caps, "engine": "edge-tts"}
         res = tts_service.TTSService.synthesize_speech(text, voice_id=voice_id, scene_index=scene_num, topic_slug="shorts")
         if res.get("status") != "success":
             raise RuntimeError(f"씬 {scene_num} 음성 합성 실패: {res.get('message')}")
@@ -1033,6 +1038,43 @@ def _default_synth(voice_id: str) -> Callable:
         shutil.copy(src, out)
         return {"file": out, "captions": None, "engine": res.get("engine") or "qwen-tts"}
     return synth
+
+
+def _trim_trailing_silence(ff: Optional[str], path: str, min_seconds: float = 0.0,
+                           threshold_db: float = TRIM_SILENCE_DB, keep: float = TRIM_KEEP_SECONDS) -> bool:
+    """edge-tts 가 끝에 붙이는 무음(InJoon 약 1.2초)을 잘라 제자리에 덮어쓴다. 반환: 잘랐으면 True.
+
+    앞쪽 무음은 단어 타이밍(WordBoundary)의 기준점이라 건드리지 않는다.
+    min_seconds(마지막 단어 끝) 앞으로는 자르지 않는다 — edge-tts 의 단어 끝 시각은 실제 소리보다 0.2초쯤 늦게
+    잡히므로, 무음 기준으로 잘린 길이가 그보다 짧으면 min_seconds + keep 지점에서 자른다(자막이 음성보다 길어지지 않게).
+    """
+    if not ff or not os.path.exists(path):
+        return False
+    tmp = path + ".trim.mp3"
+    enc = ["-c:a", "libmp3lame", "-q:a", "2", tmp]
+    try:
+        res = subprocess.run([ff, "-y", "-hide_banner", "-loglevel", "error", "-i", path, "-af",
+                              f"areverse,silenceremove=start_periods=1:start_threshold={threshold_db:g}dB:start_silence={keep:g},areverse",
+                              *enc], capture_output=True, text=True, timeout=120)
+        dur = producer.audio_duration(tmp) if res.returncode == 0 and os.path.exists(tmp) else None
+        if not dur:
+            return False
+        if dur < min_seconds:
+            target = min_seconds + keep
+            original = producer.audio_duration(path) or 0.0
+            if target >= original - 0.05:
+                return False   # 자를 만한 무음이 없다
+            res = subprocess.run([ff, "-y", "-hide_banner", "-loglevel", "error", "-i", path, "-t", f"{target:.3f}", *enc],
+                                 capture_output=True, text=True, timeout=120)
+            if res.returncode != 0 or not os.path.exists(tmp):
+                return False
+        os.replace(tmp, path)
+        return True
+    except Exception:
+        return False
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
 
 
 def _pad_audio(ff: Optional[str], src: str, dst: str, pad: float) -> str:

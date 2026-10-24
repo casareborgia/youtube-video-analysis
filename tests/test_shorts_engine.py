@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
@@ -446,6 +447,73 @@ class SynthesizeJobAudioTests(ShortsS2Base):
         job["storyboard"]["scenes"][1]["narration"] = ""
         with self.assertRaises(RuntimeError):
             shorts_engine.synthesize_job_audio(job, synth=_fake_synth(), merger=_fake_merge, bgm_picker=lambda tid: None)
+
+# ── 4b. edge-tts 끝 무음 자르기 (InJoon 은 끝에 약 1.2초 무음을 붙인다) ─────────
+
+class TrimTrailingSilenceTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.ff = producer.ffmpeg_path()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def make_tone_then_silence(self, tone=1.0, silence=1.5):
+        out = os.path.join(self.tmp, "n.mp3")
+        subprocess.run([self.ff, "-y", "-loglevel", "error", "-f", "lavfi", "-i", f"sine=frequency=440:duration={tone}",
+                        "-af", f"apad=pad_dur={silence}", "-c:a", "libmp3lame", "-q:a", "2", out], check=True)
+        return out
+
+    def test_trims_trailing_silence_in_place(self):
+        if not self.ff:
+            self.skipTest("ffmpeg 없음")
+        path = self.make_tone_then_silence()
+        self.assertGreater(producer.audio_duration(path), 2.3)
+        self.assertTrue(shorts_engine._trim_trailing_silence(self.ff, path))
+        self.assertLess(producer.audio_duration(path), 1.4)
+        self.assertGreater(producer.audio_duration(path), 0.9)
+        self.assertFalse(os.path.exists(path + ".trim.mp3"))
+
+    def test_never_cuts_before_last_word_end(self):
+        if not self.ff:
+            self.skipTest("ffmpeg 없음")
+        path = self.make_tone_then_silence()
+        # edge-tts 단어 끝 시각은 실제 소리보다 늦다 — 무음 기준 길이(약 1.1초)보다 뒤인 2.0초에서 끝난다고 하면 거기까지는 남긴다
+        self.assertTrue(shorts_engine._trim_trailing_silence(self.ff, path, min_seconds=2.0))
+        self.assertGreaterEqual(producer.audio_duration(path), 2.0)
+        self.assertLess(producer.audio_duration(path), 2.25)
+
+    def test_keeps_original_when_nothing_to_cut(self):
+        if not self.ff:
+            self.skipTest("ffmpeg 없음")
+        path = self.make_tone_then_silence()
+        before = producer.audio_duration(path)
+        self.assertFalse(shorts_engine._trim_trailing_silence(self.ff, path, min_seconds=before - 0.05))
+        self.assertAlmostEqual(producer.audio_duration(path), before, places=2)
+
+    def test_no_ffmpeg_leaves_file(self):
+        path = os.path.join(self.tmp, "n.mp3")
+        with open(path, "wb") as f:
+            f.write(b"mp3")
+        self.assertFalse(shorts_engine._trim_trailing_silence(None, path))
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), b"mp3")
+
+    def test_edge_synth_trims_with_last_word_end(self):
+        out_base = os.path.join(self.tmp, "narration_01")
+        caps = [{"text": "안녕", "startMs": 350, "endMs": 900}, {"text": " 하세요", "startMs": 900, "endMs": 1800}]
+
+        async def fake_edge(text, voice_code=None, rate=None, output_file=None, with_word_boundaries=False):
+            with open(output_file, "wb") as f:
+                f.write(b"mp3")
+            return {"captions": caps}
+
+        with patch.object(tts_service.TTSService, "synthesize_edge_tts_single", side_effect=fake_edge), \
+             patch.object(shorts_engine, "_trim_trailing_silence", return_value=True) as trim, \
+             patch.object(producer, "ffmpeg_path", return_value="/usr/bin/ffmpeg"):
+            res = shorts_engine._default_synth("edge_injoon")("안녕 하세요", 1, out_base)
+        self.assertEqual(res["file"], out_base + ".mp3")
+        trim.assert_called_once_with("/usr/bin/ffmpeg", out_base + ".mp3", min_seconds=1.8)
 
 
 # ── 5. QC ────────────────────────────────────────────────────────────────────
