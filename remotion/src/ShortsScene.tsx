@@ -1,9 +1,11 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   AbsoluteFill,
   Audio,
   Img,
   Sequence,
+  continueRender,
+  delayRender,
   interpolate,
   spring,
   staticFile,
@@ -15,12 +17,23 @@ import {
   TikTokPage,
   createTikTokStyleCaptions,
 } from "@remotion/captions";
-import { loadFont } from "@remotion/google-fonts/NotoSansKR";
+import { loadFont } from "@remotion/fonts";
+import { fitTextOnNLines } from "@remotion/layout-utils";
+import { noise2D } from "@remotion/noise";
+import { whoosh } from "@remotion/sfx";
+import { TransitionPresentation, TransitionSeries, linearTiming } from "@remotion/transitions";
+import { fade } from "@remotion/transitions/fade";
+import { slide } from "@remotion/transitions/slide";
+import { wipe } from "@remotion/transitions/wipe";
 
-const { fontFamily } = loadFont("normal", {
-  weights: ["500", "700", "900"],
-  subsets: ["korean", "latin"],
-  ignoreTooManyRequestsWarning: true,
+// 한글 글꼴: Pretendard 가변 폰트(OFL). loadFont 가 받아질 때까지 렌더를 붙잡는다.
+const FONT = "Pretendard";
+const fontFamily = `${FONT}, "Apple SD Gothic Neo", sans-serif`;
+const fontReady = loadFont({
+  family: FONT,
+  url: "https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/woff2/PretendardVariable.woff2",
+  weight: "45 920",
+  format: "woff2",
 });
 
 // ── 규격 (작업계획서 5.2 안전 영역: 공통 900×1400 중앙, 상단 120·하단 300·우측 96 데드존) ──
@@ -30,6 +43,7 @@ export const SHORTS_FPS = 30;
 export const SAFE_ZONE = { top: 120, bottom: 300, left: 90, right: 96 };
 
 export type ShortsMotion = "zoom_in" | "zoom_out" | "pan_left" | "pan_right" | "none";
+export type ShortsTransition = "fade" | "slide" | "wipe" | "none";
 
 export type ShortsSceneKind = "image" | "text_card" | "stat_card" | "bar_chart" | "compare";
 export type ShortsBar = { label: string; value: number; highlight?: boolean };
@@ -41,6 +55,7 @@ export type ShortsSceneItem = {
   image?: string; // public/ 기준 상대 경로 (shorts/<job_id>/scene_01.png) — kind=image 일 때 필수
   seconds: number;
   motion?: ShortsMotion;
+  transition?: ShortsTransition; // 이 씬으로 들어오는 전환(첫 씬은 무시). 기본 fade
   palette?: number; // 비이미지 씬 배경 팔레트 인덱스(기본: 씬 순서)
   // text_card
   title?: string;
@@ -84,7 +99,8 @@ export type ShortsSceneProps = {
   bgmVolume?: number; // 나레이션 중 BGM 볼륨. 기본 0.16, 비발화 구간은 2.2배(최대 0.5)
   accent?: string;
   brand?: string;
-  transitionSeconds?: number; // 씬 크로스페이드. 기본 0.4
+  transitionSeconds?: number; // 씬 전환 길이. 기본 0.4 (0 이면 컷)
+  sfx?: boolean; // 씬 전환마다 whoosh 효과음. 기본 꺼짐
 };
 
 export const totalSecondsOf = (p: {
@@ -97,6 +113,34 @@ export const totalSecondsOf = (p: {
 };
 
 const msToFrames = (ms: number, fps: number) => Math.round((ms / 1000) * fps);
+
+// 안전 영역 안 글자 폭
+const CONTENT_WIDTH = SHORTS_WIDTH - SAFE_ZONE.left - SAFE_ZONE.right;
+
+// 글자 크기 측정(measureText)은 결과를 캐시하므로 글꼴이 다 받아진 뒤에만 잰다
+const useFontReady = () => {
+  const [ready, setReady] = useState(false);
+  const [handle] = useState(() => delayRender("Pretendard 글꼴 대기"));
+  useEffect(() => {
+    fontReady.then(() => {
+      setReady(true);
+      continueRender(handle);
+    });
+  }, [handle]);
+  return ready;
+};
+
+// maxLines 줄 안에 들어가는 가장 큰 글자 크기. 측정이 안 되면 글자 수 기준 어림값(fallback)을 쓴다.
+const fitFontSize = (text: string, maxLines: number, width: number, maxFontSize: number, minFontSize: number, fallback: number) => {
+  const t = text.trim();
+  if (!t) return maxFontSize;
+  try {
+    const { fontSize } = fitTextOnNLines({ text: t, maxLines, maxBoxWidth: width, fontFamily: FONT, fontWeight: 900, maxFontSize });
+    return Math.max(minFontSize, Math.floor(fontSize));
+  } catch {
+    return fallback;
+  }
+};
 
 // ── 비이미지 씬 공통: 배경·카운트업·콘텐츠 영역 ─────────────────────────────
 // 콘텐츠 영역은 훅 배너(상단 ~520px)와 자막(하단 ~1250px 이하) 사이에 둔다.
@@ -193,12 +237,13 @@ const TextCardScene: React.FC<{ item: ShortsSceneItem; accent: string }> = ({ it
   const enter = spring({ frame, fps, config: { damping: 18, stiffness: 120 }, durationInFrames: 18 });
   const sub = spring({ frame: frame - 8, fps, config: { damping: 20 }, durationInFrames: 18 });
   const title = item.title || "";
+  const size = useMemo(() => fitFontSize(title, 3, CONTENT_WIDTH, 104, 56, titleFontSize(title)), [title]);
   return (
     <ContentZone>
       <div style={{ textAlign: "center", wordBreak: "keep-all", overflowWrap: "anywhere", width: "100%" }}>
         <div
           style={{
-            fontSize: titleFontSize(title),
+            fontSize: size,
             fontWeight: 900,
             lineHeight: 1.18,
             textShadow: "0 8px 30px rgba(0,0,0,0.55)",
@@ -330,19 +375,14 @@ const CompareScene: React.FC<{ item: ShortsSceneItem; accent: string }> = ({ ite
   );
 };
 
-// 비이미지 씬: 배경 + 종류별 콘텐츠. 이미지 씬과 같은 페이드인 규칙을 따른다.
-const KindScene: React.FC<{ item: ShortsSceneItem; index: number; accent: string; fadeInFrames: number; contentFrames: number }> = ({
+// 비이미지 씬: 배경 + 종류별 콘텐츠. 들어오는 전환은 TransitionSeries 가 맡는다.
+const KindScene: React.FC<{ item: ShortsSceneItem; index: number; accent: string; contentFrames: number }> = ({
   item,
   index,
   accent,
-  fadeInFrames,
   contentFrames,
 }) => {
   const frame = useCurrentFrame();
-  const opacity =
-    fadeInFrames > 0
-      ? interpolate(frame, [0, fadeInFrames], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })
-      : 1;
   // 씬 본래 길이가 끝나면(다음 씬 크로스페이드·엔드 태그 구간) 콘텐츠만 먼저 걷어 글자가 겹치지 않게 한다
   const contentOpacity = interpolate(frame, [contentFrames - 8, contentFrames + 4], [1, 0], {
     extrapolateLeft: "clamp",
@@ -364,7 +404,7 @@ const KindScene: React.FC<{ item: ShortsSceneItem; index: number; accent: string
       body = <TextCardScene item={item} accent={accent} />;
   }
   return (
-    <AbsoluteFill style={{ opacity }}>
+    <AbsoluteFill>
       <GradientBackdrop palette={palette} />
       <AbsoluteFill style={{ opacity: contentOpacity }}>{body}</AbsoluteFill>
     </AbsoluteFill>
@@ -376,8 +416,8 @@ const SceneImage: React.FC<{
   src: string;
   motion: ShortsMotion;
   durationInFrames: number;
-  fadeInFrames: number;
-}> = ({ src, motion, durationInFrames, fadeInFrames }) => {
+  seed: number;
+}> = ({ src, motion, durationInFrames, seed }) => {
   const frame = useCurrentFrame();
   const t = Math.min(1, Math.max(0, frame / Math.max(1, durationInFrames)));
   let scale = 1;
@@ -400,22 +440,20 @@ const SceneImage: React.FC<{
     default:
       scale = 1;
   }
-  const opacity =
-    fadeInFrames > 0
-      ? interpolate(frame, [0, fadeInFrames], [0, 1], {
-          extrapolateLeft: "clamp",
-          extrapolateRight: "clamp",
-        })
-      : 1;
+  // 손으로 든 카메라처럼 아주 느리게 흔들린다. 노이즈는 이웃 프레임끼리 이어져 떨리지 않고, 시드가 같으면 렌더마다 같다.
+  const dx = noise2D(`x${seed}`, frame / 90, 0) * 12;
+  const dy = noise2D(`y${seed}`, frame / 90, 0) * 12;
+  const rot = noise2D(`r${seed}`, frame / 120, 0) * 0.4;
   return (
-    <AbsoluteFill style={{ opacity }}>
+    <AbsoluteFill>
       <Img
         src={src}
         style={{
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          transform: `translateX(${tx}%) scale(${scale})`,
+          // 흔들림에 가장자리가 드러나지 않게 3% 더 키운다
+          transform: `translateX(${tx}%) translate(${dx}px, ${dy}px) rotate(${rot}deg) scale(${scale * 1.03})`,
         }}
       />
     </AbsoluteFill>
@@ -436,7 +474,8 @@ const CaptionPage: React.FC<{ page: TikTokPage; accent: string }> = ({ page, acc
   const { fps } = useVideoConfig();
   const enter = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 6 });
   const timeInMs = page.startMs + (frame / fps) * 1000;
-  const fontSize = captionFontSize(page.text);
+  // 외곽선(12px)이 바깥으로 번지는 만큼 폭을 줄여 잰다
+  const fontSize = useMemo(() => fitFontSize(page.text, 2, CONTENT_WIDTH - 24, 78, 48, captionFontSize(page.text)), [page.text]);
   return (
     <AbsoluteFill
       style={{
@@ -497,7 +536,8 @@ const HookBanner: React.FC<{ text: string; accent: string; durationInFrames: num
     extrapolateRight: "clamp",
   });
   const n = text.replace(/\s+/g, "").length;
-  const fontSize = n <= 10 ? 72 : n <= 16 ? 62 : 52;
+  // 배너 안쪽 여백(34×2)과 왼쪽 강조선(14)을 뺀 폭에서 잰다
+  const fontSize = useMemo(() => fitFontSize(text, 2, CONTENT_WIDTH - 82, 72, 48, n <= 10 ? 72 : n <= 16 ? 62 : 52), [text, n]);
   return (
     <AbsoluteFill style={{ opacity: exit }}>
       <div
@@ -576,6 +616,21 @@ const EndTag: React.FC<{ tag: ShortsEndTag; brand: string; accent: string }> = (
   );
 };
 
+// ── 씬 전환 (@remotion/transitions, CSS 전환만 쓴다) ─────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const presentationFor = (t: ShortsTransition, i: number): TransitionPresentation<any> | null => {
+  switch (t) {
+    case "none":
+      return null;
+    case "slide":
+      return slide({ direction: i % 2 === 0 ? "from-right" : "from-left" });
+    case "wipe":
+      return wipe({ direction: i % 2 === 0 ? "from-top-right" : "from-top-left" });
+    default:
+      return fade();
+  }
+};
+
 // ── 메인 컴포지션 ─────────────────────────────────────────────────────────────
 export const ShortsScene: React.FC<ShortsSceneProps> = ({
   scenes,
@@ -590,25 +645,33 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
   accent = "#ffd166",
   brand = "",
   transitionSeconds = 0.4,
+  sfx = false,
 }) => {
   const { fps, durationInFrames } = useVideoConfig();
+  const fontOk = useFontReady();
   const fadeFrames = Math.max(0, Math.round(transitionSeconds * fps));
   const endTagFrames = endTag ? Math.max(1, Math.round(endTag.seconds * fps)) : 0;
 
-  // 씬 타임라인: 다음 씬이 fadeFrames 동안 위에 겹쳐 페이드인 → 크로스페이드
+  // 씬 타임라인: 씬 i 는 from 에서 시작해 다음 씬의 전환(fadeFrames) 동안 밑에 남는다.
+  // TransitionSeries 는 전환 길이만큼 앞 씬과 겹치므로, 앞 씬을 그만큼 늘려 각 씬의 시작 시각(=자막 시각)을 그대로 지킨다.
   const timeline = useMemo(() => {
+    const list = scenes || [];
+    const transitionOf = (i: number): ShortsTransition =>
+      i > 0 && fadeFrames > 0 ? list[i].transition || "fade" : "none";
     let cursor = 0;
-    return (scenes || []).map((s, i) => {
+    return list.map((s, i) => {
       const dur = Math.max(1, Math.round((Number(s.seconds) || 0) * fps));
       const from = cursor;
       cursor += dur;
-      const isLast = i === (scenes || []).length - 1;
+      const isLast = i === list.length - 1;
       const motion: ShortsMotion = s.motion || (i % 2 === 0 ? "zoom_in" : "zoom_out");
+      const nextOverlaps = !isLast && transitionOf(i + 1) !== "none";
       return {
         from,
         dur,
-        // 다음 씬의 페이드인 동안 밑에 남아 있어야 하고, 마지막 씬은 엔드 태그까지 덮는다
-        hold: dur + (isLast ? endTagFrames + 1 : fadeFrames),
+        // 마지막 씬은 엔드 태그까지 덮는다
+        hold: dur + (isLast ? endTagFrames + 1 : nextOverlaps ? fadeFrames : 0),
+        transition: transitionOf(i),
         motion,
         src: s.image || "",
         kind: (s.kind || "image") as ShortsSceneKind,
@@ -650,18 +713,34 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
 
   const hookFrames = hookText ? Math.max(1, Math.round(hookSeconds * fps)) : 0;
 
+  if (!fontOk) {
+    return <AbsoluteFill style={{ backgroundColor: "#000" }} />;
+  }
+
   return (
     <AbsoluteFill style={{ backgroundColor: "#000", fontFamily }}>
-      {/* 1. 씬 이미지 + 크로스페이드 */}
-      {timeline.map((t, i) => (
-        <Sequence key={`scene-${i}`} from={t.from} durationInFrames={t.hold} layout="none">
-          {t.kind === "image" && t.src ? (
-            <SceneImage src={staticFile(t.src)} motion={t.motion} durationInFrames={t.hold} fadeInFrames={i === 0 ? 0 : fadeFrames} />
-          ) : (
-            <KindScene item={t.item} index={i} accent={accent} fadeInFrames={i === 0 ? 0 : fadeFrames} contentFrames={t.dur} />
-          )}
-        </Sequence>
-      ))}
+      {/* 1. 씬 + 전환 */}
+      <TransitionSeries>
+        {timeline.flatMap((t, i) => {
+          const presentation = presentationFor(t.transition, i);
+          return [
+            presentation ? (
+              <TransitionSeries.Transition
+                key={`tr-${i}`}
+                presentation={presentation}
+                timing={linearTiming({ durationInFrames: fadeFrames })}
+              />
+            ) : null,
+            <TransitionSeries.Sequence key={`scene-${i}`} durationInFrames={t.hold}>
+              {t.kind === "image" && t.src ? (
+                <SceneImage src={staticFile(t.src)} motion={t.motion} durationInFrames={t.hold} seed={i} />
+              ) : (
+                <KindScene item={t.item} index={i} accent={accent} contentFrames={t.dur} />
+              )}
+            </TransitionSeries.Sequence>,
+          ].filter(Boolean);
+        })}
+      </TransitionSeries>
 
       {/* 2. 가독성용 상·하단 그라데이션 */}
       <AbsoluteFill
@@ -699,6 +778,15 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
       {/* 6. 오디오 */}
       {narrationAudio ? <Audio src={staticFile(narrationAudio)} /> : null}
       {bgmAudio ? <Audio src={staticFile(bgmAudio)} loop volume={bgmVolumeAt} /> : null}
+      {sfx
+        ? timeline.map((t, i) =>
+            t.transition !== "none" ? (
+              <Sequence key={`sfx-${i}`} from={Math.max(0, t.from - 3)} durationInFrames={Math.round(fps * 1.2)} layout="none">
+                <Audio src={whoosh} volume={0.35} />
+              </Sequence>
+            ) : null,
+          )
+        : null}
     </AbsoluteFill>
   );
 };
