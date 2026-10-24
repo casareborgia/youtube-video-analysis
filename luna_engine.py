@@ -1376,6 +1376,16 @@ def enforce_genre_title_tag(title: str, tag: str) -> str:
     return f"[{tag}] {t}"
 
 
+def short_track_title(title: str) -> str:
+    """곡명 끝의 괄호 부제를 뗀다: 'Raindroplets on the Zinc Awning (함석지붕 처마를 두드리는 빗방울)' → 'Raindroplets on the Zinc Awning'.
+
+    유튜브 제목은 끝에 '(곡명)' 을 붙이므로, 곡명에 이미 괄호 부제가 있으면 괄호가 이중으로 겹친다.
+    떼고 남는 게 없으면 원래 곡명을 그대로 쓴다.
+    """
+    t = (title or "").strip()
+    return re.sub(r"\s*\([^()]*\)\s*$", "", t).strip() or t
+
+
 def truncate_title(title: str, max_len: int = YT_TITLE_MAX, suffix: str = "") -> str:
     """유튜브 제목을 max_len 안에서 단어 경계로 자른다. suffix 는 항상 보존한다.
 
@@ -1856,6 +1866,8 @@ def build_luna_metadata(track_data):
 
     # 장르 태그 표준화 (모바일 전면 배치용) — LLM 에 지정하고, 결과 제목에도 강제한다
     fallback_genre_tag = genre_title_tag(genre)
+    # 제목 끝 괄호에는 한글 부제를 뺀 곡명만 넣는다 (괄호 이중 방지)
+    title_short = short_track_title(title)
 
     # Gemini를 활용하여 레오의 감성 + 알고리즘 최적화 카피 동적 생성
     prompt = f"""당신은 유튜브 알고리즘 마케팅 전문가 '에이전트 레오(Agent Leo)'입니다.
@@ -1871,12 +1883,13 @@ def build_luna_metadata(track_data):
 
 [작성 요구사항]
 1. 유튜브 제목(youtube_title):
-   - '[{fallback_genre_tag}] {{감성/상황 핵심 후킹 문구}} 🌙 {{부제/안식 카피}} ({title})' 형식 (최대 70자 이내).
+   - '[{fallback_genre_tag}] {{감성/상황 핵심 후킹 문구}} 🌙 {{부제/안식 카피}} ({title_short})' 형식 (최대 70자 이내).
+   - 맨 끝 괄호에는 곡명 '{title_short}' 만 그대로 쓰고, 한글 부제나 괄호를 덧붙이지 마세요.
    - [★ 모바일 피드 가독성 최우선 규칙]: 모바일 화면에서는 앞 20~25자만 보이므로, 반드시 맨 앞에 이 곡의 장르 태그 [{fallback_genre_tag}] 를 그대로 쓰고 감성을 파고드는 상황 후킹 문구를 배치하세요! (다른 장르 태그 사용 금지)
    - '에이전트 루나', 'AI음악' 같은 기계적인 수식어는 절대 금지합니다.
-   - 예: [Lo-Fi] 차가운 밤을 감싸는 온기 🌙 지친 마음에 건네는 안식 ({title})
-   - 예: [Piano] 비 내리는 새벽, 생각 비우기 🌧️ 조용한 위로의 선율 ({title})
-   - 예: [Sleep] 불 끄고 침대에서 듣는 따뜻한 온기 🕯️ 깊은 밤 포근한 잠 ({title})
+   - 예: [Lo-Fi] 차가운 밤을 감싸는 온기 🌙 지친 마음에 건네는 안식 ({title_short})
+   - 예: [Piano] 비 내리는 새벽, 생각 비우기 🌧️ 조용한 위로의 선율 ({title_short})
+   - 예: [Sleep] 불 끄고 침대에서 듣는 따뜻한 온기 🕯️ 깊은 밤 포근한 잠 ({title_short})
 2. 레오의 고정 댓글(pinned_comment):
    - 시청자가 영상을 끝까지 듣고 댓글을 달고 싶게 만드는 따뜻하고 도발적인 질문 (2~3문장).
    - 반드시 완전한 문장으로 종결하고, "{pinned_cta}"로 문장을 끝맺을 것.
@@ -1908,7 +1921,8 @@ def build_luna_metadata(track_data):
         print(f"[LunaEngine] Leo metadata LLM generation error: {e}")
 
     if meta_llm:
-        yt_title = truncate_title(enforce_genre_title_tag(meta_llm.get("youtube_title"), fallback_genre_tag))
+        llm_title = (meta_llm.get("youtube_title") or "").replace(f"({title})", f"({title_short})")
+        yt_title = truncate_title(enforce_genre_title_tag(llm_title, fallback_genre_tag))
         pinned_comment = meta_llm.get("pinned_comment") or f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? 0:00 {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 ({pinned_cta})"
         yt_desc = meta_llm.get("youtube_description") or ""
 
@@ -1920,7 +1934,7 @@ def build_luna_metadata(track_data):
             yt_desc = yt_desc.replace(LYRICS_PLACEHOLDER, "").strip()
     else:
         # 안전 Fallback: [장르] 감성 문구 🌙 서브 문구 (곡명)
-        yt_title = truncate_title(f"[{fallback_genre_tag}] {mood} 🌙 지친 밤을 위한 따뜻한 안식 ({title})")
+        yt_title = truncate_title(f"[{fallback_genre_tag}] {mood} 🌙 지친 밤을 위한 따뜻한 안식 ({title_short})")
         pinned_comment = f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 ({pinned_cta})"
 
         lyrics_block = f"\n\n[Lyrics / 가사]\n{lyrics}\n" if include_lyrics else ""
