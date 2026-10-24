@@ -126,6 +126,28 @@ class RemotionWrapperTests(ShortsEngineBase):
         saved = shorts_engine.load_job(self.sid)
         self.assertEqual(saved["render"]["url"], f"/data/shorts/{self.sid}/final_9x16.mp4")
 
+    def test_transition_and_sfx_props(self):
+        self.enable_node()
+        scenes = self.job["storyboard"]["scenes"]
+        scenes[1]["transition"] = "slide"
+        scenes[2]["transition"] = "spin"   # 모르는 전환은 빼고 보낸다(Remotion 기본 fade)
+        self.job["sfx"] = True
+        rec = {}
+        shorts_engine.render_shorts_remotion(self.job, runner=_ok_runner(rec))
+        with open(rec["cmd"][rec["cmd"].index("--props") + 1], encoding="utf-8") as f:
+            props = json.load(f)
+        self.assertNotIn("transition", props["scenes"][0])
+        self.assertEqual(props["scenes"][1]["transition"], "slide")
+        self.assertNotIn("transition", props["scenes"][2])
+        self.assertTrue(props["sfx"])
+
+    def test_sfx_off_by_default(self):
+        self.enable_node()
+        rec = {}
+        shorts_engine.render_shorts_remotion(self.job, runner=_ok_runner(rec))
+        with open(rec["cmd"][rec["cmd"].index("--props") + 1], encoding="utf-8") as f:
+            self.assertFalse(json.load(f)["sfx"])
+
     def test_render_failure_surfaces_stderr(self):
         self.enable_node()
 

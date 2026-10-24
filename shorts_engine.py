@@ -46,6 +46,7 @@ SAFE_ZONE = {"top": 120, "bottom": 300, "left": 90, "right": 96}
 # 씬 종류 — image 외에는 이미지 생성 비용 없이 Remotion 이 그린다 (작업계획서 비용 절감안 ①)
 SCENE_KINDS = ("image", "text_card", "stat_card", "bar_chart", "compare")
 SCENE_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows")
+SCENE_TRANSITIONS = ("fade", "slide", "wipe", "none")   # 씬으로 들어오는 전환 (Remotion @remotion/transitions, ffmpeg 폴백은 무시)
 FALLBACK_PALETTE = ("0x1b2a4a", "0x3a1f4f", "0x0f3d3e", "0x4a2a1b", "0x1f3f2a", "0x2b1b4a")
 
 DEFAULT_ACCENT = "#ffd166"
@@ -202,6 +203,8 @@ def build_remotion_props(job: dict) -> dict:
             "seconds": float(s.get("seconds") or 0),
             "motion": s.get("motion") or ("zoom_in" if i % 2 == 1 else "zoom_out"),
         }
+        if s.get("transition") in SCENE_TRANSITIONS:
+            item["transition"] = s["transition"]
         if kind == "image":
             img = s.get("image")
             if not img:
@@ -234,6 +237,7 @@ def build_remotion_props(job: dict) -> dict:
         "accent": job.get("accent") or DEFAULT_ACCENT,
         "brand": job.get("brand") or "",
         "transitionSeconds": float(job.get("transition_seconds") or DEFAULT_TRANSITION),
+        "sfx": bool(job.get("sfx")),
     }
     return props
 
@@ -900,7 +904,7 @@ def build_job_from_plan(plan_id: str, platforms: Optional[List[str]] = None, voi
 
 def update_storyboard(job: dict, hook_text: Optional[str] = None, scenes: Optional[List[dict]] = None,
                       end_tag: Optional[dict] = None) -> dict:
-    """UI 스토리보드 카드 편집 반영. 씬은 scene_num 기준으로 narration·seconds·motion·kind·title·subtitle 만 바꾼다(이미지 경로는 UI 가 못 바꾼다)."""
+    """UI 스토리보드 카드 편집 반영. 씬은 scene_num 기준으로 narration·seconds·motion·transition·kind·title·subtitle 만 바꾼다(이미지 경로는 UI 가 못 바꾼다)."""
     sb = job.setdefault("storyboard", {})
     spec = concept_packs.shorts_spec(job.get("concept_key"))
     kinds, _fields = _kind_spec(spec)
@@ -918,6 +922,8 @@ def update_storyboard(job: dict, hook_text: Optional[str] = None, scenes: Option
                 cur["seconds"] = max(1.0, min(15.0, float(edit["seconds"])))
             if edit.get("motion") in ("zoom_in", "zoom_out", "pan_left", "pan_right"):
                 cur["motion"] = edit["motion"]
+            if edit.get("transition") in SCENE_TRANSITIONS:
+                cur["transition"] = edit["transition"]
             for k in ("title", "subtitle"):
                 if edit.get(k) is not None:
                     cur[k] = str(edit[k]).strip()[:40]

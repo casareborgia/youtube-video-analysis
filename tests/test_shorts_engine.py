@@ -777,6 +777,14 @@ class UpdateStoryboardTests(ShortsS2Base):
         self.assertEqual(sb["end_tag"]["seconds"], 4.0)            # 상한 4초
         self.assertEqual(shorts_engine.load_job(job["shorts_id"])["storyboard"]["hook_text"], "새 훅")
 
+    def test_edit_transition(self):
+        plan = self.save_plan(n=3)
+        job = shorts_engine.build_job_from_plan(plan["plan_id"])
+        job = shorts_engine.update_storyboard(job, scenes=[{"scene_num": 2, "transition": "wipe"}, {"scene_num": 3, "transition": "spin"}])
+        sb = job["storyboard"]
+        self.assertEqual(sb["scenes"][1]["transition"], "wipe")
+        self.assertNotIn("transition", sb["scenes"][2])          # 잘못된 전환은 무시
+
 
 # ── 9. API 라우트 (TestClient) ───────────────────────────────────────────────
 
