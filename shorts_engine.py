@@ -50,7 +50,9 @@ SCENE_TRANSITIONS = ("fade", "slide", "wipe", "none")   # 씬으로 들어오는
 FALLBACK_PALETTE = ("0x1b2a4a", "0x3a1f4f", "0x0f3d3e", "0x4a2a1b", "0x1f3f2a", "0x2b1b4a")
 
 DEFAULT_ACCENT = "#ffd166"
-DEFAULT_BGM_VOLUME = 0.16
+DEFAULT_BGM_VOLUME = 0.16          # BGM 배율 상한 (조용한 곡이어도 이보다 키우지 않는다)
+BGM_UNDER_NARRATION_LU = 22.0      # 2026-10-25 사용자 결정: 대사가 들려야 하므로 BGM 은 나레이션보다 22 LU 아래
+BGM_FALLBACK_VOLUME = 0.035        # 음량을 못 잴 때: 루나 곡(약 -12 LUFS)·edge-tts(약 -20 LUFS) 기준 22 LU 근사
 DEFAULT_TRANSITION = 0.4
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_\-가-힣]{3,80}$")
@@ -565,7 +567,7 @@ SCENE_PAD_SECONDS = 0.35           # 씬 나레이션 뒤 숨 고르기(무음).
 TRIM_SILENCE_DB = -40.0            # edge-tts 끝 무음 판정 기준
 TRIM_KEEP_SECONDS = 0.08           # 끝 무음을 자를 때 남겨 두는 꼬리(말끝이 뚝 끊기지 않게)
 DEFAULT_VOICE_ID = "edge_injoon"   # 2026-10-19 사용자 결정 ②: 기본 성우 edge-tts
-TARGET_LUFS = -14.0                # 작업계획서 5.3
+TARGET_LUFS = -18.0                # 2026-10-25 사용자 결정: 대사 위주라 듣기 편한 -18 (작업계획서 5.3 의 -14 에서 변경)
 TARGET_TRUE_PEAK = -1.0
 LUFS_TOLERANCE = 1.0
 QC_MIN_BRIGHTNESS = 12.0           # 첫 프레임 평균 밝기(0~255). 블랙 오프닝 금지
@@ -1121,7 +1123,7 @@ def pick_bgm(track_id: Optional[str] = None) -> Optional[dict]:
 
 def synthesize_job_audio(job: dict, voice_id: Optional[str] = None, progress_cb: Optional[Callable] = None,
                          synth: Optional[Callable] = None, merger: Optional[Callable] = None,
-                         bgm_picker: Optional[Callable] = None) -> dict:
+                         bgm_picker: Optional[Callable] = None, lufs_probe: Optional[Callable] = None) -> dict:
     """씬별 나레이션 합성 → 씬 길이를 실제 발화 길이(+패드)로 맞춤 → 자막 토큰(절대 ms) → 이어붙이기 → BGM 선택 → LUFS 측정(가능할 때).
 
     자막 원천: edge-tts WordBoundary 가 있으면 그대로(caption_source=edge_tts), 없으면 글자 수 비례(proportional).
@@ -1201,7 +1203,19 @@ def synthesize_job_audio(job: dict, voice_id: Optional[str] = None, progress_cb:
         "bgm_volume": audio.get("bgm_volume", DEFAULT_BGM_VOLUME),
         "narration_seconds": round(cursor_ms / 1000.0, 3),
     })
-    if not bgm:
+    if bgm:
+        # 곡마다 마스터링 음량이 달라 고정 배율 대신 "나레이션보다 N LU 아래"로 맞춘다. 루나 원곡은 읽기만 한다.
+        probe = lufs_probe or integrated_lufs
+        under = float(audio.get("bgm_under_lu") or BGM_UNDER_NARRATION_LU)
+        n_lufs, b_lufs = probe(narration), probe(bgm["file"], seconds=120)
+        audio["bgm_under_lu"] = under
+        audio["bgm_lufs"] = b_lufs
+        if n_lufs is not None and b_lufs is not None:
+            audio["bgm_volume"] = bgm_volume_for(n_lufs, b_lufs, under)
+        else:
+            audio["bgm_volume"] = BGM_FALLBACK_VOLUME
+            job.setdefault("warnings", []).append(f"BGM 음량을 잴 수 없어 기본 배율 {BGM_FALLBACK_VOLUME} 로 깝니다.")
+    else:
         job.setdefault("warnings", []).append("연주곡(vocal_mode=instrumental) 루나 트랙이 없어 BGM 없이 만듭니다.")
     job["captions"] = captions
     job["caption_source"] = "edge_tts" if sources == {"edge_tts"} else "proportional"
@@ -1214,6 +1228,27 @@ def synthesize_job_audio(job: dict, voice_id: Optional[str] = None, progress_cb:
 
 
 # ── 음량 (베가 분석 함수가 있으면 측정, 벗어나면 loudnorm 1패스) ─────────────
+
+def integrated_lufs(path: Optional[str], seconds: Optional[float] = None, runner=subprocess.run) -> Optional[float]:
+    """ffmpeg ebur128 통합 LUFS. 최종 스테레오 믹스에서 들리는 크기와 맞는다
+    (vega 측정은 모노 나레이션을 약 3dB 크게 잰다). seconds 를 주면 앞부분만 잰다. 실패하면 None."""
+    ff = producer.ffmpeg_path()
+    if not ff or not path or not os.path.exists(path):
+        return None
+    cmd = [ff, "-hide_banner", "-nostats", "-i", path] + (["-t", f"{seconds:g}"] if seconds else []) + \
+          ["-vn", "-af", "ebur128", "-f", "null", "-"]
+    try:
+        res = runner(cmd, capture_output=True, text=True, timeout=180)
+        found = re.findall(r"I:\s+(-?[\d.]+) LUFS", res.stderr or "")
+        return float(found[-1]) if found else None
+    except Exception:
+        return None
+
+
+def bgm_volume_for(narration_lufs: float, bgm_lufs: float, under_lu: float = BGM_UNDER_NARRATION_LU) -> float:
+    """BGM 이 나레이션보다 under_lu 만큼 작게 깔리는 배율. DEFAULT_BGM_VOLUME 을 넘지 않는다."""
+    return round(min(DEFAULT_BGM_VOLUME, 10 ** ((narration_lufs - under_lu - bgm_lufs) / 20)), 4)
+
 
 def measure_loudness(path: str) -> Optional[dict]:
     """vega_engine(pyloudnorm) 으로 통합 LUFS·트루피크. 의존성이 없거나 실패하면 None (측정 생략)."""
@@ -1233,7 +1268,11 @@ def measure_loudness(path: str) -> Optional[dict]:
 
 
 def normalize_loudness(job: dict, measurer: Optional[Callable] = None, runner=subprocess.run) -> dict:
-    """렌더 결과의 LUFS 가 목표 ±1dB 를 벗어나면 ffmpeg loudnorm 1패스(영상 스트림은 copy). 측정 불가면 건너뛴다."""
+    """렌더 결과의 LUFS 가 목표 ±1dB 를 벗어나면 보정한다(영상 스트림은 copy). 측정 불가면 건너뛴다.
+
+    볼륨만 올리거나 내려도 트루피크가 상한 안이면 그렇게 해서 대사의 강약을 지키고,
+    넘칠 때만 loudnorm 1패스(동적 압축)를 쓴다.
+    """
     render = job.get("render") or {}
     path = render.get("file")
     audio = job.setdefault("audio", {})
@@ -1249,13 +1288,19 @@ def normalize_loudness(job: dict, measurer: Optional[Callable] = None, runner=su
     ff = producer.ffmpeg_path()
     if not ff:
         return job
+    gain = TARGET_LUFS - loud["lufs"]
+    if loud["true_peak"] + gain <= TARGET_TRUE_PEAK:
+        method, af = "gain", f"volume={gain:.2f}dB"
+    else:
+        method, af = "loudnorm", f"loudnorm=I={TARGET_LUFS}:TP={TARGET_TRUE_PEAK}:LRA=11"
     tmp = os.path.join(os.path.dirname(path), "final_9x16_loudnorm.mp4")
     res = runner([ff, "-y", "-hide_banner", "-loglevel", "error", "-i", path, "-c:v", "copy",
-                  "-af", f"loudnorm=I={TARGET_LUFS}:TP={TARGET_TRUE_PEAK}:LRA=11", "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
+                  "-af", af, "-c:a", "aac", "-b:a", "192k", "-ar", "48000",
                   "-movflags", "+faststart", tmp], capture_output=True, text=True, timeout=600)
     if getattr(res, "returncode", 1) == 0 and os.path.exists(tmp):
         os.replace(tmp, path)
         audio["loudnorm_applied"] = True
+        audio["loudness_method"] = method
         audio["lufs_before"] = loud["lufs"]
         after = measure(path)
         if after:
@@ -1378,7 +1423,8 @@ def build_job(job: dict, options: Optional[dict] = None, progress_cb: Optional[C
         else:
             step("images", f"기존 이미지 {est['reused']}장 재사용 (생성 비용 없음)", 40)
         synthesize_job_audio(job, voice_id=opts.get("voice_id"), progress_cb=scaled("audio"),
-                             synth=hooks.get("synth"), merger=hooks.get("merger"), bgm_picker=hooks.get("bgm_picker"))
+                             synth=hooks.get("synth"), merger=hooks.get("merger"), bgm_picker=hooks.get("bgm_picker"),
+                             lufs_probe=hooks.get("lufs_probe"))
         render_fn = hooks.get("renderer_fn") or render_shorts
         render_fn(job, renderer=opts.get("renderer"), progress_cb=scaled("render"))
         step("render", "음량 측정·보정...", 97)
