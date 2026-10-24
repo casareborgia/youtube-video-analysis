@@ -359,15 +359,21 @@ class TTSService:
         except TypeError:
             comm = edge_tts.Communicate(clean_text, voice=voice_code, rate=rate, pitch=pitch)
         boundaries: List[Dict[str, Any]] = []
-        with open(output_file, "wb") as f:
-            async for chunk in comm.stream():
-                ctype = chunk.get("type")
-                if ctype == "audio":
-                    f.write(chunk.get("data") or b"")
-                elif ctype == "WordBoundary":
-                    boundaries.append({"offset": int(chunk.get("offset") or 0),
-                                       "duration": int(chunk.get("duration") or 0),
-                                       "text": str(chunk.get("text") or "")})
+        try:
+            with open(output_file, "wb") as f:
+                async for chunk in comm.stream():
+                    ctype = chunk.get("type")
+                    if ctype == "audio":
+                        f.write(chunk.get("data") or b"")
+                    elif ctype == "WordBoundary":
+                        boundaries.append({"offset": int(chunk.get("offset") or 0),
+                                           "duration": int(chunk.get("duration") or 0),
+                                           "text": str(chunk.get("text") or "")})
+        except Exception:
+            # 중간에 끊긴 반쪽 파일이 성공 결과로 쓰이지 않게 지우고 오류는 그대로 올린다
+            if os.path.exists(output_file):
+                os.remove(output_file)
+            raise
         captions = word_boundaries_to_captions(boundaries, text=clean_text)
         return {"file": output_file, "captions": captions, "word_count": len(captions)}
 
@@ -396,27 +402,37 @@ class TTSService:
             out_filename = f"{slug}_scene_{scene_index:02d}.mp3"
             out_path = AUDIO_DIR / out_filename
 
+            # edge-tts 가 실패해도 Qwen 기본 화자로 넘어가지 않는다 — 다른 목소리가 성공으로 나가면 고장을 알아챌 수 없다
+            if out_path.exists():
+                out_path.unlink()
             try:
                 asyncio.run(cls.synthesize_edge_tts_single(clean_text, voice_code=voice_code, rate=rate, output_file=str(out_path)))
-                if out_path.exists():
-                    return {
-                        "status": "success",
-                        "scene_index": scene_index,
-                        "voice_id": voice_id,
-                        "voice_name": voice_conf.get("name", voice_code),
-                        "audio_url": f"/api/audio/{out_filename}",
-                        "filename": out_filename,
-                        "engine": "edge-tts"
-                    }
             except Exception as e:
-                print(f"[Edge-TTS Error] {e}")
+                if out_path.exists():
+                    out_path.unlink()
+                return {"status": "error", "engine": "edge-tts", "message": f"Edge-TTS 합성 실패: {type(e).__name__}: {e}"}
+            if out_path.exists() and out_path.stat().st_size > 0:
+                return {
+                    "status": "success",
+                    "scene_index": scene_index,
+                    "voice_id": voice_id,
+                    "voice_name": voice_conf.get("name", voice_code),
+                    "audio_url": f"/api/audio/{out_filename}",
+                    "filename": out_filename,
+                    "engine": "edge-tts"
+                }
+            if out_path.exists():
+                out_path.unlink()
+            return {"status": "error", "engine": "edge-tts", "message": "Edge-TTS 합성 실패: 음성이 비어 있습니다."}
 
         # 2. Qwen-TTS 또는 Voice Clone 실행
         out_filename = f"{slug}_scene_{scene_index:02d}.wav"
         out_path = AUDIO_DIR / out_filename
 
         qwen_map = {qp["id"]: qp for qp in QWEN_PRESETS}
-        voice_config = qwen_map.get(voice_id, QWEN_PRESETS[1])
+        if voice_id not in qwen_map:
+            return {"status": "error", "message": f"알 수 없는 목소리입니다: {voice_id}"}
+        voice_config = qwen_map[voice_id]
         lang_code = language.lower() if language else "korean"
 
         cmd = [
@@ -516,13 +532,16 @@ class TTSService:
                 "audio_url": None,
                 "audio_file": str(out_path),
             }
+            # 지난번 결과가 남아 있으면 이번 실패가 성공처럼 ZIP 에 들어가므로 먼저 지운다
+            if out_path.exists():
+                out_path.unlink()
 
             if not clean_text or len(clean_text) < 2:
                 results.append(item)
                 continue
 
             if is_edge:
-                edge_tasks.append((clean_text, str(out_path)))
+                edge_tasks.append((clean_text, str(out_path), item))
             else:
                 # Qwen-TTS 단일 생성
                 res = cls.synthesize_speech(clean_text, voice_id=voice_id, scene_index=scene_num, topic_slug=safe_topic)
@@ -539,7 +558,7 @@ class TTSService:
             results.append(item)
             audio_files_for_merge.append(str(out_path))
 
-        # Edge-TTS 병렬 합성 실행 (최대 5개 동시)
+        # Edge-TTS 병렬 합성 실행 (최대 5개 동시). 실패한 씬은 표시만 하고 나머지는 계속 만든다
         if edge_tasks:
             async def _batch_edge():
                 sem = asyncio.Semaphore(5)
@@ -547,9 +566,20 @@ class TTSService:
                     async with sem:
                         comm = edge_tts.Communicate(t, edge_voice_code, rate=rate)
                         await comm.save(p)
-                await asyncio.gather(*[_one(t, p) for t, p in edge_tasks])
+                return await asyncio.gather(*[_one(t, p) for t, p, _ in edge_tasks], return_exceptions=True)
 
-            asyncio.run(_batch_edge())
+            outcomes = asyncio.run(_batch_edge())
+            for (_t, p, item), outcome in zip(edge_tasks, outcomes):
+                if isinstance(outcome, BaseException) or not os.path.exists(p) or os.path.getsize(p) == 0:
+                    if os.path.exists(p):
+                        os.remove(p)
+                    reason = f"{type(outcome).__name__}: {outcome}" if isinstance(outcome, BaseException) else "음성이 비어 있습니다."
+                    item["error"] = f"Edge-TTS 합성 실패: {reason}"
+                    item["audio_url"] = None
+                    errors.append({"scene_num": item["scene_num"], "message": item["error"]})
+                    if p in audio_files_for_merge:
+                        audio_files_for_merge.remove(p)
+            errors.sort(key=lambda e: e["scene_num"])
 
         # 1. 전체 마스터 오디오 병합 (full_narration.mp3)
         full_filename = "full_narration.mp3"
