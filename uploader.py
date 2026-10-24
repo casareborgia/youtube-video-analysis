@@ -618,3 +618,45 @@ def add_video_to_playlist(playlist_id, video_id, channel_id=None):
         "playlist_id": playlist_id,
         "video_id": video_id
     }
+
+
+def _youtube_or_raise(channel_id=None):
+    creds = _creds(channel_id)
+    if not creds:
+        raise RuntimeError("유튜브 계정이 연결되어 있지 않습니다. 먼저 '유튜브 연결'을 눌러주세요.")
+    return _service(creds)
+
+
+def get_video_statuses(video_ids, channel_id=None):
+    """video_id → {"privacy", "publish_at"}. 삭제돼 조회되지 않는 영상은 결과에서 빠진다."""
+    youtube = _youtube_or_raise(channel_id)
+    ids = [v for v in dict.fromkeys(video_ids) if v]
+    out = {}
+    for i in range(0, len(ids), 50):
+        res = youtube.videos().list(part="status", id=",".join(ids[i:i + 50])).execute()
+        for it in res.get("items", []):
+            st = it.get("status") or {}
+            out[it["id"]] = {"privacy": st.get("privacyStatus"), "publish_at": st.get("publishAt")}
+    return out
+
+
+def channel_has_own_comment(video_id, channel_id=None):
+    """채널 본인이 이 영상에 남긴 최상위 댓글이 이미 있는지 (중복 등록 방지용)."""
+    cid = channel_id or get_active_channel_id()
+    youtube = _youtube_or_raise(cid)
+    res = youtube.commentThreads().list(part="snippet", videoId=video_id, maxResults=100).execute()
+    for it in res.get("items", []):
+        author = ((it.get("snippet") or {}).get("topLevelComment") or {}).get("snippet", {}).get("authorChannelId", {}).get("value")
+        if author and author == cid:
+            return True
+    return False
+
+
+def post_comment(video_id, text, channel_id=None):
+    """공개 영상에 최상위 댓글을 등록한다. 비공개·예약 영상은 YouTube 가 403 으로 막는다. '고정'은 API 로 불가."""
+    youtube = _youtube_or_raise(channel_id)
+    youtube.commentThreads().insert(
+        part="snippet",
+        body={"snippet": {"videoId": video_id, "topLevelComment": {"snippet": {"textOriginal": str(text)[:9000]}}}},
+    ).execute()
+    return True
