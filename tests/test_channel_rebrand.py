@@ -49,6 +49,47 @@ class GenreTitleTagTests(unittest.TestCase):
         self.assertEqual(luna_engine.genre_title_tag("Late Night Jazz Cafe"), "Jazz")
         self.assertEqual(luna_engine.genre_title_tag(None), "Lo-Fi")
 
+    def test_rnb_and_acoustic_do_not_fall_back_to_lofi(self):
+        for g in ("Slow R&B Chillout", "rnb-chill"):
+            self.assertEqual(luna_engine.genre_title_tag(g), "Chill", g)
+        for g in ("Warm Acoustic / Folk", "acoustic"):
+            self.assertEqual(luna_engine.genre_title_tag(g), "Acoustic", g)
+
+    def test_all_seven_presets_get_their_own_tag(self):
+        expected = {"lofi": "Lo-Fi", "piano": "Piano", "ambient": "Ambient", "sleep": "Sleep",
+                    "jazz": "Jazz", "acoustic": "Acoustic", "rnb-chill": "Chill"}
+        names = {g["id"]: g["name"] for g in luna_engine.GENRE_PRESETS}
+        for gid, tag in expected.items():
+            self.assertEqual(luna_engine.genre_title_tag(names[gid]), tag, names[gid])
+
+
+class EnforceGenreTitleTagTests(unittest.TestCase):
+    def test_replaces_wrong_tag(self):
+        self.assertEqual(luna_engine.enforce_genre_title_tag("[Lo-Fi] 비 오는 밤 🌙 (X)", "Chill"), "[Chill] 비 오는 밤 🌙 (X)")
+
+    def test_adds_missing_tag(self):
+        self.assertEqual(luna_engine.enforce_genre_title_tag("  비 오는 밤 (X)", "Acoustic"), "[Acoustic] 비 오는 밤 (X)")
+
+    def test_keeps_correct_tag(self):
+        self.assertEqual(luna_engine.enforce_genre_title_tag("[Piano] 새벽 (X)", "Piano"), "[Piano] 새벽 (X)")
+
+    def test_llm_title_with_wrong_tag_is_corrected(self):
+        track = {"title": "Fogged Over Rearview", "genre": "Slow R&B Chillout", "mood": "비 오는 창가",
+                 "story": "이야기", "has_lyrics": False, "duration_seconds": 180}
+        llm_out = {"youtube_title": "[Lo-Fi] 비 오는 밤 차 안에서 🌧️ (Fogged Over Rearview)",
+                   "pinned_comment": "어떤 순간이 남으셨나요?", "youtube_description": "이야기"}
+        with patch.object(luna_engine.llm_client, "call_llm_json", return_value=(llm_out, "")) as m:
+            meta = luna_engine.build_luna_metadata(track)
+        self.assertTrue(meta["youtube_title"].startswith("[Chill] "), meta["youtube_title"])
+        self.assertIn("[Chill]", m.call_args[0][0][1]["content"])
+
+    def test_fallback_title_for_acoustic(self):
+        track = {"title": "Old Bookstore", "genre": "Warm Acoustic / Folk", "mood": "아련한 그리움",
+                 "story": "이야기", "has_lyrics": False, "duration_seconds": 180}
+        with patch.object(luna_engine.llm_client, "call_llm_json", side_effect=RuntimeError("down")):
+            meta = luna_engine.build_luna_metadata(track)
+        self.assertTrue(meta["youtube_title"].startswith("[Acoustic] "), meta["youtube_title"])
+
 
 class ShortsHashtagTests(unittest.TestCase):
     def test_shorts_hashtags_follow_track_genre(self):

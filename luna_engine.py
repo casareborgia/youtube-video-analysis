@@ -1344,11 +1344,16 @@ YT_TITLE_MAX = 100
 
 
 def genre_title_tag(genre: str) -> str:
-    """장르명 → 제목 맨 앞 대괄호 태그([Lo-Fi]/[Piano]/[Sleep]/[Ambient]/[Jazz]).
+    """장르명 → 제목 맨 앞 대괄호 태그([Lo-Fi]/[Piano]/[Sleep]/[Ambient]/[Jazz]/[Chill]/[Acoustic]).
 
     모바일 피드에서 제목 앞 20자 정도만 보이므로 장르 태그를 전면에 둔다. 매칭 실패 시 채널 주력 장르 Lo-Fi.
+    R&B 는 기존 업로드(Unsent Telepathy 등)와 같은 [Chill] 을 쓴다.
     """
     g = (genre or "").lower()
+    if "r&b" in g or "rnb" in g:
+        return "Chill"
+    if "acoustic" in g or "folk" in g:
+        return "Acoustic"
     if "lo-fi" in g or "lofi" in g or "chillhop" in g:
         return "Lo-Fi"
     if "piano" in g:
@@ -1360,6 +1365,15 @@ def genre_title_tag(genre: str) -> str:
     if "jazz" in g:
         return "Jazz"
     return "Lo-Fi"
+
+
+def enforce_genre_title_tag(title: str, tag: str) -> str:
+    """제목 맨 앞 대괄호 태그를 장르 표준 태그로 맞춘다. 태그가 없으면 붙이고, 다른 태그면 바꾼다."""
+    t = (title or "").strip()
+    m = re.match(r"^\[[^\]]*\]\s*", t)
+    if m:
+        t = t[m.end():]
+    return f"[{tag}] {t}"
 
 
 def truncate_title(title: str, max_len: int = YT_TITLE_MAX, suffix: str = "") -> str:
@@ -1840,6 +1854,9 @@ def build_luna_metadata(track_data):
         if include_lyrics else ""
     )
 
+    # 장르 태그 표준화 (모바일 전면 배치용) — LLM 에 지정하고, 결과 제목에도 강제한다
+    fallback_genre_tag = genre_title_tag(genre)
+
     # Gemini를 활용하여 레오의 감성 + 알고리즘 최적화 카피 동적 생성
     prompt = f"""당신은 유튜브 알고리즘 마케팅 전문가 '에이전트 레오(Agent Leo)'입니다.
 '루나의 심야 서재(Luna\'s Midnight Room)'의 신곡 발매를 위해 밤/수면/휴식 청자의 클릭률(CTR)과 댓글 참여율을 극대화하는 메타데이터를 작성하세요.
@@ -1854,8 +1871,8 @@ def build_luna_metadata(track_data):
 
 [작성 요구사항]
 1. 유튜브 제목(youtube_title):
-   - '[{{장르태그}}] {{감성/상황 핵심 후킹 문구}} 🌙 {{부제/안식 카피}} ({title})' 형식 (최대 70자 이내).
-   - [★ 모바일 피드 가독성 최우선 규칙]: 모바일 화면에서는 앞 20~25자만 보이므로, 반드시 맨 앞에 대괄호 장르 태그(예: [Lo-Fi], [Piano], [Sleep], [Ambient])와 감성을 파고드는 상황 후킹 문구를 배치하세요!
+   - '[{fallback_genre_tag}] {{감성/상황 핵심 후킹 문구}} 🌙 {{부제/안식 카피}} ({title})' 형식 (최대 70자 이내).
+   - [★ 모바일 피드 가독성 최우선 규칙]: 모바일 화면에서는 앞 20~25자만 보이므로, 반드시 맨 앞에 이 곡의 장르 태그 [{fallback_genre_tag}] 를 그대로 쓰고 감성을 파고드는 상황 후킹 문구를 배치하세요! (다른 장르 태그 사용 금지)
    - '에이전트 루나', 'AI음악' 같은 기계적인 수식어는 절대 금지합니다.
    - 예: [Lo-Fi] 차가운 밤을 감싸는 온기 🌙 지친 마음에 건네는 안식 ({title})
    - 예: [Piano] 비 내리는 새벽, 생각 비우기 🌧️ 조용한 위로의 선율 ({title})
@@ -1890,11 +1907,8 @@ def build_luna_metadata(track_data):
     except Exception as e:
         print(f"[LunaEngine] Leo metadata LLM generation error: {e}")
 
-    # 장르 태그 표준화 (모바일 전면 배치용)
-    fallback_genre_tag = genre_title_tag(genre)
-
     if meta_llm:
-        yt_title = truncate_title(meta_llm.get("youtube_title"))
+        yt_title = truncate_title(enforce_genre_title_tag(meta_llm.get("youtube_title"), fallback_genre_tag))
         pinned_comment = meta_llm.get("pinned_comment") or f"오늘 하루 어떤 순간이 가장 마음에 머무셨나요? 0:00 {title}의 선율에 지친 마음을 편히 쉬어가세요 🌙 ({pinned_cta})"
         yt_desc = meta_llm.get("youtube_description") or ""
 
