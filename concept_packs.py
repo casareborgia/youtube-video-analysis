@@ -12,6 +12,7 @@
 화풍이 '어떤 질감으로 그릴지'를 정한다.
 """
 
+import copy
 from typing import Any, Dict, List
 
 DEFAULT_CONCEPT = "redline_engineering"
@@ -301,6 +302,26 @@ def image_constraints(key: str = None, style_text: str = "") -> List[str]:
     style_text = (style_text or "").strip() or fallback
     return [c.replace("{style}", style_text) for c in get_pack(key)["image_constraints"]]
 
+
+def _shiji_pack() -> Dict[str, Any]:
+    """Shiji Files 고사 쇼츠(작업계획서_ShijiFiles_파일럿3편 P-3) — shorts_info 규격에 원문 인장·전국시대 지도 씬을 더한 전용 팩.
+    두 씬은 이 팩에만 둔다 — 범용 쇼츠 기획 프롬프트에 고전 원문·지도 선택지가 섞이지 않게."""
+    pack = copy.deepcopy(CONCEPT_PACKS["shorts_info"])
+    pack["name"] = "Shiji Files 고사 쇼츠 (9:16)"
+    pack["description"] = "사기·전국책 고사를 영어로 — 콜드 오픈 → 배경(지도) → 결정적 한 수 → 원문 인장 → 결말·예고"
+    spec = pack["shorts"]
+    spec["scene_kinds"] = spec["scene_kinds"] + ["seal", "map"]
+    spec["scene_kind_fields"] = spec["scene_kind_fields"] + ["hanzi", "translation", "source", "states", "arrows", "year"]
+    spec["kind_guide"].update({
+        "seal": ("고전 원문 인장 카드. hanzi 원문(문장부호 빼고 ≤ 12자, 구절 DB 에서 그대로) · translation 자체 번역 · "
+                 "source 출전(예: Shiji, ch. 85) — 출전 없으면 발행 잠금"),
+        "map": ("전국시대 7국 개략도. states 강조 나라(qin|chu|qi|yan|zhao|wei|han) · arrows[{from,to}] 진군 동선 · "
+                "year(기본 c. 260 BC) · title(선택, ≤ 24자)"),
+    })
+    return pack
+
+
+CONCEPT_PACKS["shorts_shiji"] = _shiji_pack()
 
 DEFAULT_SHORTS_SPEC = CONCEPT_PACKS["shorts_info"]["shorts"]
 

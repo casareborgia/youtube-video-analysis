@@ -2276,7 +2276,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const SHORTS_MOTIONS = [['zoom_in', '줌 인'], ['zoom_out', '줌 아웃'], ['pan_left', '팬 왼쪽'], ['pan_right', '팬 오른쪽']];
   // 씬 종류(작업계획서 7b): image 만 Gemini 비용, 나머지는 Remotion 이 그린다
   const SHORTS_KINDS = [['image', '🖼 이미지 (Gemini)'], ['text_card', '🅰 텍스트 카드 (0원)'], ['stat_card', '🔢 숫자 카드 (0원)'],
-                        ['bar_chart', '📊 막대 비교 (0원)'], ['compare', '↔ 전후 비교 (0원)'], ['flyover', '🛩 3D 항공 (0원)'], ['scene3d', '🧊 3D 장면 (0원)']];
+                        ['bar_chart', '📊 막대 비교 (0원)'], ['compare', '↔ 전후 비교 (0원)'], ['flyover', '🛩 3D 항공 (0원)'], ['scene3d', '🧊 3D 장면 (0원)'],
+                        ['seal', '🀄 원문 인장 (0원)'], ['map', '🗺 전국시대 지도 (0원)']];
 
   function setShortsBusy(btn, busy) {
     if (!btn) return;
@@ -2470,7 +2471,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const kindNote = s.kind_note ? `<div style="font-size: 0.7rem; color: #fbbf24; margin-bottom: 4px;">⚠ ${escapeHtml(s.kind_note)}</div>` : '';
       const dataSummary = kind === 'stat_card' ? `${escapeHtml(String(s.prefix || ''))}${escapeHtml(String(s.value ?? ''))}${escapeHtml(String(s.unit || ''))}`
         : kind === 'bar_chart' ? (s.bars || []).map(b => `${escapeHtml(String(b.label))} ${escapeHtml(String(b.value))}`).join(' · ')
-        : kind === 'compare' ? (s.rows || []).map(r => `${escapeHtml(String(r.label))} ${escapeHtml(String(r.from))}→${escapeHtml(String(r.to))}${escapeHtml(String(r.unit || ''))}`).join(' · ') : '';
+        : kind === 'compare' ? (s.rows || []).map(r => `${escapeHtml(String(r.label))} ${escapeHtml(String(r.from))}→${escapeHtml(String(r.to))}${escapeHtml(String(r.unit || ''))}`).join(' · ')
+        : kind === 'seal' ? `${escapeHtml(String(s.hanzi || ''))} — ${s.source ? escapeHtml(String(s.source)) : '<span style="color:#f87171;">출전 없음(발행 잠금)</span>'}`
+        : kind === 'map' ? `${(s.states || []).map(x => escapeHtml(String(x))).join(' · ')}${(s.arrows || []).length ? ` · 화살표 ${(s.arrows || []).length}` : ''} · ${escapeHtml(String(s.year || ''))}` : '';
       return `<div class="shorts-scene-card" data-num="${Number(s.scene_num)}" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.78rem;">
             <strong>씬 ${Number(s.scene_num)} ${shortsSceneLintBadge(job, s.scene_num)}</strong>

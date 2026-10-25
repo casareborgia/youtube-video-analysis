@@ -47,9 +47,15 @@ PLATFORM_PROFILES = {
 SAFE_ZONE = {"top": 120, "bottom": 300, "left": 90, "right": 96}
 
 # 씬 종류 — image 외에는 이미지 생성 비용 없이 Remotion 이 그린다 (작업계획서 비용 절감안 ①)
-SCENE_KINDS = ("image", "text_card", "stat_card", "bar_chart", "compare", "flyover", "scene3d")
+SCENE_KINDS = ("image", "text_card", "stat_card", "bar_chart", "compare", "flyover", "scene3d", "seal", "map")
 SCENE_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows", "time_of_day", "seed",
-                     "scene3d")
+                     "scene3d", "hanzi", "translation", "source", "states", "arrows", "year")
+# seal(원문 인장): hanzi 원문 + translation 자체 번역 + source 출전 — 출전이 없으면 린트 P0(가짜 명언 금지, 파일럿 계획 P-3)
+SEAL_TRANSLATION_MAX = 120
+SEAL_SOURCE_MAX = 40
+# map(전국시대 개략도): remotion/src/warringStatesMap.ts 의 나라 id 와 같은 목록
+MAP_STATES = ("qin", "chu", "qi", "yan", "zhao", "wei", "han")
+MAP_DEFAULT_YEAR = "c. 260 BC"
 FLYOVER_TIMES = ("sunrise", "day", "sunset")   # flyover(3D 항공) 씬의 하늘 시간대
 SCENE_TRANSITIONS = ("fade", "slide", "wipe", "zoom_through", "color_flood", "whip", "dip", "none")   # 씬으로 들어오는 전환 (Remotion, ffmpeg 폴백은 무시)
 # U-3 자동 배정 (HF motion.md: 원인 있는 전환 3~5종, 같은 전환 연속 금지, 하드컷은 이음새의 1/3 이하 — 자동 배정은 하드컷을 쓰지 않는다)
@@ -698,6 +704,8 @@ def fill_kind_defaults(scene: dict, spec: Optional[dict] = None) -> dict:
     - bar_chart: bars 2개 미만이면 text_card 로 / compare: rows 없으면 text_card 로
     - flyover: 3D 항공 장면. time_of_day 는 sunrise|day|sunset(기본 sunset), seed 는 지형 모양(기본 씬 번호), title 은 지명 라벨(선택, ≤12자)
     - scene3d: 범용 3D 장면. scene3d 설명(환경·바닥·카메라·물체)을 scene3d_spec 으로 정리한다(없어도 기본 장면)
+    - seal: 원문 인장. hanzi 가 없으면 text_card 로. source 가 비어도 바꾸지 않는다(린트가 P0 로 막는다)
+    - map: 전국시대 개략도. states·arrows 는 MAP_STATES 만 남기고, year 기본 c. 260 BC
     """
     kinds, _fields = _kind_spec(spec)
     kind = str(scene.get("kind") or "image").strip().lower()
@@ -740,6 +748,24 @@ def fill_kind_defaults(scene: dict, spec: Optional[dict] = None) -> dict:
     elif kind == "scene3d":
         scene["kind"] = kind
         scene["scene3d"] = scene3d_spec.normalize_scene3d(scene.get("scene3d"), int(scene.get("scene_num") or 1))
+    elif kind == "seal":
+        hanzi = re.sub(r"\s+", "", str(scene.get("hanzi") or ""))
+        if not hanzi:
+            to_text_card("seal 에 원문(hanzi)이 없어 text_card 로 대체")
+            return scene
+        scene["kind"], scene["hanzi"] = kind, hanzi
+        scene["translation"] = _clip_text(scene.get("translation") or "", SEAL_TRANSLATION_MAX)
+        scene["source"] = _clip_text(scene.get("source") or "", SEAL_SOURCE_MAX)
+    elif kind == "map":
+        scene["kind"] = kind
+        states = [str(x).strip().lower() for x in (scene.get("states") or [])]
+        scene["states"] = [x for x in states if x in MAP_STATES]
+        scene["arrows"] = [{"from": a["from"], "to": a["to"]} for a in (scene.get("arrows") or [])
+                           if isinstance(a, dict) and a.get("from") in MAP_STATES and a.get("to") in MAP_STATES
+                           and a.get("from") != a.get("to")]
+        scene["year"] = _clip_text(scene.get("year") or MAP_DEFAULT_YEAR, 16)
+        if (scene.get("title") or "").strip():
+            scene["title"] = _clip_text(scene["title"], 24)
     elif kind == "flyover":
         scene["kind"] = kind
         if scene.get("time_of_day") not in FLYOVER_TIMES:
@@ -1057,6 +1083,12 @@ def update_storyboard(job: dict, hook_text: Optional[str] = None, scenes: Option
             for k in ("title", "subtitle"):
                 if edit.get(k) is not None:
                     cur[k] = str(edit[k]).strip()[:40]
+            if edit.get("hanzi") is not None:
+                cur["hanzi"] = re.sub(r"\s+", "", str(edit["hanzi"]))[:24]
+            if edit.get("translation") is not None:
+                cur["translation"] = _clip_text(edit["translation"], SEAL_TRANSLATION_MAX)
+            if edit.get("source") is not None:
+                cur["source"] = _clip_text(edit["source"], SEAL_SOURCE_MAX)
             if edit.get("kind") in kinds and edit["kind"] != (cur.get("kind") or "image"):
                 cur["kind"] = edit["kind"]
                 cur.pop("kind_note", None)

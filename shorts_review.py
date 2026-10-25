@@ -21,7 +21,7 @@ from typing import Dict, List, Optional
 import shorts_captions
 
 # 글자 중심 씬(타이포 과의존 계산 대상)과 화면이 계속 움직이는 씬
-TEXT_KINDS = ("text_card", "stat_card", "bar_chart", "compare")
+TEXT_KINDS = ("text_card", "stat_card", "bar_chart", "compare", "seal", "map")
 MOVING_KINDS = ("image", "flyover", "scene3d")
 
 # 읽기 시간 (HF story.md §6: 0.3초/단어 + 0.5초, 마지막 줄 2초 이상). 한국어는 어절을 단어로 본다
@@ -50,7 +50,62 @@ def _anim_end_seconds(scene: dict) -> float:
     if kind == "compare":
         n = max(1, len(scene.get("rows") or []))
         return (6 + (n - 1) * 14 + 40) / _FPS
+    if kind == "seal":
+        n = len(_seal_chars(scene.get("hanzi")))
+        return (SEAL_STAMP_FRAMES + n * SEAL_CHAR_FRAMES + 12) / _FPS   # 인장 → 글자 한 자씩 → 번역 페이드
+    if kind == "map":
+        n = len(scene.get("arrows") or [])
+        return (10 + n * 14 + 30) / _FPS                                  # 지도 → 나라 강조 → 화살표
     return 0.0
+
+
+# 원문 인장(seal) — remotion/src/SealScene.tsx 의 등장 프레임 수와 맞춘다
+SEAL_STAMP_FRAMES = 14
+SEAL_CHAR_FRAMES = 4
+SEAL_MAX_CHARS = 12                 # 문장부호 제외. 넘치면 인장 글자가 작아져 폰에서 읽히지 않는다
+SEAL_CHARS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "remotion", "public", "fonts", "NotoSerifTC-Seal.chars.txt")
+_seal_font_chars: Optional[set] = None
+
+
+def _seal_chars(hanzi: Optional[str]) -> List[str]:
+    """인장에 찍히는 글자(문장부호·공백 제외)."""
+    return [c for c in str(hanzi or "") if re.match(r"\w", c)]
+
+
+def _seal_font_charset() -> Optional[set]:
+    global _seal_font_chars
+    if _seal_font_chars is None and os.path.exists(SEAL_CHARS_FILE):
+        with open(SEAL_CHARS_FILE, encoding="utf-8") as f:
+            _seal_font_chars = set(f.read())
+    return _seal_font_chars
+
+
+def _seal_findings(scenes: List[dict]) -> List[dict]:
+    """원문 인장 검사 — 렌더 전 린트와 렌더 후 리뷰가 함께 쓴다(P0 면 발행 잠금)."""
+    out: List[dict] = []
+    starts = _scene_starts(scenes)
+    charset = _seal_font_charset()
+    for i, s in enumerate(scenes):
+        if (s.get("kind") or "image") != "seal":
+            continue
+        num = int(s.get("scene_num") or i + 1)
+        if not str(s.get("source") or "").strip():
+            out.append(_finding("P0", "seal_no_source", f"씬 {num} 원문 인장에 출전이 없습니다.",
+                                "구절 DB 에서 찾은 출전(예: Shiji, ch. 85)을 source 에 넣으세요 — 출전 없는 인용은 발행하지 않습니다.",
+                                scene=num, t=starts[i]))
+        chars = _seal_chars(s.get("hanzi"))
+        if charset is None:
+            out.append(_finding("P1", "seal_glyph_unchecked", f"씬 {num} 인장 글꼴 글자 목록이 없어 글자 검사를 못 했습니다.",
+                                "scripts/build_seal_font.py 로 글꼴을 다시 만드세요.", scene=num, t=starts[i]))
+        else:
+            missing = "".join(dict.fromkeys(c for c in chars if c not in charset))
+            if missing:
+                out.append(_finding("P0", "seal_missing_glyph", f"씬 {num} 인장 글꼴에 없는 글자: {missing}",
+                                    "다른 구절을 고르거나 scripts/build_seal_font.py 로 글꼴을 다시 만드세요.", scene=num, t=starts[i]))
+        if len(chars) > SEAL_MAX_CHARS:
+            out.append(_finding("P1", "seal_too_long", f"씬 {num} 인장 원문이 {len(chars)}자입니다(권장 {SEAL_MAX_CHARS}자 이하).",
+                                "핵심 구절만 남기세요 — 나머지는 번역·자막으로.", scene=num, t=starts[i]))
+    return out
 
 
 # 넘치면 글자가 잘리는 길이(최소 글자 크기에서 한 줄에 들어가는 한글 수 × 줄 수, 폭 894px 기준 근사)
@@ -93,6 +148,10 @@ def _screen_texts(scene: dict) -> List[str]:
         out += [b.get("label") for b in scene.get("bars") or [] if isinstance(b, dict)]
     elif kind == "compare":
         out += [r.get("label") for r in scene.get("rows") or [] if isinstance(r, dict)]
+    elif kind == "seal":
+        out = [scene.get("translation"), scene.get("source")]   # 한자 원문은 읽기 대상이 아니라 그림으로 본다
+    elif kind == "map":
+        out = [scene.get("title"), scene.get("year")]
     elif kind == "image":
         out = []                    # 이미지 씬은 화면 문구 없이 자막만 쓴다
     return [str(x).strip() for x in out if x and str(x).strip()]
@@ -259,6 +318,7 @@ def _lint_findings(job: dict) -> List[dict]:
         if first_ms is not None and first_ms < CAPTION_ZERO_MS:
             out.append(_finding("P2", "caption_at_zero", f"첫 자막이 {first_ms}ms 에 바로 뜹니다 (원래 있던 글자처럼 보임).",
                                 "첫 자막을 0.1~0.3초 뒤에 시작하세요 (U-3).", scene=1, t=first_ms / 1000.0))
+    out += _seal_findings(scenes)
     return out
 
 
@@ -431,7 +491,7 @@ def review_render(job: dict, ff: Optional[str], out_dir: str, url_prefix: str, r
     video = (job.get("render") or {}).get("file")
     tl = review_timeline(job)
     total = tl["total"]
-    findings = _promise_findings(job)
+    findings = _promise_findings(job) + _seal_findings((job.get("storyboard") or {}).get("scenes") or [])
     sheets: Dict[str, Optional[str]] = {"scenes": None, "seams": None, "phone": None}
     times: Dict[str, List[float]] = {"scenes": [], "seams": [], "phone": []}
     if video and os.path.exists(video) and ff:
