@@ -606,6 +606,7 @@ BGM_DUCK_BOOST = 2.2               # 발화 밖 BGM 배율(발화 중 bgm_volume
 BGM_ENTRY_DROP_LU = 6.0            # 곡의 상위 10% 단기 음량에서 이만큼 아래를 넘는 첫 지점을 "곡이 살아나는 곳"으로 본다
 BGM_ENTRY_MIN_SECONDS = 1.0        # 이보다 앞이면 처음부터 튼다
 DEFAULT_VOICE_ID = "edge_injoon"   # 2026-10-19 사용자 결정 ②: 기본 성우 edge-tts
+SHORTS_LANGUAGES = ("korean", "english")   # 나레이션 언어 — 내 목소리(Qwen3)는 이 값으로 합성한다
 TARGET_LUFS = -18.0                # 2026-10-25 사용자 결정: 대사 위주라 듣기 편한 -18 (작업계획서 5.3 의 -14 에서 변경)
 TARGET_TRUE_PEAK = -1.0
 LUFS_TOLERANCE = 1.0
@@ -929,8 +930,10 @@ def refresh_lint(job: dict) -> dict:
 
 
 def build_job_from_plan(plan_id: str, platforms: Optional[List[str]] = None, voice_id: Optional[str] = None,
-                        plan: Optional[dict] = None) -> dict:
+                        plan: Optional[dict] = None, language: Optional[str] = None) -> dict:
     """저장된 9:16 씬 기획서 → data/shorts/<id>/job.json (작업계획서 5.4 스키마). 이미지·음성은 build_job 에서 채운다."""
+    if language is not None and language not in SHORTS_LANGUAGES:
+        raise ValueError(f"지원하지 않는 언어입니다: {language}. 가능: {', '.join(SHORTS_LANGUAGES)}")
     plan = plan or scene_store.load_plan(plan_id)
     if not plan:
         raise FileNotFoundError(f"씬 기획서를 찾을 수 없습니다: {plan_id}")
@@ -995,6 +998,7 @@ def build_job_from_plan(plan_id: str, platforms: Optional[List[str]] = None, voi
         "topic": topic,
         "platforms": plats,
         "voice_id": voice_id or DEFAULT_VOICE_ID,
+        **({"language": language} if language else {}),
         "concept_key": plan.get("concept_key") or "",
         "storyboard": {
             "hook_text": hook,
@@ -1146,8 +1150,14 @@ def generate_job_images(job: dict, progress_cb: Optional[Callable] = None, gener
 
 # ── 오디오: 씬 나레이션(edge-tts 단어 타이밍) + 이어붙이기 + BGM ─────────────
 
-def _default_synth(voice_id: str) -> Callable:
-    """씬 하나를 합성하는 함수를 만든다. 반환 함수: (text, scene_num, out_path_base) → {"file", "captions"|None, "engine"}."""
+def job_language(job: dict, voice_id: Optional[str]) -> str:
+    """나레이션 언어: 잡에 정한 값 → edge 프리셋의 언어 → korean."""
+    return job.get("language") or tts_service.voice_language(voice_id or "") or "korean"
+
+
+def _default_synth(voice_id: str, language: str = "korean") -> Callable:
+    """씬 하나를 합성하는 함수를 만든다. 반환 함수: (text, scene_num, out_path_base) → {"file", "captions"|None, "engine"}.
+    language 는 언어를 따라가는 목소리(Qwen3·내 목소리)에만 쓰인다 — edge 프리셋은 목소리 자체가 언어를 정한다."""
     edge_map = {ep["id"]: ep for ep in tts_service.EDGE_PRESETS}
     is_edge = voice_id in edge_map or str(voice_id).startswith("ko-KR-")
 
@@ -1164,7 +1174,8 @@ def _default_synth(voice_id: str) -> Callable:
             last_end = max(float(c.get("endMs") or 0) for c in caps) / 1000.0 if caps else 0.0
             _trim_trailing_silence(producer.ffmpeg_path(), out, min_seconds=last_end)
             return {"file": out, "captions": caps, "engine": "edge-tts"}
-        res = tts_service.TTSService.synthesize_speech(text, voice_id=voice_id, scene_index=scene_num, topic_slug="shorts")
+        res = tts_service.TTSService.synthesize_speech(text, voice_id=voice_id, scene_index=scene_num, topic_slug="shorts",
+                                                       language=language)
         if res.get("status") != "success":
             raise RuntimeError(f"씬 {scene_num} 음성 합성 실패: {res.get('message')}")
         src = os.path.join(str(tts_service.AUDIO_DIR), res.get("filename") or "")
@@ -1334,12 +1345,19 @@ def synthesize_job_audio(job: dict, voice_id: Optional[str] = None, progress_cb:
     shorts_id = _safe_id(job["shorts_id"])
     vid = voice_id or job.get("voice_id") or DEFAULT_VOICE_ID
     job["voice_id"] = vid
+    lang = job_language(job, vid)
+    job["narration_language"] = lang   # 이번 합성에 쓴 언어 — 목소리에서 추정한 값은 job["language"] 에 굳히지 않는다
+    voice_lang = tts_service.voice_language(vid)
+    if voice_lang and voice_lang != lang:
+        msg = f"목소리 언어({voice_lang})와 잡 언어({lang})가 다릅니다 — 목소리는 {voice_lang} 로 읽습니다."
+        if msg not in (job.get("warnings") or []):
+            job.setdefault("warnings", []).append(msg)
     sb = job.get("storyboard") or {}
     scenes = sb.get("scenes") or []
     if not scenes:
         raise RuntimeError("스토리보드에 씬이 없습니다.")
     d = job_dir(shorts_id, create=True)
-    synth = synth or _default_synth(vid)
+    synth = synth or _default_synth(vid, lang)
     merge = merger or tts_service.merge_audio_files
     ff = producer.ffmpeg_path()
 
