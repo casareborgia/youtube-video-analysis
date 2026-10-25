@@ -2239,6 +2239,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const shortsEndTagSubtext = document.getElementById('shortsEndTagSubtext');
   const shortsWarnings = document.getElementById('shortsWarnings');
   const shortsLint = document.getElementById('shortsLint');
+  const shortsReviewBox = document.getElementById('shortsReviewBox');
   const btnShortsSaveStoryboard = document.getElementById('btnShortsSaveStoryboard');
   const shortsRendererSelect = document.getElementById('shortsRendererSelect');
   const btnShortsBuild = document.getElementById('btnShortsBuild');
@@ -2265,7 +2266,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let shortsLintConfirmed = false; // 린트 위험 fail 을 사용자가 확인하고 빌드를 진행하기로 했는지
 
   const SHORTS_STATUS_LABEL = {
-    planned: '기획됨', assets: '자산 준비 중', rendered: '렌더됨', qc_passed: 'QC 통과',
+    planned: '기획됨', assets: '자산 준비 중', rendered: '렌더됨', qc_passed: 'QC 통과', needs_review: '검토 필요',
     failed: '실패', exported: '내보냄', published: '발행됨'
   };
   const SHORTS_QC_LABEL = {
@@ -2449,6 +2450,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const st = SHORTS_STATUS_LABEL[job.status] || job.status || '';
     shortsJobStatus.textContent = st;
     shortsJobStatus.className = 'badge ' + (job.status === 'qc_passed' ? 'badge-accent' : 'badge-subtle');
+    shortsJobStatus.style.color = job.status === 'needs_review' ? '#f87171' : '';
     const total = (sb.scenes || []).reduce((a, s) => a + Number(s.seconds || 0), 0) + Number((sb.end_tag || {}).seconds || 0);
     const voice = job.voice_id || 'edge_injoon';
     shortsJobMeta.textContent = `${(sb.scenes || []).length}씬 · 약 ${total.toFixed(1)}초 · 성우 ${voice}` + (job.caption_source ? ` · 자막 ${job.caption_source}` : '');
@@ -2566,6 +2568,69 @@ document.addEventListener('DOMContentLoaded', () => {
     shortsStepText.textContent = (p.message || (building ? '빌드 중...' : '')) ;
   }
 
+  // U-4 렌더 후 리뷰: 확인 시트 3장(씬·이음새·폰 폭) + 지적. P0 면 발행이 잠기고, 사유를 남기면 진행할 수 있다
+  const SHORTS_SHEET_LABEL = { scenes: '씬 시작·중간', seams: '전환 앞뒤 ±0.2초', phone: '폰 폭 360px' };
+  function renderShortsReview(job) {
+    if (!shortsReviewBox) return;
+    const rv = job && job.review;
+    if (!rv) {
+      shortsReviewBox.style.display = 'none';
+      shortsReviewBox.innerHTML = '';
+      return;
+    }
+    const c = rv.counts || {};
+    const bust = '?t=' + Math.floor(Number(rv.at || 0));
+    const sheets = Object.entries(rv.sheets || {}).filter(([, url]) => url).map(([k, url]) =>
+      `<a href="${escapeHtml(url + bust)}" target="_blank" rel="noopener" style="display: inline-block; text-align: center; color: var(--text-muted); text-decoration: none;">
+         <img src="${escapeHtml(url + bust)}" alt="${escapeHtml(SHORTS_SHEET_LABEL[k] || k)}" style="height: 120px; border-radius: 4px; border: 1px solid var(--border-color); display: block; margin-bottom: 2px;">
+         ${escapeHtml(SHORTS_SHEET_LABEL[k] || k)}</a>`).join('');
+    const items = (rv.findings || []).map(f => `<div style="margin: 2px 0;">
+        <span style="color: ${SHORTS_LINT_COLOR[f.level] || '#9ca3af'}; font-weight: 700;">${escapeHtml(f.level)}</span>
+        ${f.t == null ? '' : `<span style="color: var(--text-muted);">t=${Number(f.t).toFixed(1)}s</span>`}
+        ${escapeHtml(f.message)} <span style="color: var(--text-muted);">→ ${escapeHtml(f.fix)}</span></div>`).join('');
+    const ov = rv.override ? `<div style="color: #fbbf24; margin-top: 4px;">⚠ 검토 후 진행: ${escapeHtml(rv.override.reason)}</div>` : '';
+    const needBtn = job.status === 'needs_review'
+      ? `<button type="button" id="btnShortsReviewOverride" class="btn btn-xs btn-outline" style="margin-left: 6px; color: #f87171; border-color: #f8717180;">그래도 진행</button>` : '';
+    shortsReviewBox.innerHTML = `<div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;">
+        <strong>렌더 후 리뷰</strong>
+        ${['P0', 'P1', 'P2'].map(lv => `<span class="badge badge-subtle" style="color: ${SHORTS_LINT_COLOR[lv]};">${lv} ${Number(c[lv] || 0)}</span>`).join('')}
+        <span style="color: var(--text-muted);">${Number(rv.elapsed_sec || 0).toFixed(1)}초 · 약속 ${escapeHtml(rv.promise || '')}</span>
+        <button type="button" id="btnShortsReviewRerun" class="btn btn-xs btn-outline">다시 리뷰</button>${needBtn}
+      </div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 6px;">${sheets || '<span style="color: var(--text-muted);">시트 없음</span>'}</div>
+      ${items || '<div style="color: var(--text-muted);">지적 없음</div>'}${ov}`;
+    shortsReviewBox.style.display = 'block';
+    const rerun = document.getElementById('btnShortsReviewRerun');
+    if (rerun) rerun.addEventListener('click', () => postShortsReview(job.shorts_id, 'review', null));
+    const over = document.getElementById('btnShortsReviewOverride');
+    if (over) over.addEventListener('click', () => {
+      const reason = prompt('렌더 후 리뷰 P0 를 알고도 진행합니다. 사유를 적어 주세요 (5자 이상):', '');
+      if (reason === null) return;
+      postShortsReview(job.shorts_id, 'review/override', { reason });
+    });
+  }
+
+  async function postShortsReview(shortsId, path, body) {
+    try {
+      const res = await fetch(`/api/shorts/jobs/${encodeURIComponent(shortsId)}/${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {})
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || '요청 실패');
+      }
+      const d = await res.json();
+      currentShortsJob = d.data;
+      renderShortsStoryboard(currentShortsJob);
+      renderShortsResult(currentShortsJob);
+      showAlert(path === 'review' ? '렌더 후 리뷰를 다시 돌렸습니다.' : '사유를 남기고 진행으로 바꿨습니다.', 'success');
+    } catch (err) {
+      showAlert('리뷰 요청 실패: ' + err.message, 'error');
+    }
+  }
+
   function renderShortsResult(job) {
     if (!shortsResultBox || !job) return;
     const render = job.render || {};
@@ -2605,6 +2670,7 @@ document.addEventListener('DOMContentLoaded', () => {
       shortsQcSummary.textContent = '미실행';
       shortsQcBadges.innerHTML = '';
     }
+    renderShortsReview(job);
     const probe = render.probe || {};
     const audio = job.audio || {};
     const meta = [];
@@ -2643,7 +2709,8 @@ document.addEventListener('DOMContentLoaded', () => {
           renderShortsResult(job);
           loadShortsJobs();
           loadShortsUsage();
-          if (job.status === 'qc_passed') showAlert('쇼츠 빌드 완료 — QC 통과!', 'success');
+          if (job.status === 'qc_passed') showAlert('쇼츠 빌드 완료 — QC·리뷰 통과!', 'success');
+          else if (job.status === 'needs_review') showAlert('쇼츠 빌드 완료 — 렌더 후 리뷰에서 검토가 필요합니다(발행 잠김).', 'error');
           else showAlert('쇼츠 빌드 실패: ' + (job.error || '원인 불명'), 'error');
         }
       } catch (err) {

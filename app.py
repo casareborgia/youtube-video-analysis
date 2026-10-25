@@ -1143,6 +1143,33 @@ async def lint_shorts_job(shorts_id: str):
     return {"status": "success", "lint": lint}
 
 
+class ShortsReviewOverrideRequest(BaseModel):
+    reason: str
+
+
+@app.post("/api/shorts/jobs/{shorts_id}/review")
+async def review_shorts_job(shorts_id: str):
+    """U-4 렌더 후 리뷰를 다시 돌린다(비용 0): 확인 시트 3장(씬·이음새·폰 폭) + 지적. P0 면 needs_review."""
+    job = _shorts_job_or_404(shorts_id)
+    if job["shorts_id"] in _shorts_building:
+        raise HTTPException(status_code=409, detail="빌드 중인 잡은 리뷰할 수 없습니다.")
+    if not (job.get("render") or {}).get("file"):
+        raise HTTPException(status_code=400, detail="렌더 결과가 없습니다.")
+    job = shorts_engine.run_review(job)
+    return {"status": "success", "data": job, "review": job.get("review")}
+
+
+@app.post("/api/shorts/jobs/{shorts_id}/review/override")
+async def override_shorts_review(shorts_id: str, req: ShortsReviewOverrideRequest):
+    """렌더 후 리뷰 P0 를 알고도 진행 — 사유를 기록하고 qc_passed 로 돌린다."""
+    job = _shorts_job_or_404(shorts_id)
+    try:
+        job = shorts_engine.override_review(job, req.reason)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"status": "success", "data": job}
+
+
 @app.get("/api/shorts/jobs/{shorts_id}/estimate")
 async def estimate_shorts_images(shorts_id: str):
     """빌드 전 예상 이미지 장수·비용·오늘 사용량 (과금 확인 모달용)."""
