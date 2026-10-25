@@ -20,7 +20,6 @@ import {
 import { loadFont } from "@remotion/fonts";
 import { fitTextOnNLines } from "@remotion/layout-utils";
 import { noise2D } from "@remotion/noise";
-import { whoosh } from "@remotion/sfx";
 import { TransitionPresentation, TransitionSeries, linearTiming } from "@remotion/transitions";
 import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
@@ -104,11 +103,12 @@ export type ShortsSceneProps = {
   captionPageMs?: number; // 한 페이지에 묶을 발화 길이(ms). 기본 1200
   narrationAudio?: string | null;
   bgmAudio?: string | null;
-  bgmVolume?: number; // 나레이션 중 BGM 볼륨. 기본 0.16, 비발화 구간은 2.2배(최대 0.5)
+  bgmVolume?: number; // 나레이션 중 BGM 볼륨. 기본 0.16
+  bgmBoost?: number; // 발화 밖 BGM 배율(bgmVolume 의 몇 배, 최대 0.5). 기본 2.2
   accent?: string;
   brand?: string;
   transitionSeconds?: number; // 씬 전환 길이. 기본 0.4 (0 이면 컷)
-  sfx?: boolean; // 씬 전환마다 whoosh 효과음. 기본 꺼짐
+  sfx?: boolean; // 효과음 팔레트(전환 whoosh·whip 교대, 숫자 착지 switch). 기본 꺼짐
 };
 
 export const totalSecondsOf = (p: {
@@ -639,6 +639,20 @@ const presentationFor = (t: ShortsTransition, i: number): TransitionPresentation
   }
 };
 
+// ── 오디오 2.0 (U-2) ─────────────────────────────────────────────────────────
+// 덕킹: 발화(자막 ±250ms) 앞 120ms 동안 내려가고, 끝난 뒤 300ms 동안 올라온다 (계단식 대신 램프)
+const DUCK_PAD_MS = 250;
+const DUCK_ATTACK_MS = 120;
+const DUCK_RELEASE_MS = 300;
+// 효과음: CC0 파일을 public/sfx 에 둔다 (원본 remotion.media — whoosh 1bob·whip JW_Audio(freesound), switch kenney.nl)
+// peakFrames = 파일 시작부터 소리 정점까지(30fps). 정점이 화면 변화보다 1프레임 늦게 오도록 앞당겨 놓는다 (HF sound.md)
+const SFX = {
+  whoosh: { src: "sfx/whoosh.wav", peakFrames: 2 },
+  whip: { src: "sfx/whip.wav", peakFrames: 1 },
+  switch: { src: "sfx/switch.wav", peakFrames: 4 },
+} as const;
+const STAT_LAND_FRAME = 6 + 40; // countUp(delay 6 + dur 40) 이 끝나는 프레임
+
 // ── 메인 컴포지션 ─────────────────────────────────────────────────────────────
 export const ShortsScene: React.FC<ShortsSceneProps> = ({
   scenes,
@@ -650,6 +664,7 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
   narrationAudio = null,
   bgmAudio = null,
   bgmVolume = 0.16,
+  bgmBoost = 2.2,
   accent = "#ffd166",
   brand = "",
   transitionSeconds = 0.4,
@@ -701,16 +716,33 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
     return createTikTokStyleCaptions({ captions: caps, combineTokensWithinMilliseconds: captionPageMs }).pages;
   }, [captions, captionPageMs]);
 
-  // BGM 덕킹: 자막(발화) 구간 ±250ms 안에서는 bgmVolume, 밖에서는 2.2배(최대 0.5). 끝 1초 페이드아웃
-  const bgmVolumeAt = (frame: number) => {
-    const ms = (frame / fps) * 1000;
-    let speaking = false;
-    if (captions && captions.length > 0) {
-      speaking = captions.some((c) => ms >= c.startMs - 250 && ms <= c.endMs + 250);
-    } else if (narrationAudio) {
-      speaking = true;
+  // BGM 덕킹 램프: 발화 구간(자막 ±250ms, 겹치면 합침)에서는 bgmVolume, 밖에서는 bgmBoost 배(최대 0.5). 시작 0.5초·끝 1초 페이드
+  const speechSpans = useMemo(() => {
+    const spans: [number, number][] = [];
+    [...(captions || [])]
+      .sort((a, b) => a.startMs - b.startMs)
+      .forEach((c) => {
+        const s0 = c.startMs - DUCK_PAD_MS;
+        const e0 = c.endMs + DUCK_PAD_MS;
+        const last = spans[spans.length - 1];
+        if (last && s0 <= last[1]) last[1] = Math.max(last[1], e0);
+        else spans.push([s0, e0]);
+      });
+    return spans;
+  }, [captions]);
+  const duckAt = (ms: number) => {
+    if (speechSpans.length === 0) return narrationAudio ? 1 : 0;
+    let d = 0;
+    for (const [s0, e0] of speechSpans) {
+      if (ms >= s0 && ms <= e0) return 1;
+      if (ms < s0 && s0 - ms < DUCK_ATTACK_MS) d = Math.max(d, 1 - (s0 - ms) / DUCK_ATTACK_MS);
+      if (ms > e0 && ms - e0 < DUCK_RELEASE_MS) d = Math.max(d, 1 - (ms - e0) / DUCK_RELEASE_MS);
     }
-    const base = speaking ? bgmVolume : Math.min(0.5, bgmVolume * 2.2);
+    return d;
+  };
+  const bgmVolumeAt = (frame: number) => {
+    const high = Math.min(0.5, bgmVolume * bgmBoost);
+    const base = high + (bgmVolume - high) * duckAt((frame / fps) * 1000);
     const fadeIn = interpolate(frame, [0, 15], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
     const fadeOut = interpolate(frame, [durationInFrames - 30, durationInFrames], [1, 0], {
       extrapolateLeft: "clamp",
@@ -718,6 +750,25 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
     });
     return Math.max(0, Math.min(1, base * fadeIn * fadeOut));
   };
+
+  // 효과음 팔레트: 전환마다 whoosh·whip 교대(같은 소리 연속 금지), stat_card 는 전환 대신 숫자가 멈출 때 switch 1번 — 씬당 최대 1개.
+  // 크기는 그 순간 BGM 보다 약 5dB 위(×1.8), 0.12~0.45 사이
+  const sfxCues = useMemo(() => {
+    if (!sfx) return [] as { key: string; from: number; src: string }[];
+    const cues: { key: string; from: number; src: string }[] = [];
+    let seam = 0;
+    timeline.forEach((t, i) => {
+      if (t.kind === "stat_card") {
+        cues.push({ key: `sfx-stat-${i}`, from: t.from + STAT_LAND_FRAME + 1 - SFX.switch.peakFrames, src: SFX.switch.src });
+      } else if (t.transition !== "none") {
+        const snd = seam % 2 === 0 ? SFX.whoosh : SFX.whip;
+        seam += 1;
+        cues.push({ key: `sfx-seam-${i}`, from: t.from + Math.round(fadeFrames / 2) + 1 - snd.peakFrames, src: snd.src });
+      }
+    });
+    return cues.map((c) => ({ ...c, from: Math.max(0, c.from) }));
+  }, [sfx, timeline, fadeFrames]);
+  const sfxVolumeAt = (frame: number) => Math.max(0.12, Math.min(0.45, (bgmAudio ? bgmVolumeAt(frame) : 0.2) * 1.8));
 
   const hookFrames = hookText ? Math.max(1, Math.round(hookSeconds * fps)) : 0;
 
@@ -798,15 +849,11 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
       {/* 6. 오디오 */}
       {narrationAudio ? <Audio src={staticFile(narrationAudio)} /> : null}
       {bgmAudio ? <Audio src={staticFile(bgmAudio)} loop volume={bgmVolumeAt} /> : null}
-      {sfx
-        ? timeline.map((t, i) =>
-            t.transition !== "none" ? (
-              <Sequence key={`sfx-${i}`} from={Math.max(0, t.from - 3)} durationInFrames={Math.round(fps * 1.2)} layout="none">
-                <Audio src={whoosh} volume={0.35} />
-              </Sequence>
-            ) : null,
-          )
-        : null}
+      {sfxCues.map((c) => (
+        <Sequence key={c.key} from={c.from} durationInFrames={Math.round(fps * 0.6)} layout="none">
+          <Audio src={staticFile(c.src)} volume={sfxVolumeAt(c.from)} />
+        </Sequence>
+      ))}
     </AbsoluteFill>
   );
 };
