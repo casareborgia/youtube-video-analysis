@@ -200,6 +200,30 @@ class SceneKindTests(ShortsEngineBase):
         self.assertEqual((fly["kind"], fly["time_of_day"], fly["seed"], fly["title"]), ("flyover", "sunrise", 4, "진주 남강"))
         self.assertNotIn("image", fly)
 
+    def test_scene3d_props_copy_model_and_drop_missing(self):
+        self.enable_node()
+        model = os.path.join(self.tmp, "robot.glb")
+        with open(model, "wb") as f:
+            f.write(b"glTF")
+        self.job["storyboard"]["scenes"] = [
+            {"scene_num": 1, "seconds": 6, "kind": "scene3d", "scene3d": shorts_engine.scene3d_spec.normalize_scene3d({
+                "environment": "studio", "objects": [{"type": "model", "src": model, "scale": 2},
+                                                     {"type": "model", "src": os.path.join(self.tmp, "none.glb")},
+                                                     {"type": "text", "text": "신제품"}]}, 1)},
+            {"scene_num": 2, "seconds": 6, "image": self.imgs[0]},
+        ]
+        self.job["storyboard"]["end_tag"] = None
+        rec = {}
+        job = shorts_engine.render_shorts_remotion(self.job, runner=_ok_runner(rec))
+        with open(rec["cmd"][rec["cmd"].index("--props") + 1], encoding="utf-8") as f:
+            props = json.load(f)
+        objs = props["scenes"][0]["scene3d"]["objects"]
+        self.assertEqual([o["type"] for o in objs], ["model", "text"])          # 없는 모델 파일은 빠진다
+        self.assertEqual(objs[0]["src"], f"shorts/{self.sid}/scene_01_model_robot.glb")
+        self.assertTrue(os.path.exists(os.path.join(self.jd, "scene_01_model_robot.glb")))
+        self.assertTrue(any("none.glb" in w for w in job.get("warnings", [])))
+        self.assertNotIn("image", props["scenes"][0])
+
     def test_unknown_kind_rejected(self):
         self.enable_node()
         self.job["storyboard"]["scenes"][0]["kind"] = "hologram"

@@ -24,7 +24,8 @@ os.makedirs(SCENES_DIR, exist_ok=True)
 
 PLAN_ID_RE = re.compile(r"^scenes_[0-9]+(?:_[\w가-힣-]+)?$")
 # 쇼츠 씬 종류별 필드 (shorts_engine.SCENE_KIND_FIELDS 와 동일)
-SHORTS_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows", "time_of_day", "seed")
+SHORTS_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows", "time_of_day", "seed",
+                      "scene3d")
 
 
 def _slug(text: str, limit: int = 24) -> str:

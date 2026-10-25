@@ -212,6 +212,28 @@ class SceneKindTests(ShortsS2Base):
         est = shorts_engine.estimate_images(job)
         self.assertEqual((est["needed"], est["cost_free"]), (1, 1))   # flyover 는 이미지 비용 0
 
+    def test_scene3d_kind_is_normalized_and_cost_free(self):
+        out = shorts_engine.fill_kind_defaults({"kind": "scene3d", "scene_num": 4, "narration": "n",
+                                                "scene3d": {"environment": "space", "objects": [{"type": "globe"}, {"type": "dragon"}]}})
+        self.assertEqual(out["kind"], "scene3d")
+        self.assertEqual(out["scene3d"]["environment"], "space")
+        self.assertEqual([o["type"] for o in out["scene3d"]["objects"]], ["globe"])
+        self.assertEqual(out["scene3d"]["seed"], 4)
+        out = shorts_engine.fill_kind_defaults({"kind": "scene3d", "scene_num": 1, "narration": "n"})
+        self.assertEqual(out["scene3d"]["environment"], "studio")   # 설명이 없어도 그릴 수 있는 기본 장면
+        spec = concept_packs.shorts_spec("shorts_info")
+        self.assertIn("scene3d", spec["scene_kinds"])
+        self.assertIn("scene3d", spec["kind_guide"])
+        self.assertIn("scene3d", spec["scene_kind_fields"])
+        plan = scene_store.build_plan({"topic": "세계 AI 지도", "aspect_ratio": "9:16", "concept_key": "shorts_info", "scenes": [
+            {"scene_num": 1, "narration": "세계 곳곳에서 AI 가 자랍니다.", "kind": "scene3d",
+             "scene3d": {"environment": "space", "objects": [{"type": "globe", "pins": [{"lat": 37.5, "lon": 127, "label": "서울"}]}]}}]})
+        scene_store.save_plan(plan)
+        job = shorts_engine.build_job_from_plan(plan["plan_id"])
+        sc = job["storyboard"]["scenes"][0]
+        self.assertEqual(sc["scene3d"]["objects"][0]["pins"][0]["label"], "서울")
+        self.assertEqual(shorts_engine.estimate_images(job)["needed"], 0)
+
     def test_incomplete_kinds_downgrade_to_text_card(self):
         for scene, expect_note in (
             ({"kind": "stat_card", "narration": "값이 없다"}, "value"),
@@ -1046,7 +1068,7 @@ class ConceptAndPromptTests(unittest.TestCase):
             self.assertIn("총 씬 개수: 정확히 6개", sent["prompt"])
             self.assertIn("쇼츠(9:16) 전용 규칙", sent["prompt"])
             self.assertIn('"hook_text"', sent["prompt"])
-            self.assertIn('"kind": "image|text_card|stat_card|bar_chart|compare|flyover"', sent["prompt"])
+            self.assertIn('"kind": "image|text_card|stat_card|bar_chart|compare|flyover|scene3d"', sent["prompt"])
             self.assertIn("image 는 편당 최대 2씬", sent["prompt"])
             self.assertEqual([sc["kind"] for sc in res["scenes"]], ["image"] * 6)   # kind 없으면 image
             self.assertEqual(res["hook_text"], "이거 모르면 손해")

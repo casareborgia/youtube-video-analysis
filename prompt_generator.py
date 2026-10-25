@@ -540,7 +540,10 @@ class PromptGenerator:
                 '      "value": 87, "unit": "%", "label": "stat_card 설명 (stat_card 일 때만)",\n'
                 '      "bars": [{"label": "A", "value": 87, "highlight": true}, {"label": "B", "value": 82}],\n'
                 '      "rows": [{"label": "성공률", "from": 56, "to": 75, "unit": "%"}],\n'
-                '      "time_of_day": "sunrise|day|sunset (flyover 일 때만)"')
+                '      "time_of_day": "sunrise|day|sunset (flyover 일 때만)",\n'
+                '      "scene3d": {"environment": "space", "ground": "none", "camera": {"move": "orbit"}, "accent": "#4fd1c5", '
+                '"objects": [{"type": "globe", "pins": [{"lat": 37.5, "lon": 127.0, "label": "서울"}], "arcs": false}, '
+                '{"type": "text", "text": "세계 AI 지도"}]} (scene3d 일 때만)')
 
     @staticmethod
     def _shorts_fields(parsed: Dict[str, Any], shorts: Dict[str, Any], title: str) -> Dict[str, Any]:
