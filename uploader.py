@@ -371,10 +371,12 @@ def update_channel_branding(description=None, keywords=None, default_language=No
 
 def upload_video(video_path, title, description, tags=None, privacy="private", publish_at=None,
                  thumbnail_path=None, category_id="27", made_for_kids=False, progress=None,
-                 channel_id=None, pinned_comment=None, playlist_id=None):
+                 channel_id=None, pinned_comment=None, playlist_id=None,
+                 default_language="ko", audio_language=None, contains_synthetic_media=None):
     """
     재개 가능(resumable) 업로드. publish_at(ISO 8601, 예: 2026-09-01T09:00:00+09:00)을 주면 예약 공개(privacy=private 필수).
     playlist_id를 주면 업로드 완료 후 해당 재생목록에 자동 추가.
+    default_language·audio_language 는 제목·설명·음성 언어(ko·en 등), contains_synthetic_media=True 면 AI 합성 표시를 켠다.
     반환: {"video_id", "url", "thumbnail_set", "warnings", "playlist_added"}
     """
     creds = _creds(channel_id)
@@ -387,6 +389,8 @@ def upload_video(video_path, title, description, tags=None, privacy="private", p
 
     privacy = privacy if privacy in PRIVACY else "private"
     status = {"privacyStatus": privacy, "selfDeclaredMadeForKids": bool(made_for_kids)}
+    if contains_synthetic_media is not None:
+        status["containsSyntheticMedia"] = bool(contains_synthetic_media)
     if publish_at:
         try:
             from datetime import datetime, timezone
@@ -407,10 +411,12 @@ def upload_video(video_path, title, description, tags=None, privacy="private", p
             "description": (description or "")[:5000],
             "tags": [t.strip()[:30] for t in (tags or []) if t.strip()][:30],
             "categoryId": str(category_id),
-            "defaultLanguage": "ko",
+            "defaultLanguage": default_language or "ko",
         },
         "status": status,
     }
+    if audio_language:
+        body["snippet"]["defaultAudioLanguage"] = audio_language
     youtube = _service(creds)
     media = MediaFileUpload(video_path, chunksize=8 * 1024 * 1024, resumable=True, mimetype="video/mp4")
     request = youtube.videos().insert(part="snippet,status", body=body, media_body=media)
@@ -536,6 +542,30 @@ def list_playlists(channel_id=None):
     except Exception as e:
         print(f"[Uploader] 플레이리스트 목록 조회 실패: {e}")
         return []
+
+
+# videos.update(part=status)는 보낸 값으로 status 를 통째로 바꾼다 — 쓸 수 있는 값만 읽어 합쳐 보낸다
+_WRITABLE_STATUS = ("privacyStatus", "publishAt", "license", "embeddable", "publicStatsViewable", "selfDeclaredMadeForKids",
+                    "containsSyntheticMedia")
+
+
+def set_video_privacy(video_id, privacy, channel_id=None):
+    """업로드한 영상의 공개 범위만 바꾼다. 다른 status 값(아동용·AI 합성 표시 등)은 현재 값을 그대로 다시 보낸다."""
+    if privacy not in PRIVACY:
+        raise ValueError(f"올바르지 않은 공개 범위입니다: {privacy}")
+    creds = _creds(channel_id)
+    if not creds:
+        raise RuntimeError("유튜브 계정이 연결되어 있지 않습니다.")
+    youtube = _service(creds)
+    items = youtube.videos().list(part="status", id=video_id).execute().get("items") or []
+    if not items:
+        raise RuntimeError(f"영상을 찾을 수 없습니다: {video_id}")
+    status = {k: v for k, v in (items[0].get("status") or {}).items() if k in _WRITABLE_STATUS}
+    status["privacyStatus"] = privacy
+    if privacy == "public":
+        status.pop("publishAt", None)   # 예약을 지우고 바로 공개
+    res = youtube.videos().update(part="status", body={"id": video_id, "status": status}).execute()
+    return {"video_id": video_id, "privacy": (res.get("status") or {}).get("privacyStatus", privacy)}
 
 
 def create_playlist(title, description="", privacy="public", channel_id=None):
