@@ -104,13 +104,13 @@ class BuildJobFromPlanTests(ShortsS2Base):
         sb = job["storyboard"]
         self.assertEqual(sb["hook_text"], "이거 모르면 손해")
         self.assertEqual(sb["end_tag"]["text"], "구독하고 다음 편")
-        self.assertEqual(sb["end_tag"]["seconds"], 2.0)
+        self.assertEqual(sb["end_tag"]["seconds"], 2.4)   # 페이드인을 빼고도 2초 (U-1 line_unread)
         self.assertEqual(len(sb["scenes"]), 5)
         self.assertEqual([s["motion"] for s in sb["scenes"]][:4], ["zoom_in", "zoom_out", "pan_left", "pan_right"])
         self.assertIsNone(sb["scenes"][0]["image"])
         self.assertIn("#Shorts", job["metadata"]["youtube"]["title"])
         self.assertEqual(job["metadata"]["youtube"]["pinned_comment"], "📌 끝까지 봐주셔서 감사합니다!")
-        self.assertEqual(shorts_engine.total_seconds(job), 42.0)
+        self.assertEqual(shorts_engine.total_seconds(job), 42.4)    # 씬 5×8초 + 엔드 태그 2.4초
         # 디스크에 저장됨
         loaded = shorts_engine.load_job(job["shorts_id"])
         self.assertEqual(loaded["storyboard"]["hook_text"], "이거 모르면 손해")
@@ -281,13 +281,13 @@ class SceneKindTests(ShortsS2Base):
 
 class FitToMaxSecondsTests(ShortsS2Base):
     def test_over_60_cuts_from_last_scene_with_warning(self):
-        plan = self.save_plan(n=6, seconds=12.0)          # 72 + 2 = 74초
+        plan = self.save_plan(n=6, seconds=12.0)          # 72 + 2.4 = 74.4초
         job = shorts_engine.build_job_from_plan(plan["plan_id"])
         self.assertLessEqual(shorts_engine.total_seconds(job), 60.0)
         secs = [s["seconds"] for s in job["storyboard"]["scenes"]]
         self.assertEqual(secs[:4], [12.0, 12.0, 12.0, 12.0])    # 앞 씬은 손대지 않는다
         self.assertEqual(secs[5], shorts_engine.MIN_SCENE_SECONDS)   # 마지막 씬이 먼저 바닥까지
-        self.assertEqual(secs[4], 7.0)
+        self.assertEqual(secs[4], 6.6)                    # 60 - 48 - 3 - 2.4
         self.assertTrue(any("상한" in w for w in job["warnings"]))
         self.assertTrue(any("씬 6" in w for w in job["warnings"]))
 

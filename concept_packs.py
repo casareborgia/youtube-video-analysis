@@ -202,7 +202,7 @@ CONCEPT_PACKS: Dict[str, Dict[str, Any]] = {
             # 한국어 초당 5.2자 기준: 30초 ≈ 70~80어절(≈155자), 60초 ≈ 125~150어절(≈310자)
             "ko_chars_per_sec": 5.2,
             "narration_chars_per_scene": {"min": 26, "max": 42},
-            "end_tag": {"text": "구독하고 다음 편 보기", "subtext": "", "seconds": 2.0},
+            "end_tag": {"text": "구독하고 다음 편 보기", "subtext": "", "seconds": 2.4},  # 페이드인 0.33초를 빼고도 2초 읽히게(U-1 line_unread)
             "beats": ["훅", "핵심 1", "핵심 2", "반전/근거", "CTA"],
             # 씬 종류(작업계획서 7b, PR #42): image 외에는 Remotion 이 그려 이미지 비용 0. shorts_engine.SCENE_KINDS 와 같은 목록.
             "scene_kinds": ["image", "text_card", "stat_card", "bar_chart", "compare", "flyover", "scene3d"],
