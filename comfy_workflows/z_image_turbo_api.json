@@ -1,0 +1,63 @@
+{
+  "1": {
+    "class_type": "UnetLoaderGGUF",
+    "inputs": {"unet_name": "z_image_nsfw_v2-Q8_0.gguf"},
+    "_meta": {"title": "① 생성 모델 (Z-Image-Turbo GGUF)"}
+  },
+  "2": {
+    "class_type": "CLIPLoaderGGUF",
+    "inputs": {"clip_name": "Qwen3-4B-Q8_0.gguf", "type": "lumina2"},
+    "_meta": {"title": "② 텍스트 인코더 (Qwen3-4B GGUF)"}
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {"vae_name": "ae.safetensors"},
+    "_meta": {"title": "③ VAE"}
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {"text": "a small white round robot holding a glowing golden star", "clip": ["2", 0]},
+    "_meta": {"title": "④ 프롬프트"}
+  },
+  "5": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {"conditioning": ["4", 0]},
+    "_meta": {"title": "④-1 빈 negative (CFG 1에서는 쓰이지 않음)"}
+  },
+  "6": {
+    "class_type": "EmptySD3LatentImage",
+    "inputs": {"width": 1024, "height": 1024, "batch_size": 1},
+    "_meta": {"title": "⑤ 빈 도화지"}
+  },
+  "7": {
+    "class_type": "ModelSamplingAuraFlow",
+    "inputs": {"shift": 3, "model": ["1", 0]},
+    "_meta": {"title": "⑤-1 샘플링 시프트"}
+  },
+  "8": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": 42,
+      "steps": 8,
+      "cfg": 1,
+      "sampler_name": "res_multistep",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": ["7", 0],
+      "positive": ["4", 0],
+      "negative": ["5", 0],
+      "latent_image": ["6", 0]
+    },
+    "_meta": {"title": "⑥ 잡음 걷어내기 (Turbo 8걸음 · CFG 1)"}
+  },
+  "9": {
+    "class_type": "VAEDecode",
+    "inputs": {"samples": ["8", 0], "vae": ["3", 0]},
+    "_meta": {"title": "⑦ 그림으로 펼치기"}
+  },
+  "10": {
+    "class_type": "SaveImage",
+    "inputs": {"filename_prefix": "jarvis", "images": ["9", 0]},
+    "_meta": {"title": "⑧ 저장"}
+  }
+}

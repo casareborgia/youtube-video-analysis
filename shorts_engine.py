@@ -19,6 +19,7 @@ import subprocess
 import time
 from typing import Any, Callable, Dict, List, Optional
 
+import comfy_images
 import concept_packs
 import producer  # ffmpeg_path(drawtext 지원 바이너리 우선), audio_duration, find_font, generate_images, list_media
 import scene3d_spec
@@ -859,6 +860,7 @@ def _resolve_scene_images(job: dict, plan: Optional[dict] = None) -> int:
         fname = item.get("image_file") if item.get("type") == "video" else item.get("file")
         if fname and os.path.exists(os.path.join(d, fname)):
             sc["image"] = os.path.join(d, fname)
+            sc["image_source"] = item.get("image_source") or item.get("source") or ""
             found += 1
     return found
 
@@ -900,6 +902,11 @@ def assign_transitions(job: dict) -> List[str]:
     - 바로 앞 이음새와 같은 전환은 피하고, 이음새가 3개 이상이면 3종 이상이 되게 한다
     """
     scenes = (job.get("storyboard") or {}).get("scenes") or []
+    # 컨셉 팩이 전환 목록을 정하면(Shiji 수묵 톤: dip·zoom_through 위주) 그 안에서만 고른다
+    spec = concept_packs.shorts_spec(job.get("concept_key")) if job.get("concept_key") else {}
+    palette = [t for t in (spec.get("transitions") or []) if t in SCENE_TRANSITIONS]
+    rotation = tuple(t for t in AUTO_TRANSITION_ROTATION if t in palette) + tuple(t for t in palette if t not in AUTO_TRANSITION_ROTATION) \
+        if palette else AUTO_TRANSITION_ROTATION
     seams: List[str] = []
     rot = 0
     for i in range(1, len(scenes)):
@@ -915,11 +922,13 @@ def assign_transitions(job: dict) -> List[str]:
             prefs = ["zoom_through", "whip"]
         else:
             prefs = []
-        prefs += [AUTO_TRANSITION_ROTATION[(rot + j) % len(AUTO_TRANSITION_ROTATION)] for j in range(len(AUTO_TRANSITION_ROTATION))]
+        if palette:
+            prefs = [t for t in prefs if t in palette]
+        prefs += [rotation[(rot + j) % len(rotation)] for j in range(len(rotation))]
         recent = set(seams[-2:])
-        pick = next((t for t in prefs if t != last and t not in recent), None) or next(t for t in prefs if t != last)
-        if pick in AUTO_TRANSITION_ROTATION:
-            rot = AUTO_TRANSITION_ROTATION.index(pick) + 1
+        pick = next((t for t in prefs if t != last and t not in recent), None) or next((t for t in prefs if t != last), prefs[0])
+        if pick in rotation:
+            rot = rotation.index(pick) + 1
         cur["transition"], cur["transition_auto"] = pick, True
         seams.append(pick)
     return seams
@@ -1025,6 +1034,7 @@ def build_job_from_plan(plan_id: str, platforms: Optional[List[str]] = None, voi
         "platforms": plats,
         "voice_id": voice_id or DEFAULT_VOICE_ID,
         **({"language": language} if language else {}),
+        **({"accent": spec["accent"]} if spec.get("accent") else {}),
         "concept_key": plan.get("concept_key") or "",
         "storyboard": {
             "hook_text": hook,
@@ -1108,6 +1118,13 @@ def update_storyboard(job: dict, hook_text: Optional[str] = None, scenes: Option
 
 
 # ── 이미지 (producer.generate_images 9:16 재사용, 편당·일일 상한, 과금 가드) ─────
+# 백엔드: gemini(유료, 상한·confirm) | comfyui(로컬, 비용 0 — Shiji Files 수묵 스타일, 파일럿 P-4)
+
+def image_backend(job: dict) -> str:
+    """잡에 정한 값 → 컨셉 팩 shorts.image_backend → gemini."""
+    spec = concept_packs.shorts_spec(job.get("concept_key")) if job.get("concept_key") else {}
+    return job.get("image_backend") or spec.get("image_backend") or "gemini"
+
 
 def _scenes_needing_images(job: dict) -> List[dict]:
     """kind=image 인데 파일이 없는 씬만 (비용 0 씬은 제외)."""
@@ -1121,14 +1138,18 @@ def estimate_images(job: dict, plan: Optional[dict] = None) -> dict:
     needed = len(_scenes_needing_images(job))
     usage = usage_summary()
     cap_job = usage["per_job_cap"]
+    backend = image_backend(job)
     allowed, reason = True, ""
     if needed > cap_job:
         allowed, reason = False, f"편당 이미지 상한({cap_job}장)을 넘습니다 (필요 {needed}장)."
+    elif backend == "comfyui":
+        if needed > 0 and not comfy_images.comfy_available():
+            allowed, reason = False, f"ComfyUI 가 꺼져 있습니다({comfy_images.COMFY_URL}). 켠 뒤 다시 빌드하세요 — Gemini 로 넘어가지 않습니다."
     elif usage["today"] + needed > usage["cap"]:
         allowed, reason = False, f"일일 이미지 상한({usage['cap']}장)을 넘습니다 (오늘 {usage['today']}장 사용, 요청 {needed}장)."
     elif needed > 0 and not producer.gemini_key():
         allowed, reason = False, "Gemini API 키가 없습니다. ③ 탭의 환경 영역에서 키를 저장하세요."
-    usd = round(needed * IMAGE_USD_PER_IMAGE, 3)
+    usd = 0 if backend == "comfyui" else round(needed * IMAGE_USD_PER_IMAGE, 3)
     all_scenes = (job.get("storyboard") or {}).get("scenes") or []
     image_scenes = [sc for sc in all_scenes if _is_image_scene(sc)]
     return {
@@ -1141,11 +1162,13 @@ def estimate_images(job: dict, plan: Optional[dict] = None) -> dict:
         "usage": usage,
         "allowed": allowed,
         "reason": reason,
+        "backend": backend,
     }
 
 
 def generate_job_images(job: dict, progress_cb: Optional[Callable] = None, generator: Optional[Callable] = None) -> dict:
-    """씬 이미지를 Gemini 로 생성한다(9:16, 기획서 미디어 폴더에 저장 → 씬에 연결). 썸네일은 만들지 않는다(쇼츠는 커스텀 썸네일 미사용).
+    """씬 이미지를 만든다(9:16, 기획서 미디어 폴더에 저장 → 씬에 연결). 썸네일은 만들지 않는다(쇼츠는 커스텀 썸네일 미사용).
+    백엔드는 image_backend(job): Gemini(유료, 사용량 집계) 또는 로컬 ComfyUI(비용 0, 팩의 image_style 로 그림).
 
     호출 전 상한을 다시 검사한다 — API 의 confirm 가드와 별개로 엔진 단독 호출도 과금을 막아야 한다.
     """
@@ -1159,7 +1182,14 @@ def generate_job_images(job: dict, progress_cb: Optional[Callable] = None, gener
     if not est["allowed"]:
         raise RuntimeError(est["reason"])
     slots = [str(n) for n in est["scenes"]]
-    gen = generator or producer.generate_images
+    backend = est["backend"]
+    if generator:
+        gen = generator
+    elif backend == "comfyui":
+        style = concept_packs.shorts_spec(job.get("concept_key")).get("image_style") or comfy_images.INK_STYLE
+        gen = lambda p, slots=None, progress=None: comfy_images.generate_images(p, slots=slots, progress=progress, style=style)
+    else:
+        gen = producer.generate_images
 
     def cb(step, msg, pct):
         if progress_cb:
@@ -1167,7 +1197,7 @@ def generate_job_images(job: dict, progress_cb: Optional[Callable] = None, gener
 
     res = gen(plan, slots=slots, progress=cb) or {}
     generated = list(res.get("generated") or [])
-    if generated:
+    if generated and backend == "gemini":   # 로컬 ComfyUI 는 비용 0 — Gemini 일일 상한에 세지 않는다
         _increment_usage(len(generated))
     _resolve_scene_images(job, plan)
     still = _scenes_needing_images(job)
@@ -1724,9 +1754,12 @@ def build_job(job: dict, options: Optional[dict] = None, progress_cb: Optional[C
         save_job(job)
         est = estimate_images(job)
         if est["needed"] > 0:
-            if not opts.get("confirm"):
+            if est["backend"] == "comfyui":
+                step("images", f"ComfyUI 이미지 {est['needed']}장 생성 시작 (비용 0)", 0)
+            elif not opts.get("confirm"):
                 raise RuntimeError(f"Gemini 이미지 {est['needed']}장 생성에는 confirm=true 가 필요합니다 (예상 ${est['usd']}).")
-            step("images", f"이미지 {est['needed']}장 생성 시작 (오늘 {est['usage']['today']}/{est['usage']['cap']})", 0)
+            else:
+                step("images", f"이미지 {est['needed']}장 생성 시작 (오늘 {est['usage']['today']}/{est['usage']['cap']})", 0)
             generate_job_images(job, progress_cb=scaled("images"), generator=hooks.get("generator"))
         else:
             step("images", f"기존 이미지 {est['reused']}장 재사용 (생성 비용 없음)", 40)
