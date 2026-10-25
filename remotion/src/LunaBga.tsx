@@ -9,12 +9,15 @@ import {
   useVideoConfig,
 } from "remotion";
 import { useAudioData, visualizeAudio } from "@remotion/media-utils";
-import { loadFont } from "@remotion/google-fonts/NotoSansKR";
+import { loadFont } from "@remotion/fonts";
 
-const { fontFamily } = loadFont("normal", {
-  weights: ["400", "600", "700"],
-  subsets: ["korean", "latin"],
-  ignoreTooManyRequestsWarning: true,
+// Noto Sans KR 2.004 가변 폰트(OFL, public/fonts) — Google Fonts 와 같은 버전을 로컬에서 읽어 오프라인에서도 같은 글꼴로 렌더한다.
+const fontFamily = "Noto Sans KR";
+loadFont({
+  family: fontFamily,
+  url: staticFile("fonts/NotoSansKR-Variable.woff2"),
+  weight: "100 900",
+  format: "woff2",
 });
 
 export type LunaBgaProps = {

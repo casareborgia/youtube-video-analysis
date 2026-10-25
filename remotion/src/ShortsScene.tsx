@@ -29,12 +29,13 @@ import { Scene3D } from "./three/Scene3D";
 import { Scene3DSpec } from "./three/types";
 import { colorFlood, dip, TRANSITION_SECONDS, whip, zoomThrough } from "./transitions";
 
-// 한글 글꼴: Pretendard 가변 폰트(OFL). loadFont 가 받아질 때까지 렌더를 붙잡는다.
+// 한글 글꼴: Pretendard 1.3.9 가변 폰트(OFL, public/fonts). 네트워크 없이도 같은 글꼴로 렌더하도록 로컬 파일만 읽는다.
+// loadFont 가 받아질 때까지 렌더를 붙잡는다.
 const FONT = "Pretendard";
 const fontFamily = `${FONT}, "Apple SD Gothic Neo", sans-serif`;
 const fontReady = loadFont({
   family: FONT,
-  url: "https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/woff2/PretendardVariable.woff2",
+  url: staticFile("fonts/PretendardVariable.woff2"),
   weight: "45 920",
   format: "woff2",
 });
