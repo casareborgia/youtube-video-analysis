@@ -50,6 +50,7 @@ EDGE_PRESETS = [
         "id": "edge_injoon",
         "voice_id": "ko-KR-InJoonNeural",
         "engine": "edge-tts",
+        "language": "korean",
         "name": "⚡ 인준 (남성 다큐·지식 전문)",
         "gender": "male",
         "description": "차분하고 신뢰감 넘치는 다큐멘터리/지식 전달 어조 (무료 고속)",
@@ -60,6 +61,7 @@ EDGE_PRESETS = [
         "id": "edge_sunhi",
         "voice_id": "ko-KR-SunHiNeural",
         "engine": "edge-tts",
+        "language": "korean",
         "name": "⚡ 선희 (여성 다큐·뉴스 전문)",
         "gender": "female",
         "description": "또렷하고 전달력 높은 전문 아나운서 어조 (무료 고속)",
@@ -70,13 +72,35 @@ EDGE_PRESETS = [
         "id": "edge_hyunsu",
         "voice_id": "ko-KR-HyunsuNeural",
         "engine": "edge-tts",
+        "language": "korean",
         "name": "⚡ 현수 (남성 스토리텔러)",
         "gender": "male",
         "description": "몰입감 높은 역동적 스토리텔러/유튜브 해설 어조 (무료 고속)",
         "default_rate": "+4%",
         "is_free": True,
     },
+    {
+        "id": "edge_andrew_en",
+        "voice_id": "en-US-AndrewMultilingualNeural",
+        "engine": "edge-tts",
+        "language": "english",
+        "name": "⚡ Andrew (English storyteller)",
+        "gender": "male",
+        "description": "따뜻하고 자연스러운 영어 이야기꾼 어조 — 해외 쇼츠(Shiji Files) 기본 (무료 고속)",
+        "default_rate": "+0%",
+        "is_free": True,
+    },
 ]
+
+
+def voice_language(voice_id: str) -> Optional[str]:
+    """edge 프리셋·코드의 언어. 언어를 따라가는 목소리(Qwen3·내 목소리)는 None."""
+    preset = next((ep for ep in EDGE_PRESETS if ep["id"] == voice_id), None)
+    if preset:
+        return preset.get("language")
+    if str(voice_id or "").startswith("ko-KR-"):
+        return "korean"
+    return None
 
 # Qwen3-TTS 프리셋
 QWEN_PRESETS = [

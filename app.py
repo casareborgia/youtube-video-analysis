@@ -1035,6 +1035,7 @@ class ShortsJobCreateRequest(BaseModel):
     plan_id: str
     platforms: Optional[List[str]] = None   # 기본 ["youtube_shorts"]
     voice_id: Optional[str] = None          # 기본 edge_injoon
+    language: Optional[str] = None          # korean | english — 없으면 목소리에서 정한다(기본 korean)
 
 
 class ShortsStoryboardRequest(BaseModel):
@@ -1096,7 +1097,8 @@ async def list_shorts_plans():
 async def create_shorts_job(req: ShortsJobCreateRequest):
     """9:16 씬 기획서 → 쇼츠 잡(job.json). 합계 60초 초과 시 마지막 씬부터 줄이고 warnings 에 남긴다."""
     try:
-        job = shorts_engine.build_job_from_plan(req.plan_id, platforms=req.platforms, voice_id=req.voice_id)
+        job = shorts_engine.build_job_from_plan(req.plan_id, platforms=req.platforms, voice_id=req.voice_id,
+                                                language=req.language)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
