@@ -23,6 +23,7 @@ import concept_packs
 import producer  # ffmpeg_path(drawtext 지원 바이너리 우선), audio_duration, find_font, generate_images, list_media
 import scene3d_spec
 import scene_store
+import shorts_review
 import tts_service
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -846,6 +847,12 @@ def fit_to_max_seconds(job: dict, max_seconds: float = MAX_SECONDS, min_scene: f
     return warnings
 
 
+def refresh_lint(job: dict) -> dict:
+    """U-1 렌더 전 린트를 다시 돌려 job["lint"] 에 저장(저장은 호출부). 빌드를 막지 않는다."""
+    job["lint"] = shorts_review.lint_storyboard(job)
+    return job["lint"]
+
+
 def build_job_from_plan(plan_id: str, platforms: Optional[List[str]] = None, voice_id: Optional[str] = None,
                         plan: Optional[dict] = None) -> dict:
     """저장된 9:16 씬 기획서 → data/shorts/<id>/job.json (작업계획서 5.4 스키마). 이미지·음성은 build_job 에서 채운다."""
@@ -936,6 +943,7 @@ def build_job_from_plan(plan_id: str, platforms: Optional[List[str]] = None, voi
     }
     _resolve_scene_images(job, plan)
     fit_to_max_seconds(job)
+    refresh_lint(job)
     save_job(job)
     return job
 
@@ -977,6 +985,7 @@ def update_storyboard(job: dict, hook_text: Optional[str] = None, scenes: Option
         if end_tag.get("seconds") is not None:
             cur_tag["seconds"] = max(0.0, min(4.0, float(end_tag["seconds"])))
     fit_to_max_seconds(job)
+    refresh_lint(job)
     save_job(job)
     return job
 
@@ -1461,6 +1470,7 @@ def build_job(job: dict, options: Optional[dict] = None, progress_cb: Optional[C
         synthesize_job_audio(job, voice_id=opts.get("voice_id"), progress_cb=scaled("audio"),
                              synth=hooks.get("synth"), merger=hooks.get("merger"), bgm_picker=hooks.get("bgm_picker"),
                              lufs_probe=hooks.get("lufs_probe"))
+        refresh_lint(job)   # 실제 발화 타이밍(자막)이 생긴 뒤 다시 검사 — 경고만, 빌드는 계속
         render_fn = hooks.get("renderer_fn") or render_shorts
         render_fn(job, renderer=opts.get("renderer"), progress_cb=scaled("render"))
         step("render", "음량 측정·보정...", 97)

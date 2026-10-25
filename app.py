@@ -1047,6 +1047,7 @@ class ShortsBuildRequest(BaseModel):
     confirm: Optional[bool] = False     # 이미지 생성 과금 승인
     renderer: Optional[str] = None      # remotion | ffmpeg (기본 SHORTS_RENDERER)
     voice_id: Optional[str] = None
+    confirm_lint: Optional[bool] = False  # 린트 위험 점수 4.0 이상(fail)이어도 빌드 진행 (결정 ⑦: 경고+확인)
 
 
 def _shorts_job_or_404(shorts_id: str) -> dict:
@@ -1132,6 +1133,16 @@ async def update_shorts_storyboard(shorts_id: str, req: ShortsStoryboardRequest)
     return {"status": "success", "data": job}
 
 
+@app.get("/api/shorts/jobs/{shorts_id}/lint")
+async def lint_shorts_job(shorts_id: str):
+    """U-1 렌더 전 린트(비용 0)를 다시 돌려 저장하고 돌려준다. 지적 P0/P1/P2 + 슬라이드쇼 위험 점수."""
+    job = _shorts_job_or_404(shorts_id)
+    lint = shorts_engine.refresh_lint(job)
+    if job["shorts_id"] not in _shorts_building:
+        shorts_engine.save_job(job)
+    return {"status": "success", "lint": lint}
+
+
 @app.get("/api/shorts/jobs/{shorts_id}/estimate")
 async def estimate_shorts_images(shorts_id: str):
     """빌드 전 예상 이미지 장수·비용·오늘 사용량 (과금 확인 모달용)."""
@@ -1147,6 +1158,11 @@ async def build_shorts_job(shorts_id: str, req: ShortsBuildRequest, background_t
     sid = job["shorts_id"]
     if sid in _shorts_building:
         raise HTTPException(status_code=409, detail="이미 빌드 중입니다.")
+    lint = shorts_engine.refresh_lint(job)
+    shorts_engine.save_job(job)
+    if lint.get("needs_confirm") and not req.confirm_lint:
+        return {"status": "lint_confirm_required", "shorts_id": sid, "lint": lint,
+                "message": f"슬라이드쇼 위험 점수 {lint['risk']['score']} (fail). 그래도 빌드하려면 confirm_lint=true 로 다시 요청하세요."}
     est = shorts_engine.estimate_images(job)
     if est["needed"] > 0:
         if not est["allowed"]:
