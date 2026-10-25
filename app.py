@@ -39,6 +39,7 @@ import vega_engine
 import vega_feedback
 import choonsik_bga
 import shorts_engine
+import shorts_publish
 import threads_client
 import capcut_builder
 import engagement_automation
@@ -1143,6 +1144,51 @@ async def lint_shorts_job(shorts_id: str):
     if job["shorts_id"] not in _shorts_building:
         shorts_engine.save_job(job)
     return {"status": "success", "lint": lint}
+
+
+class ShortsPublishRequest(BaseModel):
+    channel_id: Optional[str] = None     # 없으면 SHORTS_YOUTUBE_CHANNEL_ID — 루나 채널은 거부
+    title: Optional[str] = None
+    description: Optional[str] = None
+    publish_at: Optional[str] = None     # 예약(비공개 + publishAt)
+    playlist_id: Optional[str] = None
+
+
+class ShortsPrivacyRequest(BaseModel):
+    privacy: str                         # private | unlisted | public
+
+
+@app.post("/api/shorts/jobs/{shorts_id}/publish/youtube")
+async def publish_shorts_youtube(shorts_id: str, req: ShortsPublishRequest):
+    """P-5 S-3: 쇼츠를 유튜브에 비공개로 올린다(AI 합성 표시·아동용 아님). 발행 잠금·채널 가드·중복 업로드는 409."""
+    job = _shorts_job_or_404(shorts_id)
+    if job["shorts_id"] in _shorts_building:
+        raise HTTPException(status_code=409, detail="빌드 중인 잡은 발행할 수 없습니다.")
+    try:
+        job = shorts_publish.publish_youtube(job, channel_id=req.channel_id, title=req.title, description=req.description,
+                                             publish_at=req.publish_at, playlist_id=req.playlist_id)
+    except shorts_publish.PublishRefused as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"유튜브 업로드 실패: {e}")
+    return {"status": "success", "data": job}
+
+
+@app.post("/api/shorts/jobs/{shorts_id}/publish/youtube/privacy")
+async def set_shorts_youtube_privacy(shorts_id: str, req: ShortsPrivacyRequest):
+    """업로드한 쇼츠의 공개 범위를 바꾼다(사람이 확인한 뒤 public)."""
+    job = _shorts_job_or_404(shorts_id)
+    try:
+        job = shorts_publish.set_youtube_privacy(job, req.privacy)
+    except shorts_publish.PublishRefused as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"공개 범위 변경 실패: {e}")
+    return {"status": "success", "data": job}
 
 
 class ShortsReviewOverrideRequest(BaseModel):
