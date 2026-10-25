@@ -27,6 +27,7 @@ import { wipe } from "@remotion/transitions/wipe";
 import { FlyoverScene, FlyoverTime } from "./FlyoverScene";
 import { Scene3D } from "./three/Scene3D";
 import { Scene3DSpec } from "./three/types";
+import { colorFlood, dip, TRANSITION_SECONDS, whip, zoomThrough } from "./transitions";
 
 // 한글 글꼴: Pretendard 가변 폰트(OFL). loadFont 가 받아질 때까지 렌더를 붙잡는다.
 const FONT = "Pretendard";
@@ -45,7 +46,7 @@ export const SHORTS_FPS = 30;
 export const SAFE_ZONE = { top: 120, bottom: 300, left: 90, right: 96 };
 
 export type ShortsMotion = "zoom_in" | "zoom_out" | "pan_left" | "pan_right" | "none";
-export type ShortsTransition = "fade" | "slide" | "wipe" | "none";
+export type ShortsTransition = "fade" | "slide" | "wipe" | "zoom_through" | "color_flood" | "whip" | "dip" | "none";
 
 export type ShortsSceneKind = "image" | "text_card" | "stat_card" | "bar_chart" | "compare" | "flyover" | "scene3d";
 export type ShortsBar = { label: string; value: number; highlight?: boolean };
@@ -85,6 +86,7 @@ export type ShortsCaption = {
   startMs: number;
   endMs: number;
   pageBreakAfter?: boolean;
+  emphasis?: boolean; // 씬 강조어 — 그룹이 떠 있는 동안 액센트 색·1.12배
 };
 
 export type ShortsEndTag = {
@@ -100,7 +102,9 @@ export type ShortsSceneProps = {
   hookSeconds?: number;
   endTag?: ShortsEndTag | null;
   captions?: ShortsCaption[];
-  captionPageMs?: number; // 한 페이지에 묶을 발화 길이(ms). 기본 1200
+  captionPageMs?: number; // 한 페이지에 묶을 발화 길이(ms). 그룹 경계(pageBreakAfter)를 쓰면 크게(60000) 준다
+  captionHoldMs?: number; // 그룹 마지막 어절 뒤 남겨 두는 시간(ms). 기본 300
+  captionMinStartMs?: number; // 첫 자막을 이보다 일찍 띄우지 않는다(ms). 기본 150
   narrationAudio?: string | null;
   bgmAudio?: string | null;
   bgmVolume?: number; // 나레이션 중 BGM 볼륨. 기본 0.16
@@ -239,7 +243,8 @@ const titleFontSize = (text: string) => {
   return 64;
 };
 
-const TextCardScene: React.FC<{ item: ShortsSceneItem; accent: string }> = ({ item, accent }) => {
+// 등장 방식은 씬 순서로 번갈아 쓴다 — 모든 카드가 같은 "아래에서 떠오르기"면 생성된 티가 난다 (HF motion.md)
+const TextCardScene: React.FC<{ item: ShortsSceneItem; accent: string; variant?: number }> = ({ item, accent, variant = 0 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const enter = spring({ frame, fps, config: { damping: 18, stiffness: 120 }, durationInFrames: 18 });
@@ -255,7 +260,9 @@ const TextCardScene: React.FC<{ item: ShortsSceneItem; accent: string }> = ({ it
             fontWeight: 900,
             lineHeight: 1.18,
             textShadow: "0 8px 30px rgba(0,0,0,0.55)",
-            transform: `translateY(${interpolate(enter, [0, 1], [40, 0])}px)`,
+            // 0: 아래에서 떠오르기 · 1: 자간이 넓은 데서 모이며 나타나기
+            transform: variant === 1 ? undefined : `translateY(${interpolate(enter, [0, 1], [40, 0])}px)`,
+            letterSpacing: variant === 1 ? `${interpolate(enter, [0, 1], [0.35, 0])}em` : undefined,
             opacity: enter,
           }}
         >
@@ -282,7 +289,7 @@ const TextCardScene: React.FC<{ item: ShortsSceneItem; accent: string }> = ({ it
   );
 };
 
-const StatCardScene: React.FC<{ item: ShortsSceneItem; accent: string }> = ({ item, accent }) => {
+const StatCardScene: React.FC<{ item: ShortsSceneItem; accent: string; variant?: number }> = ({ item, accent, variant = 0 }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const enter = spring({ frame, fps, config: { damping: 16, stiffness: 110 }, durationInFrames: 18 });
@@ -292,7 +299,8 @@ const StatCardScene: React.FC<{ item: ShortsSceneItem; accent: string }> = ({ it
     <ContentZone>
       <div style={{ textAlign: "center", width: "100%", wordBreak: "keep-all" }}>
         {item.title ? <div style={{ fontSize: 44, fontWeight: 700, color: "rgba(255,255,255,0.85)", marginBottom: 26 }}>{item.title}</div> : null}
-        <div style={{ transform: `scale(${interpolate(enter, [0, 1], [0.8, 1])})`, opacity: enter }}>
+        {/* 0: 작은 데서 커지기 · 1: 크게 찍힌 뒤 제자리로 */}
+        <div style={{ transform: `scale(${interpolate(enter, [0, 1], variant === 1 ? [1.35, 1] : [0.8, 1])})`, opacity: enter }}>
           <span style={{ fontSize: 96, fontWeight: 900, color: accent, verticalAlign: "top", marginRight: 10 }}>{item.prefix || ""}</span>
           <span style={{ fontSize: 220, fontWeight: 900, color: accent, lineHeight: 1, textShadow: `0 0 50px ${accent}55` }}>
             {fmt(v, item.decimals || 0)}
@@ -400,7 +408,7 @@ const KindScene: React.FC<{ item: ShortsSceneItem; index: number; accent: string
   let body: React.ReactNode = null;
   switch (item.kind) {
     case "stat_card":
-      body = <StatCardScene item={item} accent={accent} />;
+      body = <StatCardScene item={item} accent={accent} variant={index % 2} />;
       break;
     case "bar_chart":
       body = <BarChartScene item={item} accent={accent} />;
@@ -409,7 +417,7 @@ const KindScene: React.FC<{ item: ShortsSceneItem; index: number; accent: string
       body = <CompareScene item={item} accent={accent} />;
       break;
     default:
-      body = <TextCardScene item={item} accent={accent} />;
+      body = <TextCardScene item={item} accent={accent} variant={index % 2} />;
   }
   return (
     <AbsoluteFill>
@@ -477,11 +485,19 @@ const captionFontSize = (text: string) => {
   return 50;
 };
 
-const CaptionPage: React.FC<{ page: TikTokPage; accent: string }> = ({ page, accent }) => {
+const CaptionPage: React.FC<{ page: TikTokPage; accent: string; emphasisFrom: Set<number>; offsetMs: number; durationInFrames: number }> = ({
+  page,
+  accent,
+  emphasisFrom,
+  offsetMs,
+  durationInFrames,
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const enter = spring({ frame, fps, config: { damping: 200 }, durationInFrames: 6 });
-  const timeInMs = page.startMs + (frame / fps) * 1000;
+  // 그룹마다 끝 0.12초 동안 사라지고 Sequence 끝에서 완전히 지운다 (HF captions.md 의 hard kill)
+  const exit = interpolate(frame, [durationInFrames - 4, durationInFrames], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const timeInMs = page.startMs + offsetMs + (frame / fps) * 1000;
   // 외곽선(12px)이 바깥으로 번지는 만큼 폭을 줄여 잰다
   const fontSize = useMemo(() => fitFontSize(page.text, 2, CONTENT_WIDTH - 24, 78, 48, captionFontSize(page.text)), [page.text]);
   return (
@@ -492,6 +508,7 @@ const CaptionPage: React.FC<{ page: TikTokPage; accent: string }> = ({ page, acc
         paddingLeft: SAFE_ZONE.left,
         paddingRight: SAFE_ZONE.right,
         paddingBottom: SAFE_ZONE.bottom + 70,
+        opacity: exit,
       }}
     >
       <div
@@ -512,13 +529,16 @@ const CaptionPage: React.FC<{ page: TikTokPage; accent: string }> = ({ page, acc
       >
         {page.tokens.map((tok, i) => {
           const active = tok.fromMs <= timeInMs && timeInMs < tok.toMs;
+          const strong = emphasisFrom.has(tok.fromMs);
           return (
             <span
               key={`${tok.fromMs}-${i}`}
               style={{
-                display: "inline",
+                display: "inline-block",
                 whiteSpace: "pre",
-                color: active ? accent : "white",
+                color: active || strong ? accent : "white",
+                transform: strong ? "scale(1.12)" : undefined,
+                textShadow: strong ? `0 0 24px ${accent}88, 0 6px 18px rgba(0,0,0,0.6)` : undefined,
               }}
             >
               {tok.text}
@@ -626,7 +646,7 @@ const EndTag: React.FC<{ tag: ShortsEndTag; brand: string; accent: string }> = (
 
 // ── 씬 전환 (@remotion/transitions, CSS 전환만 쓴다) ─────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const presentationFor = (t: ShortsTransition, i: number): TransitionPresentation<any> | null => {
+const presentationFor = (t: ShortsTransition, i: number, accent: string): TransitionPresentation<any> | null => {
   switch (t) {
     case "none":
       return null;
@@ -634,6 +654,14 @@ const presentationFor = (t: ShortsTransition, i: number): TransitionPresentation
       return slide({ direction: i % 2 === 0 ? "from-right" : "from-left" });
     case "wipe":
       return wipe({ direction: i % 2 === 0 ? "from-top-right" : "from-top-left" });
+    case "zoom_through":
+      return zoomThrough();
+    case "color_flood":
+      return colorFlood(accent);
+    case "whip":
+      return whip(i % 2 === 0 ? 1 : -1);
+    case "dip":
+      return dip();
     default:
       return fade();
   }
@@ -661,6 +689,8 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
   endTag = null,
   captions = [],
   captionPageMs = 1200,
+  captionHoldMs = 300,
+  captionMinStartMs = 150,
   narrationAudio = null,
   bgmAudio = null,
   bgmVolume = 0.16,
@@ -681,6 +711,13 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
     const list = scenes || [];
     const transitionOf = (i: number): ShortsTransition =>
       i > 0 && fadeFrames > 0 ? list[i].transition || "fade" : "none";
+    // 전환마다 길이가 다르다(휩 0.25초·딥컷 0.14초 등). 앞 씬은 다음 전환 길이만큼 늘려 씬 시작 시각(=자막 시각)을 지킨다
+    const framesOf = (i: number): number => {
+      const tr = transitionOf(i);
+      if (tr === "none") return 0;
+      const sec = TRANSITION_SECONDS[tr];
+      return sec ? Math.max(2, Math.round(sec * fps)) : fadeFrames;
+    };
     let cursor = 0;
     return list.map((s, i) => {
       const dur = Math.max(1, Math.round((Number(s.seconds) || 0) * fps));
@@ -693,8 +730,9 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
         from,
         dur,
         // 마지막 씬은 엔드 태그까지 덮는다
-        hold: dur + (isLast ? endTagFrames + 1 : nextOverlaps ? fadeFrames : 0),
+        hold: dur + (isLast ? endTagFrames + 1 : nextOverlaps ? framesOf(i + 1) : 0),
         transition: transitionOf(i),
+        trFrames: framesOf(i),
         motion,
         src: s.image || "",
         kind: (s.kind || "image") as ShortsSceneKind,
@@ -715,6 +753,8 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
     }));
     return createTikTokStyleCaptions({ captions: caps, combineTokensWithinMilliseconds: captionPageMs }).pages;
   }, [captions, captionPageMs]);
+
+  const emphasisFrom = useMemo(() => new Set((captions || []).filter((c) => c.emphasis).map((c) => c.startMs)), [captions]);
 
   // BGM 덕킹 램프: 발화 구간(자막 ±250ms, 겹치면 합침)에서는 bgmVolume, 밖에서는 bgmBoost 배(최대 0.5). 시작 0.5초·끝 1초 페이드
   const speechSpans = useMemo(() => {
@@ -763,7 +803,7 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
       } else if (t.transition !== "none") {
         const snd = seam % 2 === 0 ? SFX.whoosh : SFX.whip;
         seam += 1;
-        cues.push({ key: `sfx-seam-${i}`, from: t.from + Math.round(fadeFrames / 2) + 1 - snd.peakFrames, src: snd.src });
+        cues.push({ key: `sfx-seam-${i}`, from: t.from + Math.round(t.trFrames / 2) + 1 - snd.peakFrames, src: snd.src });
       }
     });
     return cues.map((c) => ({ ...c, from: Math.max(0, c.from) }));
@@ -781,13 +821,13 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
       {/* 1. 씬 + 전환 */}
       <TransitionSeries>
         {timeline.flatMap((t, i) => {
-          const presentation = presentationFor(t.transition, i);
+          const presentation = presentationFor(t.transition, i, accent);
           return [
             presentation ? (
               <TransitionSeries.Transition
                 key={`tr-${i}`}
                 presentation={presentation}
-                timing={linearTiming({ durationInFrames: fadeFrames })}
+                timing={linearTiming({ durationInFrames: t.trFrames })}
               />
             ) : null,
             <TransitionSeries.Sequence key={`scene-${i}`} durationInFrames={t.hold}>
@@ -823,11 +863,16 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
 
       {/* 3. 자막 페이지 */}
       {pages.map((page, i) => {
-        const from = msToFrames(page.startMs, fps);
-        const dur = Math.max(1, msToFrames(Number.isFinite(page.durationMs) ? page.durationMs : 1000, fps));
+        // 첫 그룹은 captionMinStartMs 뒤에 띄우고, 그룹은 마지막 어절 + captionHoldMs 와 다음 그룹 시작 중 이른 쪽에서 지운다
+        const shownFrom = i === 0 ? Math.max(page.startMs, captionMinStartMs) : page.startMs;
+        const lastTo = page.tokens.length ? page.tokens[page.tokens.length - 1].toMs : page.startMs + 1000;
+        const next = pages[i + 1];
+        const hideMs = Math.min(lastTo + captionHoldMs, next ? next.startMs : Infinity);
+        const from = msToFrames(shownFrom, fps);
+        const dur = Math.max(1, msToFrames(hideMs, fps) - from);
         return (
           <Sequence key={`cap-${i}`} from={from} durationInFrames={dur} layout="none">
-            <CaptionPage page={page} accent={accent} />
+            <CaptionPage page={page} accent={accent} emphasisFrom={emphasisFrom} offsetMs={shownFrom - page.startMs} durationInFrames={dur} />
           </Sequence>
         );
       })}
