@@ -61,6 +61,7 @@ DEFAULT_BGM_VOLUME = 0.16          # BGM 배율 상한 (조용한 곡이어도 �
 BGM_UNDER_NARRATION_LU = 22.0      # 2026-10-25 사용자 결정: 대사가 들려야 하므로 BGM 은 나레이션보다 22 LU 아래
 BGM_FALLBACK_VOLUME = 0.035        # 음량을 못 잴 때: 루나 곡(약 -12 LUFS)·edge-tts(약 -20 LUFS) 기준 22 LU 근사
 DEFAULT_TRANSITION = 0.4
+DEFAULT_END_TAG_SECONDS = 2.4      # 마지막 줄은 페이드인(10프레임)을 빼고 2초 이상 보여야 한다 (U-1 line_unread, HF story.md §6)
 
 _ID_RE = re.compile(r"^[A-Za-z0-9_\-가-힣]{3,80}$")
 _FILTER_CACHE = {}
@@ -252,7 +253,7 @@ def build_remotion_props(job: dict) -> dict:
         "scenes": scenes,
         "hookText": sb.get("hook_text") or "",
         "hookSeconds": float(sb.get("hook_seconds") or 3.0),
-        "endTag": ({"text": tag.get("text", ""), "subtext": tag.get("subtext", ""), "seconds": float(tag.get("seconds") or 2.0)} if tag else None),
+        "endTag": ({"text": tag.get("text", ""), "subtext": tag.get("subtext", ""), "seconds": float(tag.get("seconds") or DEFAULT_END_TAG_SECONDS)} if tag else None),
         # U-3: 그룹 경계(문장 끝·쉼·어절 상한)에 pageBreakAfter, 씬 강조어 토큰에 emphasis
         "captions": [
             {k: v for k, v in c.items() if k in ("text", "startMs", "endMs", "pageBreakAfter", "emphasis")}
@@ -908,7 +909,8 @@ def _llm_emphasis(narrations: List[str]) -> List[str]:
             "문장에 적힌 그대로 한 어절만 쓰세요. 마땅한 단어가 없으면 빈 문자열.\n"
             f"{lines}\n\n형식: {{\"words\": [\"...\", ...]}} (문장 수 {len(narrations)}개와 같은 길이)")},
     ]
-    data, _raw = llm_client.call_llm_json(messages, max_tokens=400, temperature=0.2, max_continues=0)
+    # max_continues 는 요청 횟수 상한이라 1 이상이어야 실제로 호출된다 (0 이면 아무 요청 없이 빈 답)
+    data, _raw = llm_client.call_llm_json(messages, max_tokens=400, temperature=0.2, max_continues=1)
     words = (data or {}).get("words") if isinstance(data, dict) else None
     return [str(w or "") for w in words] if isinstance(words, list) else []
 
@@ -981,7 +983,7 @@ def build_job_from_plan(plan_id: str, platforms: Optional[List[str]] = None, voi
     end_tag = {
         "text": (plan.get("end_tag_text") or tag_default.get("text") or "구독하고 다음 편 보기").strip(),
         "subtext": (plan.get("end_tag_subtext") or tag_default.get("subtext") or "").strip(),
-        "seconds": float(tag_default.get("seconds") or 2.0),
+        "seconds": float(tag_default.get("seconds") or DEFAULT_END_TAG_SECONDS),
     }
     yt_title = title if "#shorts" in title.lower() else f"{title} #Shorts"
     description = "\n\n".join(x for x in [plan.get("seo_description") or "", plan.get("engagement_question") or ""] if x)
@@ -1056,7 +1058,7 @@ def update_storyboard(job: dict, hook_text: Optional[str] = None, scenes: Option
                 cur.pop("kind_note", None)
                 fill_kind_defaults(cur, spec)
     if end_tag is not None:
-        cur_tag = sb.setdefault("end_tag", {"text": "", "subtext": "", "seconds": 2.0})
+        cur_tag = sb.setdefault("end_tag", {"text": "", "subtext": "", "seconds": DEFAULT_END_TAG_SECONDS})
         for k in ("text", "subtext"):
             if end_tag.get(k) is not None:
                 cur_tag[k] = str(end_tag[k]).strip()[:40]
@@ -1384,7 +1386,7 @@ def synthesize_job_audio(job: dict, voice_id: Optional[str] = None, progress_cb:
     voice_eq = voice_eq_enabled() and _filter_inplace(ff, narration, VOICE_EQ_FILTER)
 
     # 60초 상한: 발화가 길어 넘치면 엔드 태그를 먼저 줄이고, 그래도 넘으면 대본을 줄이라고 실패시킨다(음성 중간을 자르지 않는다)
-    tag = sb.setdefault("end_tag", {"text": "", "subtext": "", "seconds": 2.0})
+    tag = sb.setdefault("end_tag", {"text": "", "subtext": "", "seconds": DEFAULT_END_TAG_SECONDS})
     if total_seconds(job) > MAX_SECONDS and float(tag.get("seconds") or 0) > 1.5:
         tag["seconds"] = 1.5
         job.setdefault("warnings", []).append("길이 상한 때문에 엔드 태그를 1.5초로 줄였습니다.")

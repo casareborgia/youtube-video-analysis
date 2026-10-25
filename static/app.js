@@ -2378,8 +2378,8 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       const d = await res.json();
       currentShortsJob = d.data;
-      if (!currentShortsJob.lint && !d.building) {
-        // U-1 이전에 만든 잡은 린트가 없다 — 열 때 한 번 돌려 채운다(비용 0)
+      if (!d.building) {
+        // 열 때마다 다시 검사한다(비용 0) — 저장된 결과는 이전 규칙 기준일 수 있다
         try {
           const lr = await fetch(`/api/shorts/jobs/${encodeURIComponent(shortsId)}/lint`);
           if (lr.ok) currentShortsJob.lint = (await lr.json()).lint;
