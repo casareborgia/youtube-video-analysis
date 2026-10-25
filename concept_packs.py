@@ -205,14 +205,15 @@ CONCEPT_PACKS: Dict[str, Dict[str, Any]] = {
             "end_tag": {"text": "구독하고 다음 편 보기", "subtext": "", "seconds": 2.0},
             "beats": ["훅", "핵심 1", "핵심 2", "반전/근거", "CTA"],
             # 씬 종류(작업계획서 7b, PR #42): image 외에는 Remotion 이 그려 이미지 비용 0. shorts_engine.SCENE_KINDS 와 같은 목록.
-            "scene_kinds": ["image", "text_card", "stat_card", "bar_chart", "compare"],
-            "scene_kind_fields": ["palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows"],
+            "scene_kinds": ["image", "text_card", "stat_card", "bar_chart", "compare", "flyover"],
+            "scene_kind_fields": ["palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows", "time_of_day", "seed"],
             "kind_guide": {
                 "image": "히어로 장면(피사체·공간이 중요할 때). 편당 1~2씬만 — 유일한 생성 비용",
                 "text_card": "훅·전환·결론 문장 (title ≤ 18자, subtitle ≤ 24자)",
                 "stat_card": "숫자 하나를 크게 (value 숫자, unit 단위, label 설명)",
                 "bar_chart": "2~5개 비교 (bars[{label, value, highlight}], unit)",
                 "compare": "전→후 변화 (rows[{label, from, to, unit}])",
+                "flyover": "지역·여행·자연·도시 이야기의 드론 항공 장면(3D 지형·강·하늘). title 은 지명 라벨(선택, ≤ 12자), time_of_day sunrise|day|sunset",
             },
             "max_image_scenes": 2,
         },

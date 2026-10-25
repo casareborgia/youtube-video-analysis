@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 import app as app_module
+import concept_packs
 import producer
 import scene_store
 import shorts_engine
@@ -180,6 +181,36 @@ class SceneKindTests(ShortsS2Base):
         est = shorts_engine.estimate_images(job)
         self.assertEqual((est["needed"], est["scenes"], est["cost_free"], est["reused"]), (2, [5, 6], 4, 0))
         self.assertEqual(round(est["usd"], 3), round(2 * shorts_engine.IMAGE_USD_PER_IMAGE, 3))
+
+    def test_flyover_kind_defaults(self):
+        out = shorts_engine.fill_kind_defaults({"kind": "flyover", "scene_num": 3, "narration": "남강을 따라 진주성으로 날아갑니다."})
+        self.assertEqual(out["kind"], "flyover")
+        self.assertEqual(out["time_of_day"], "sunset")          # 기본 노을
+        self.assertEqual(out["seed"], 3)                         # 씬 번호로 지형이 달라진다
+        self.assertNotIn("title", out)                           # 지명 라벨은 선택
+        out = shorts_engine.fill_kind_defaults({"kind": "flyover", "scene_num": 1, "narration": "n", "time_of_day": "midnight",
+                                                "seed": "x", "title": "경상남도 진주시 남강 촉석루 일대"})
+        self.assertEqual(out["time_of_day"], "sunset")          # 모르는 시간대는 기본값
+        self.assertEqual(out["seed"], 1)
+        self.assertEqual(out["title"], "경상남도 진주시 남강…")   # 12자로 줄임
+        out = shorts_engine.fill_kind_defaults({"kind": "flyover", "scene_num": 2, "narration": "n", "time_of_day": "day", "seed": 7})
+        self.assertEqual((out["time_of_day"], out["seed"]), ("day", 7))
+
+    def test_flyover_is_cost_free_and_known_to_planner(self):
+        spec = concept_packs.shorts_spec("shorts_info")
+        self.assertIn("flyover", spec["scene_kinds"])
+        self.assertIn("flyover", spec["kind_guide"])
+        self.assertIn("time_of_day", spec["scene_kind_fields"])
+        self.assertIn("flyover", shorts_engine.SCENE_KINDS)
+        plan = scene_store.build_plan({"topic": "진주 여행", "aspect_ratio": "9:16", "concept_key": "shorts_info", "scenes": [
+            {"scene_num": 1, "narration": "진주 남강 위를 날아 봅니다.", "kind": "flyover", "time_of_day": "sunrise", "title": "진주 남강"},
+            {"scene_num": 2, "narration": "히어로 장면입니다.", "kind": "image"}]})
+        scene_store.save_plan(plan)
+        job = shorts_engine.build_job_from_plan(plan["plan_id"])
+        fly = job["storyboard"]["scenes"][0]
+        self.assertEqual((fly["kind"], fly["time_of_day"], fly["title"]), ("flyover", "sunrise", "진주 남강"))
+        est = shorts_engine.estimate_images(job)
+        self.assertEqual((est["needed"], est["cost_free"]), (1, 1))   # flyover 는 이미지 비용 0
 
     def test_incomplete_kinds_downgrade_to_text_card(self):
         for scene, expect_note in (
@@ -1015,7 +1046,7 @@ class ConceptAndPromptTests(unittest.TestCase):
             self.assertIn("총 씬 개수: 정확히 6개", sent["prompt"])
             self.assertIn("쇼츠(9:16) 전용 규칙", sent["prompt"])
             self.assertIn('"hook_text"', sent["prompt"])
-            self.assertIn('"kind": "image|text_card|stat_card|bar_chart|compare"', sent["prompt"])
+            self.assertIn('"kind": "image|text_card|stat_card|bar_chart|compare|flyover"', sent["prompt"])
             self.assertIn("image 는 편당 최대 2씬", sent["prompt"])
             self.assertEqual([sc["kind"] for sc in res["scenes"]], ["image"] * 6)   # kind 없으면 image
             self.assertEqual(res["hook_text"], "이거 모르면 손해")

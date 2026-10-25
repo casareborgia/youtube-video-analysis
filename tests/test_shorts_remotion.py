@@ -185,6 +185,21 @@ class SceneKindTests(ShortsEngineBase):
         self.assertEqual(props["scenes"][3]["unit"], "자유도")
         self.assertTrue(props["scenes"][4]["image"].endswith("scene_01.png"))
 
+    def test_flyover_props(self):
+        self.enable_node()
+        self.job["storyboard"]["scenes"] = [
+            {"scene_num": 1, "seconds": 6, "kind": "flyover", "time_of_day": "sunrise", "seed": 4, "title": "진주 남강"},
+            {"scene_num": 2, "seconds": 6, "image": self.imgs[0]},
+        ]
+        self.job["storyboard"]["end_tag"] = None
+        rec = {}
+        shorts_engine.render_shorts_remotion(self.job, runner=_ok_runner(rec))
+        with open(rec["cmd"][rec["cmd"].index("--props") + 1], encoding="utf-8") as f:
+            props = json.load(f)
+        fly = props["scenes"][0]
+        self.assertEqual((fly["kind"], fly["time_of_day"], fly["seed"], fly["title"]), ("flyover", "sunrise", 4, "진주 남강"))
+        self.assertNotIn("image", fly)
+
     def test_unknown_kind_rejected(self):
         self.enable_node()
         self.job["storyboard"]["scenes"][0]["kind"] = "hologram"
