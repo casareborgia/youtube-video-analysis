@@ -78,6 +78,9 @@ data/*.m4a
 data/*.part
 data/*.temp*
 
+# Kanripo 원문·구절 DB (kanripo_db.py) — 원본 재배포 대신 받아서 쓴다, 커밋 금지
+data/kanripo/
+
 # Local Media & Practice Materials
 실습영상/
 샘플자료/
