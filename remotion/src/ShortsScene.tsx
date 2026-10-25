@@ -28,6 +28,8 @@ import { FlyoverScene, FlyoverTime } from "./FlyoverScene";
 import { Scene3D } from "./three/Scene3D";
 import { Scene3DSpec } from "./three/types";
 import { colorFlood, dip, TRANSITION_SECONDS, whip, zoomThrough } from "./transitions";
+import { artSounds, HeroLayer, heroFlood, MographScene, MographSpec, POSES } from "./mograph";
+import { loadVarietyFont, ShortsLook, ShortsPayoff, ShortsThread, ThreadLayer, V, VarietyCaptionPage, VarietyHook, varietyFamily, varietyText } from "./variety";
 
 // 한글 글꼴: Pretendard 1.3.9 가변 폰트(OFL, public/fonts). 네트워크 없이도 같은 글꼴로 렌더하도록 로컬 파일만 읽는다.
 // loadFont 가 받아질 때까지 렌더를 붙잡는다.
@@ -47,9 +49,9 @@ export const SHORTS_FPS = 30;
 export const SAFE_ZONE = { top: 120, bottom: 300, left: 90, right: 96 };
 
 export type ShortsMotion = "zoom_in" | "zoom_out" | "pan_left" | "pan_right" | "none";
-export type ShortsTransition = "fade" | "slide" | "wipe" | "zoom_through" | "color_flood" | "whip" | "dip" | "none";
+export type ShortsTransition = "fade" | "slide" | "wipe" | "zoom_through" | "color_flood" | "whip" | "dip" | "none" | "hero_flood";
 
-export type ShortsSceneKind = "image" | "text_card" | "stat_card" | "bar_chart" | "compare" | "flyover" | "scene3d";
+export type ShortsSceneKind = "image" | "text_card" | "stat_card" | "bar_chart" | "compare" | "flyover" | "scene3d" | "mograph";
 export type ShortsBar = { label: string; value: number; highlight?: boolean };
 export type ShortsCompareRow = { label: string; from: number; to: number; unit?: string; decimals?: number };
 
@@ -79,6 +81,8 @@ export type ShortsSceneItem = {
   seed?: number;
   // scene3d (범용 3D, three.js) — 환경·바닥·카메라·물체 조합
   scene3d?: Scene3DSpec;
+  // mograph (A/B 시험 C: 이미지 없이 코드로 그리는 모션그래픽)
+  mograph?: MographSpec;
 };
 
 // Python 쪽이 만든 어절 토큰. text 는 새 어절이면 앞에 공백 하나를 붙여 보낸다(@remotion/captions 규약).
@@ -114,6 +118,10 @@ export type ShortsSceneProps = {
   brand?: string;
   transitionSeconds?: number; // 씬 전환 길이. 기본 0.4 (0 이면 컷)
   sfx?: boolean; // 효과음 팔레트(전환 whoosh·whip 교대, 숫자 착지 switch). 기본 꺼짐
+  // A/B 시험: 룩·진행 표시·보상 무음. 기본값이면 기존과 같은 화면·소리
+  look?: ShortsLook;
+  thread?: ShortsThread | null;
+  payoff?: ShortsPayoff | null;
 };
 
 export const totalSecondsOf = (p: {
@@ -131,15 +139,16 @@ const msToFrames = (ms: number, fps: number) => Math.round((ms / 1000) * fps);
 const CONTENT_WIDTH = SHORTS_WIDTH - SAFE_ZONE.left - SAFE_ZONE.right;
 
 // 글자 크기 측정(measureText)은 결과를 캐시하므로 글꼴이 다 받아진 뒤에만 잰다
-const useFontReady = () => {
+const useFontReady = (variety = false) => {
   const [ready, setReady] = useState(false);
   const [handle] = useState(() => delayRender("Pretendard 글꼴 대기"));
   useEffect(() => {
-    fontReady.then(() => {
+    // 예능 룩일 때만 Jua 도 기다린다 — 기본 룩은 지금과 같은 글꼴만 읽는다
+    Promise.all([fontReady, variety ? loadVarietyFont() : null]).then(() => {
       setReady(true);
       continueRender(handle);
     });
-  }, [handle]);
+  }, [handle, variety]);
   return ready;
 };
 
@@ -434,9 +443,11 @@ const SceneImage: React.FC<{
   motion: ShortsMotion;
   durationInFrames: number;
   seed: number;
-}> = ({ src, motion, durationInFrames, seed }) => {
+  punchAt?: number[]; // 이 프레임들에서 4프레임 만에 7% 다가가 머문다(예능 펀치인, 강조어 순간). 비우면 기존과 같다
+}> = ({ src, motion, durationInFrames, seed, punchAt = [] }) => {
   const frame = useCurrentFrame();
   const t = Math.min(1, Math.max(0, frame / Math.max(1, durationInFrames)));
+  const punch = punchAt.reduce((acc, p) => acc + 0.07 * easeOutCubic(Math.min(1, Math.max(0, (frame - p) / 4))), 0);
   let scale = 1;
   let tx = 0;
   switch (motion) {
@@ -470,7 +481,7 @@ const SceneImage: React.FC<{
           height: "100%",
           objectFit: "cover",
           // 흔들림에 가장자리가 드러나지 않게 3% 더 키운다
-          transform: `translateX(${tx}%) translate(${dx}px, ${dy}px) rotate(${rot}deg) scale(${scale * 1.03})`,
+          transform: `translateX(${tx}%) translate(${dx}px, ${dy}px) rotate(${rot}deg) scale(${scale * 1.03 * (1 + punch)})`,
         }}
       />
     </AbsoluteFill>
@@ -609,7 +620,7 @@ const HookBanner: React.FC<{ text: string; accent: string; durationInFrames: num
 };
 
 // ── 엔드 태그 ────────────────────────────────────────────────────────────────
-const EndTag: React.FC<{ tag: ShortsEndTag; brand: string; accent: string }> = ({ tag, brand, accent }) => {
+const EndTag: React.FC<{ tag: ShortsEndTag; brand: string; accent: string; variety?: boolean }> = ({ tag, brand, accent, variety = false }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const fade = interpolate(frame, [0, 10], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
@@ -632,7 +643,9 @@ const EndTag: React.FC<{ tag: ShortsEndTag; brand: string; accent: string }> = (
             {brand}
           </div>
         ) : null}
-        <div style={{ fontSize: 76, fontWeight: 900, color: "white", lineHeight: 1.2, wordBreak: "keep-all", textShadow: "0 6px 18px rgba(0,0,0,0.7)" }}>
+        <div style={variety
+          ? { ...varietyText(84, "#ffffff", V.pop), whiteSpace: "normal", wordBreak: "keep-all", transform: `rotate(${-3 + Math.sin(frame / 7)}deg)` }
+          : { fontSize: 76, fontWeight: 900, color: "white", lineHeight: 1.2, wordBreak: "keep-all", textShadow: "0 6px 18px rgba(0,0,0,0.7)" }}>
           {tag.text}
         </div>
         {tag.subtext ? (
@@ -647,10 +660,12 @@ const EndTag: React.FC<{ tag: ShortsEndTag; brand: string; accent: string }> = (
 
 // ── 씬 전환 (@remotion/transitions, CSS 전환만 쓴다) ─────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const presentationFor = (t: ShortsTransition, i: number, accent: string): TransitionPresentation<any> | null => {
+const presentationFor = (t: ShortsTransition, i: number, accent: string, origin: [number, number] = [540, 960]): TransitionPresentation<any> | null => {
   switch (t) {
     case "none":
       return null;
+    case "hero_flood":
+      return heroFlood(origin[0], origin[1]);
     case "slide":
       return slide({ direction: i % 2 === 0 ? "from-right" : "from-left" });
     case "wipe":
@@ -679,6 +694,18 @@ const SFX = {
   whoosh: { src: "sfx/whoosh.wav", peakFrames: 2 },
   whip: { src: "sfx/whip.wav", peakFrames: 1 },
   switch: { src: "sfx/switch.wav", peakFrames: 4 },
+  // kenney.nl CC0 (brag 레포 sfx-analysis 의 고역 위험 낮은 소리). 정점은 ffmpeg 로 잰 값
+  bong: { src: "sfx/k_bong.wav", peakFrames: 0 },
+  drop2: { src: "sfx/k_drop2.wav", peakFrames: 0 },
+  drop3: { src: "sfx/k_drop3.wav", peakFrames: 0 },
+  click: { src: "sfx/k_click.wav", peakFrames: 0 },
+  punch: { src: "sfx/k_punch.wav", peakFrames: 1 },
+  bell: { src: "sfx/k_bell.wav", peakFrames: 0 },
+  clap: { src: "sfx/k_clap.wav", peakFrames: 0 },
+  land: { src: "sfx/k_land.wav", peakFrames: 0 },
+  glass: { src: "sfx/k_glass.wav", peakFrames: 0 },
+  key1: { src: "sfx/k_key1.wav", peakFrames: 0 },
+  key2: { src: "sfx/k_key2.wav", peakFrames: 0 },
 } as const;
 const STAT_LAND_FRAME = 6 + 40; // countUp(delay 6 + dur 40) 이 끝나는 프레임
 
@@ -700,9 +727,12 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
   brand = "",
   transitionSeconds = 0.4,
   sfx = false,
+  look = "default",
+  thread = null,
+  payoff = null,
 }) => {
   const { fps, durationInFrames } = useVideoConfig();
-  const fontOk = useFontReady();
+  const fontOk = useFontReady(look === "variety");
   const fadeFrames = Math.max(0, Math.round(transitionSeconds * fps));
   const endTagFrames = endTag ? Math.max(1, Math.round(endTag.seconds * fps)) : 0;
 
@@ -781,9 +811,18 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
     }
     return d;
   };
+  // 보상 직전 무음: silenceMs 동안 BGM 을 4프레임에 걸쳐 거의 끄고, 보상 첫 프레임에 다시 켠다(animate 불변 ③)
+  const payoffFrame = payoff && timeline[payoff.scene] ? timeline[payoff.scene].from : null;
+  const silenceFrames = payoff ? Math.round((payoff.silenceMs / 1000) * fps) : 0;
+  const payoffDip = (frame: number) => {
+    if (payoffFrame === null || frame >= payoffFrame) return 1;
+    const s0 = payoffFrame - silenceFrames;
+    // 완전한 디지털 무음은 끊긴 것처럼 들려 약 -18dB 로만 내린다
+    return interpolate(frame, [s0, s0 + 4], [1, 0.12], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  };
   const bgmVolumeAt = (frame: number) => {
     const high = Math.min(0.5, bgmVolume * bgmBoost);
-    const base = high + (bgmVolume - high) * duckAt((frame / fps) * 1000);
+    const base = (high + (bgmVolume - high) * duckAt((frame / fps) * 1000)) * payoffDip(frame);
     const fadeIn = interpolate(frame, [0, 15], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
     const fadeOut = interpolate(frame, [durationInFrames - 30, durationInFrames], [1, 0], {
       extrapolateLeft: "clamp",
@@ -813,6 +852,75 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
 
   const hookFrames = hookText ? Math.max(1, Math.round(hookSeconds * fps)) : 0;
 
+  // 진행 표시 시각: 점 등장(훅에서 개수를 말할 때) · 항목 켜짐(전환 중간 + 2프레임) · 모임(보상 씬 첫 프레임)
+  const threadTimes = useMemo(() => {
+    if (!thread || !thread.items.length) return null;
+    const itemFrames = thread.items.map((_, k) => {
+      const t = timeline[thread.firstScene + k];
+      return t ? t.from + Math.round(t.trFrames / 2) + 2 : durationInFrames;
+    });
+    const gather = thread.gatherScene !== undefined && timeline[thread.gatherScene] ? timeline[thread.gatherScene].from : null;
+    return {
+      introFrame: thread.introAtMs !== undefined ? msToFrames(thread.introAtMs, fps) : itemFrames[0],
+      itemFrames,
+      gatherFrame: gather,
+      endFrame: durationInFrames - endTagFrames,
+    };
+  }, [thread, timeline, fps, durationInFrames, endTagFrames]);
+
+  // 모션그래픽 씬 목록(주인공 층·효과음이 함께 읽는다). 큐는 씬 시작 기준 상대 프레임
+  const mographEntries = useMemo(
+    () =>
+      timeline
+        .filter((t) => t.kind === "mograph" && t.item.mograph)
+        .map((t) => ({
+          from: t.from,
+          dur: t.dur,
+          art: t.item.mograph!.art,
+          cues: (t.item.mograph!.cuesMs || []).map((ms) => msToFrames(ms, fps) - t.from),
+        })),
+    [timeline, fps],
+  );
+
+  // 화면에 원인이 있는 효과음만: 점 등장 딸깍 · 항목 켜짐 퐁(2개 교대) · 훅 글자 착지 · 보상 타격(가장 큼). 정점이 그림보다 1프레임 뒤
+  const extraCues = useMemo(() => {
+    const cues: { key: string; from: number; src: string; vol: number }[] = [];
+    if (!sfx) return cues;
+    const at = (key: string, frame: number, snd: { src: string; peakFrames: number }, vol: number) =>
+      cues.push({ key, from: Math.max(0, frame + 1 - snd.peakFrames), src: snd.src, vol });
+    if (look === "variety" && hookText) {
+      at("hook-a", 2, SFX.drop2, 0.35);
+      const words = hookText.trim().split(/\s+/);
+      at("hook-b", 2 + words.slice(0, -1).join(" ").length * 2 + 4, SFX.drop3, 0.4);
+    }
+    if (threadTimes) {
+      thread!.items.forEach((_, k) => at(`dot-${k}`, threadTimes.introFrame + 2 + k * 2 + 4, SFX.click, 0.3));
+      threadTimes.itemFrames.forEach((f, k) => at(`item-${k}`, f + 4, k % 2 === 0 ? SFX.bong : SFX.drop2, 0.42));
+    }
+    // 모션그래픽 씬: 소품이 움직이는 순간의 효과음
+    mographEntries.forEach((e, i) =>
+      artSounds(e.art, e.cues).forEach((c, k) => at(`mg-${i}-${k}`, e.from + c.at, SFX[c.snd], c.vol)),
+    );
+    if (payoffFrame !== null) {
+      at("payoff-punch", payoffFrame, SFX.punch, 0.9);
+      at("payoff-bell", payoffFrame + 2, SFX.bell, 0.35);
+    }
+    return cues;
+  }, [sfx, look, hookText, threadTimes, thread, payoffFrame, mographEntries]);
+  const variety = look === "variety";
+
+  // 씬마다 강조어가 들리는 순간(씬 안 상대 프레임). 예능 룩에서 이미지가 그 순간 확 다가간다 — 켄번즈만 있는 씬을 피한다(bang-motion)
+  const punchFrames = useMemo(
+    () =>
+      timeline.map((t) =>
+        (captions || [])
+          .filter((c) => c.emphasis)
+          .map((c) => msToFrames(c.startMs, fps) - t.from + 2)
+          .filter((f) => f >= 0 && f < t.dur),
+      ),
+    [timeline, captions, fps],
+  );
+
   if (!fontOk) {
     return <AbsoluteFill style={{ backgroundColor: "#000" }} />;
   }
@@ -822,7 +930,9 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
       {/* 1. 씬 + 전환 */}
       <TransitionSeries>
         {timeline.flatMap((t, i) => {
-          const presentation = presentationFor(t.transition, i, accent);
+          const prevArt = i > 0 ? timeline[i - 1].item.mograph?.art : undefined;
+          const origin: [number, number] = prevArt ? [POSES[prevArt][0], POSES[prevArt][1]] : [540, 960];
+          const presentation = presentationFor(t.transition, i, accent, origin);
           return [
             presentation ? (
               <TransitionSeries.Transition
@@ -833,7 +943,11 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
             ) : null,
             <TransitionSeries.Sequence key={`scene-${i}`} durationInFrames={t.hold}>
               {t.kind === "image" && t.src ? (
-                <SceneImage src={staticFile(t.src)} motion={t.motion} durationInFrames={t.hold} seed={i} />
+                <SceneImage src={staticFile(t.src)} motion={t.motion} durationInFrames={t.hold} seed={i}
+                  punchAt={variety ? punchFrames[i] : undefined} />
+              ) : t.kind === "mograph" && t.item.mograph ? (
+                <MographScene spec={t.item.mograph} index={i} contentFrames={t.dur} punchAt={punchFrames[i]}
+                  cues={(t.item.mograph.cuesMs || []).map((ms) => msToFrames(ms, fps) - t.from)} />
               ) : t.kind === "scene3d" ? (
                 <Scene3D spec={t.item.scene3d} durationInFrames={t.hold} fontFamily={fontFamily} />
               ) : t.kind === "flyover" ? (
@@ -862,6 +976,16 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
         }}
       />
 
+      {/* 2b. 진행 표시(영상 전체를 관통하는 상수) — 모임 격자의 어두운 바탕이 자막을 덮지 않게 자막보다 아래에 */}
+      {thread && threadTimes ? (
+        <ThreadLayer thread={thread} times={threadTimes} fontFamily={variety ? varietyFamily : fontFamily} safeTop={SAFE_ZONE.top} rowCenterX={(SAFE_ZONE.left + SHORTS_WIDTH - 140) / 2} dim={mographEntries.length === 0} />
+      ) : null}
+
+      {/* 2a. 모션그래픽 주인공(씬이 바뀌어도 같은 자리에서 계속) */}
+      {mographEntries.length ? (
+        <HeroLayer entries={mographEntries} rayFrames={threadTimes ? threadTimes.itemFrames : []} endFrame={durationInFrames - endTagFrames} />
+      ) : null}
+
       {/* 3. 자막 페이지 */}
       {pages.map((page, i) => {
         // 첫 그룹은 captionMinStartMs 뒤에 띄우고, 그룹은 마지막 어절 + captionHoldMs 와 다음 그룹 시작 중 이른 쪽에서 지운다
@@ -873,7 +997,13 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
         const dur = Math.max(1, msToFrames(hideMs, fps) - from);
         return (
           <Sequence key={`cap-${i}`} from={from} durationInFrames={dur} layout="none">
-            <CaptionPage page={page} accent={accent} emphasisFrom={emphasisFrom} offsetMs={shownFrom - page.startMs} durationInFrames={dur} />
+            {variety ? (
+              <VarietyCaptionPage page={page} emphasisFrom={emphasisFrom} offsetMs={shownFrom - page.startMs} durationInFrames={dur}
+                fontFamily={varietyFamily} fontSize={Math.min(76, captionFontSize(page.text))} bottom={SAFE_ZONE.bottom + 70}
+                padX={[SAFE_ZONE.left, SAFE_ZONE.right]} fps={fps} />
+            ) : (
+              <CaptionPage page={page} accent={accent} emphasisFrom={emphasisFrom} offsetMs={shownFrom - page.startMs} durationInFrames={dur} />
+            )}
           </Sequence>
         );
       })}
@@ -881,14 +1011,18 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
       {/* 4. 훅 문구 (첫 0.5초 안에 등장) */}
       {hookText ? (
         <Sequence from={0} durationInFrames={hookFrames} layout="none">
-          <HookBanner text={hookText} accent={accent} durationInFrames={hookFrames} />
+          {variety ? (
+            <VarietyHook text={hookText} durationInFrames={hookFrames} fontFamily={varietyFamily} top={SAFE_ZONE.top + 120} />
+          ) : (
+            <HookBanner text={hookText} accent={accent} durationInFrames={hookFrames} />
+          )}
         </Sequence>
       ) : null}
 
       {/* 5. 엔드 태그 */}
       {endTag ? (
         <Sequence from={Math.max(0, durationInFrames - endTagFrames)} durationInFrames={endTagFrames} layout="none">
-          <EndTag tag={endTag} brand={brand} accent={accent} />
+          <EndTag tag={endTag} brand={brand} accent={accent} variety={variety} />
         </Sequence>
       ) : null}
 
@@ -898,6 +1032,11 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
       {sfxCues.map((c) => (
         <Sequence key={c.key} from={c.from} durationInFrames={Math.round(fps * 0.6)} layout="none">
           <Audio src={staticFile(c.src)} volume={sfxVolumeAt(c.from)} />
+        </Sequence>
+      ))}
+      {extraCues.map((c) => (
+        <Sequence key={c.key} from={c.from} durationInFrames={Math.round(fps * 1.5)} layout="none">
+          <Audio src={staticFile(c.src)} volume={c.vol} />
         </Sequence>
       ))}
     </AbsoluteFill>

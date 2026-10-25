@@ -88,4 +88,5 @@ export const TRANSITION_SECONDS: Partial<Record<string, number>> = {
   color_flood: 0.5,
   whip: 0.25,
   dip: 0.14,
+  hero_flood: 0.35,
 };
