@@ -11,7 +11,9 @@
 이 모듈은 shorts_engine 을 import 하지 않는다(순환 방지). 화면 수치는 remotion/src/ShortsScene.tsx 기준.
 """
 
+import os
 import re
+import subprocess
 import time
 from difflib import SequenceMatcher
 from typing import Dict, List, Optional
@@ -315,3 +317,160 @@ def lint_storyboard(job: dict) -> dict:
     risk = risk_score(job)
     return {"version": 1, "at": time.time(), "findings": findings, "counts": counts, "risk": risk,
             "needs_confirm": risk["verdict"] == "fail"}
+
+
+# ── U-4 렌더 후 리뷰 (작업계획서_영상생성_업그레이드 6장 U-4) ─────────────────────────
+# 근거: HyperFrames skills/hyperframes/references/review.md (Apache-2.0) — 씬 시작·중간 시트, 이음새 ±0.2초 시트, 폰 폭(360px) 시트,
+# "점수는 매기지 않는다", P0/P1/P2 지적. OpenMontage lib/delivery_promise.py(규칙만) — 약속을 조용히 낮추지 말고 멈춰서 묻기.
+# ffmpeg 만 쓴다(비용 0). 비전 모델 리뷰는 결정 ② 에 따라 하지 않는다 — 시트는 사람이 본다.
+
+REVIEW_FPS = 30.0
+SHEET_TILE_WIDTH = 270            # 씬·이음새 시트 한 칸 폭(4칸 = 1080)
+PHONE_TILE_WIDTH = 360            # 폰 폭 시트 한 칸 폭 (HF review: 360px 에서 읽혀야 한다)
+SEAM_PROBE_BEFORE = 0.3           # 이음새 앞뒤로 프레임을 몇 초 뽑아 튐을 잴지
+SEAM_PROBE_AFTER = 0.5
+SEAM_JUMP_LEVEL = 40.0            # 이웃 프레임 평균 밝기 차(0~255)가 이보다 크고
+SEAM_JUMP_SHARE = 0.35            # 그 한 프레임이 전환 구간 전체 변화량의 이 비율 이상이면 "전환 중 튐"
+                                  # (색 범람처럼 크게 바뀌어도 여러 프레임에 퍼지면 정상 — Argon 실측: 정상 0.12~0.17, 튐 0.42)
+BLACK_FRAME_LEVEL = 12.0          # 시트 프레임 평균 밝기가 이보다 낮으면 검은 화면
+CUT_TRANSITIONS = ("none", "dip")  # 원래 한 프레임에 바뀌는 전환(튐 검사 제외)
+PROMISE_DEFAULT = {"scene": "data_explainer", "music": "music"}
+
+
+def review_timeline(job: dict) -> dict:
+    """씬 시작·끝, 이음새(씬 2부터의 시작), 엔드 태그 구간(초)."""
+    sb = job.get("storyboard") or {}
+    scenes = sb.get("scenes") or []
+    starts = _scene_starts(scenes)
+    ends = [s + float(sc.get("seconds") or 0) for s, sc in zip(starts, scenes)]
+    tag = float((sb.get("end_tag") or {}).get("seconds") or 0)
+    total = (ends[-1] if ends else 0.0) + tag
+    seams = [{"t": starts[i], "scene": int(scenes[i].get("scene_num") or i + 1),
+              "transition": scenes[i].get("transition") or "fade"} for i in range(1, len(scenes))]
+    return {"starts": starts, "ends": ends, "seams": seams, "end_tag": (ends[-1], total) if (ends and tag > 0) else None, "total": total}
+
+
+def _frame_index(t: float, total: float) -> int:
+    return max(0, min(int(round(t * REVIEW_FPS)), int(total * REVIEW_FPS) - 1))
+
+
+def make_contact_sheet(ff: str, video: str, times: List[float], out: str, tile_width: int, cols: int, total: float,
+                       runner=subprocess.run) -> Optional[str]:
+    """times 의 프레임을 한 번 디코딩으로 골라 cols 칸 격자 JPG 로. 실패하면 None."""
+    idx = sorted({_frame_index(t, total) for t in times})
+    if not ff or not idx or not os.path.exists(video):
+        return None
+    rows = (len(idx) + cols - 1) // cols
+    expr = "+".join(f"eq(n\\,{i})" for i in idx)
+    vf = f"select='{expr}',scale={tile_width}:-2,tile={cols}x{rows}:padding=4:color=0x111111"
+    try:
+        res = runner([ff, "-y", "-v", "error", "-i", video, "-vf", vf, "-frames:v", "1", "-vsync", "0", "-q:v", "4", out],
+                     capture_output=True, text=True, timeout=180)
+        return out if getattr(res, "returncode", 1) == 0 and os.path.exists(out) else None
+    except Exception:
+        return None
+
+
+def frame_levels(ff: str, video: str, frames: List[int], runner=subprocess.run) -> Dict[int, float]:
+    """프레임 번호 → 평균 밝기(0~255), 54×96 그레이로 한 번 디코딩."""
+    frames = sorted(set(frames))
+    if not ff or not frames or not os.path.exists(video):
+        return {}
+    expr = "+".join(f"eq(n\\,{i})" for i in frames)
+    try:
+        res = runner([ff, "-v", "error", "-i", video, "-vf", f"select='{expr}',scale=54:96,format=gray", "-vsync", "0",
+                      "-f", "rawvideo", "-"], capture_output=True, timeout=180)
+    except Exception:
+        return {}
+    data = getattr(res, "stdout", b"") or b""
+    size = 54 * 96
+    out = {}
+    for k, f in enumerate(frames):
+        chunk = data[k * size:(k + 1) * size]
+        if len(chunk) == size:
+            out[f] = sum(chunk) / float(size)
+    return out
+
+
+def frame_diffs(ff: str, video: str, start_frame: int, count: int, runner=subprocess.run) -> List[float]:
+    """start_frame 부터 count 장의 이웃 프레임 평균 절대 차(54×96 그레이). 전환 튐 검사용."""
+    if not ff or count < 2 or not os.path.exists(video):
+        return []
+    try:
+        res = runner([ff, "-v", "error", "-i", video, "-vf",
+                      f"select='between(n\\,{start_frame}\\,{start_frame + count - 1})',scale=54:96,format=gray",
+                      "-vsync", "0", "-f", "rawvideo", "-"], capture_output=True, timeout=180)
+    except Exception:
+        return []
+    data = getattr(res, "stdout", b"") or b""
+    size = 54 * 96
+    frames = [data[i * size:(i + 1) * size] for i in range(len(data) // size)]
+    return [sum(abs(a - b) for a, b in zip(f1, f2)) / float(size) for f1, f2 in zip(frames, frames[1:])]
+
+
+def promise_of(job: dict) -> str:
+    return job.get("promise") or PROMISE_DEFAULT.get(job.get("format") or "scene", "data_explainer")
+
+
+def _promise_findings(job: dict) -> List[dict]:
+    """렌더러 폴백·씬 대체가 제작 약속을 낮췄으면 P0 (OM delivery_promise: 조용히 낮추지 말 것)."""
+    render = job.get("render") or {}
+    out = []
+    if render.get("renderer_used") == "ffmpeg":
+        why = render.get("fallback_reason") or "ffmpeg 렌더러 선택"
+        replaced = [w for w in render.get("warnings") or [] if "단색" in w or "생략" in w]
+        out.append(_finding("P0", "promise_downgraded",
+                            f"약속({promise_of(job)})보다 낮은 렌더: Remotion 대신 ffmpeg ({why})." + (f" {' '.join(replaced)}" if replaced else ""),
+                            "Remotion 렌더가 되는 상태에서 다시 빌드하세요(폰트·노드 의존성 확인)."))
+    return out
+
+
+def review_render(job: dict, ff: Optional[str], out_dir: str, url_prefix: str, runner=subprocess.run) -> dict:
+    """렌더 결과(job.render.file) → 시트 3장 + 지적. 반환값을 job["review"] 에 넣는 것은 호출부."""
+    t0 = time.time()
+    video = (job.get("render") or {}).get("file")
+    tl = review_timeline(job)
+    total = tl["total"]
+    findings = _promise_findings(job)
+    sheets: Dict[str, Optional[str]] = {"scenes": None, "seams": None, "phone": None}
+    times: Dict[str, List[float]] = {"scenes": [], "seams": [], "phone": []}
+    if video and os.path.exists(video) and ff:
+        os.makedirs(out_dir, exist_ok=True)
+        for s, e in zip(tl["starts"], tl["ends"]):
+            times["scenes"] += [min(s + 0.3, e), (s + e) / 2]
+        for seam in tl["seams"]:
+            times["seams"] += [max(0.0, seam["t"] - 0.2), seam["t"] + 0.2]
+        times["phone"] = [(s + e) / 2 for s, e in zip(tl["starts"], tl["ends"])]
+        if tl["end_tag"]:
+            times["phone"].append(sum(tl["end_tag"]) / 2)
+        specs = {"scenes": (SHEET_TILE_WIDTH, 4), "seams": (SHEET_TILE_WIDTH, 4), "phone": (PHONE_TILE_WIDTH, 3)}
+        for key, (w, cols) in specs.items():
+            if times[key]:
+                name = f"review_{key}.jpg"
+                if make_contact_sheet(ff, video, times[key], os.path.join(out_dir, name), w, cols, total, runner=runner):
+                    sheets[key] = f"{url_prefix}/{name}"
+        # 검은 화면: 씬 시트 프레임(시작+0.3초·중간) 중 평균 밝기가 매우 낮은 것
+        idx = {_frame_index(t, total): t for t in times["scenes"]}
+        for f, level in sorted(frame_levels(ff, video, list(idx), runner=runner).items()):
+            if level < BLACK_FRAME_LEVEL:
+                findings.append(_finding("P1", "black_frame", f"t={idx[f]:.1f}s 화면이 거의 검습니다(평균 밝기 {level:.0f}).",
+                                         "씬 소재가 비었거나 등장 애니메이션이 늦습니다 — 해당 씬을 확인하세요.", t=idx[f]))
+        # 전환 중 튐: 이웃 프레임 차가 한 번에 크게 뛰는 곳(원래 컷인 전환은 제외)
+        for seam in tl["seams"]:
+            if seam["transition"] in CUT_TRANSITIONS:
+                continue
+            f0 = _frame_index(seam["t"] - SEAM_PROBE_BEFORE, total)
+            diffs = frame_diffs(ff, video, f0, int((SEAM_PROBE_BEFORE + SEAM_PROBE_AFTER) * REVIEW_FPS) + 1, runner=runner)
+            if len(diffs) >= 3:
+                peak = max(diffs)
+                if peak > SEAM_JUMP_LEVEL and peak >= SEAM_JUMP_SHARE * sum(diffs):
+                    at = seam["t"] - SEAM_PROBE_BEFORE + (diffs.index(peak) + 1) / REVIEW_FPS
+                    findings.append(_finding("P1", "seam_jump",
+                                             f"씬 {seam['scene']} 로 넘어가는 {seam['transition']} 전환 중 화면이 한 프레임에 튑니다(차 {peak:.0f}).",
+                                             "전환 길이를 늘리거나 다른 전환으로 바꾸세요.", scene=seam["scene"], t=at))
+    elif not ff:
+        findings.append(_finding("P2", "review_skipped", "ffmpeg 가 없어 시트를 만들지 못했습니다.", "ffmpeg 를 설치하세요."))
+    findings.sort(key=lambda f: (LEVEL_ORDER[f["level"]], f["t"] if f["t"] is not None else 1e9))
+    counts = {lv: sum(1 for f in findings if f["level"] == lv) for lv in ("P0", "P1", "P2")}
+    return {"version": 1, "at": time.time(), "elapsed_sec": round(time.time() - t0, 2), "sheets": sheets, "times": times,
+            "findings": findings, "counts": counts, "promise": promise_of(job), "needs_review": counts["P0"] > 0, "override": None}

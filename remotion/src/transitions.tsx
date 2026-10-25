@@ -53,7 +53,9 @@ const ColorFlood: React.FC<TransitionPresentationComponentProps<{ color: string 
   );
 };
 
-// 휩: 짧은 가로 번짐으로 나가고 들어오며, 들어온 씬은 마지막에 선명해진다
+// 휩: 화면 전체를 빠르게 밀어내고(나가는 씬 0 → -100%) 다음 씬이 반대편에서 밀려 들어온다. 번짐은 가운데서 가장 크고
+// 착지 직전에 선명해진다. 두 씬이 항상 화면을 나눠 채워서 첫 프레임에 다음 씬이 확 덮이는 일이 없다
+// (처음 버전은 들어오는 씬이 35% 지점에서 불투명하게 시작해 한 프레임에 화면 65% 가 바뀌었다 — U-4 seam_jump 로 발견)
 const Whip: React.FC<TransitionPresentationComponentProps<{ direction: 1 | -1 }>> = ({
   children,
   presentationDirection,
@@ -61,29 +63,10 @@ const Whip: React.FC<TransitionPresentationComponentProps<{ direction: 1 | -1 }>
   passedProps,
 }) => {
   const d = passedProps.direction;
-  if (presentationDirection === "exiting") {
-    return (
-      <AbsoluteFill
-        style={{
-          transform: `translateX(${interpolate(p, [0, 1], [0, -35 * d], clamp)}%)`,
-          filter: `blur(${interpolate(p, [0, 1], [0, 18], clamp)}px)`,
-          opacity: interpolate(p, [0.5, 1], [1, 0], clamp),
-        }}
-      >
-        {children}
-      </AbsoluteFill>
-    );
-  }
-  return (
-    <AbsoluteFill
-      style={{
-        transform: `translateX(${interpolate(p, [0, 0.75], [35 * d, 0], clamp)}%)`,
-        filter: `blur(${interpolate(p, [0, 0.75, 1], [18, 6, 0], clamp)}px)`,
-      }}
-    >
-      {children}
-    </AbsoluteFill>
-  );
+  const eased = interpolate(p, [0, 1], [0, 1], { ...clamp, easing: (t) => t * t * (3 - 2 * t) });
+  const blur = interpolate(p, [0, 0.5, 0.85, 1], [0, 18, 6, 0], clamp);
+  const x = presentationDirection === "exiting" ? -100 * d * eased : 100 * d * (1 - eased);
+  return <AbsoluteFill style={{ transform: `translateX(${x}%)`, filter: `blur(${blur}px)` }}>{children}</AbsoluteFill>;
 };
 
 // 딥컷: 나가는 씬이 40% 어두워진 뒤 바로 컷 — 의도한 컷으로 읽히게

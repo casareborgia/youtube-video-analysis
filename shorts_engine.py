@@ -1603,6 +1603,53 @@ def qc_job(job: dict, probe: Optional[dict] = None, brightness: Optional[float] 
     return job
 
 
+# ── 렌더 후 리뷰 (U-4) ────────────────────────────────────────────────────────
+
+REVIEW_OVERRIDE_MIN_CHARS = 5      # "그래도 진행" 사유 최소 글자 수
+
+
+def run_review(job: dict, runner=subprocess.run) -> dict:
+    """렌더 결과로 확인 시트 3장·지적을 만들어 job["review"] 에 넣는다(비용 0, ffmpeg 만).
+
+    QC 를 통과했는데 리뷰에 P0 가 있으면 상태를 needs_review 로 둔다(발행 잠금). 다시 돌리면 이전 "그래도 진행" 기록은 지운다.
+    """
+    sid = _safe_id(job["shorts_id"])
+    review = shorts_review.review_render(job, producer.ffmpeg_path(), job_dir(sid, create=True), f"/data/shorts/{sid}", runner=runner)
+    job["review"] = review
+    if job.get("status") in ("qc_passed", "needs_review"):
+        job["status"] = "needs_review" if review["needs_review"] else "qc_passed"
+    save_job(job)
+    return job
+
+
+def override_review(job: dict, reason: str) -> dict:
+    """리뷰 P0 를 알고도 진행한다 — 사유를 남기고 qc_passed 로 돌린다."""
+    reason = (reason or "").strip()
+    if job.get("status") != "needs_review":
+        raise ValueError("검토 필요 상태가 아닙니다.")
+    if len(reason) < REVIEW_OVERRIDE_MIN_CHARS:
+        raise ValueError(f"진행 사유를 {REVIEW_OVERRIDE_MIN_CHARS}자 이상 적어 주세요.")
+    job.setdefault("review", {})["override"] = {"reason": reason[:300], "at": time.time()}
+    job["status"] = "qc_passed"
+    save_job(job)
+    return job
+
+
+def publish_allowed(job: dict) -> tuple:
+    """발행(S-3·S-6)해도 되는지와 이유. QC 통과 + 렌더 후 리뷰 P0 없음(또는 사유를 남기고 진행)일 때만 True."""
+    if not (job.get("qc") or {}).get("passed"):
+        return False, "QC 를 통과하지 않았습니다."
+    review = job.get("review")
+    if not review:
+        return False, "렌더 후 리뷰가 없습니다 — 리뷰를 먼저 돌리세요."
+    if review.get("needs_review") and not review.get("override"):
+        p0 = [f["message"] for f in review.get("findings") or [] if f.get("level") == "P0"]
+        return False, "렌더 후 리뷰 P0: " + " / ".join(p0[:3])
+    if job.get("status") != "qc_passed":
+        return False, f"상태가 {job.get('status')} 입니다."
+    return True, ""
+
+
 # ── 빌드 오케스트레이션 (API 워커가 호출) ─────────────────────────────────────
 
 def build_job(job: dict, options: Optional[dict] = None, progress_cb: Optional[Callable] = None, **hooks) -> dict:
@@ -1645,7 +1692,11 @@ def build_job(job: dict, options: Optional[dict] = None, progress_cb: Optional[C
         normalize_loudness(job, measurer=hooks.get("measurer"))
         step("qc", "QC 검사...", 98)
         qc_job(job, **(hooks.get("qc_kwargs") or {}))
-        step("qc", "QC 통과 — 쇼츠 완성" if job.get("status") == "qc_passed" else (job.get("error") or "QC 실패"), 100)
+        if job.get("status") == "qc_passed":
+            step("qc", "렌더 후 리뷰 (확인 시트)...", 99)
+            run_review(job, **({"runner": hooks["review_runner"]} if hooks.get("review_runner") else {}))
+        msg = {"qc_passed": "QC·리뷰 통과 — 쇼츠 완성", "needs_review": "QC 통과 · 렌더 후 리뷰 검토 필요"}.get(job.get("status"))
+        step("qc", msg or (job.get("error") or "QC 실패"), 100)
         save_job(job)   # 마지막 진행률(100%)까지 job.json 에 남긴다 — UI 폴링이 이 값을 읽는다
     except Exception as e:
         job["status"] = "failed"
