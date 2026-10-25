@@ -7,6 +7,7 @@
     "compositions": "remotion compositions src/index.ts"
   },
   "dependencies": {
+    "@react-three/fiber": "9.8.1",
     "@remotion/captions": "4.0.534",
     "@remotion/cli": "4.0.534",
     "@remotion/fonts": "4.0.534",
@@ -15,14 +16,17 @@
     "@remotion/media-utils": "4.0.534",
     "@remotion/noise": "4.0.534",
     "@remotion/sfx": "4.0.534",
+    "@remotion/three": "4.0.534",
     "@remotion/transitions": "4.0.534",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "remotion": "4.0.534"
+    "remotion": "4.0.534",
+    "three": "0.186.1"
   },
   "devDependencies": {
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
+    "@types/three": "0.180.0",
     "typescript": "5.4.5"
   }
 }

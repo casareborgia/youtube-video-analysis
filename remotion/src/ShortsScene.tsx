@@ -25,6 +25,7 @@ import { TransitionPresentation, TransitionSeries, linearTiming } from "@remotio
 import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
 import { wipe } from "@remotion/transitions/wipe";
+import { FlyoverScene, FlyoverTime } from "./FlyoverScene";
 
 // 한글 글꼴: Pretendard 가변 폰트(OFL). loadFont 가 받아질 때까지 렌더를 붙잡는다.
 const FONT = "Pretendard";
@@ -45,7 +46,7 @@ export const SAFE_ZONE = { top: 120, bottom: 300, left: 90, right: 96 };
 export type ShortsMotion = "zoom_in" | "zoom_out" | "pan_left" | "pan_right" | "none";
 export type ShortsTransition = "fade" | "slide" | "wipe" | "none";
 
-export type ShortsSceneKind = "image" | "text_card" | "stat_card" | "bar_chart" | "compare";
+export type ShortsSceneKind = "image" | "text_card" | "stat_card" | "bar_chart" | "compare" | "flyover";
 export type ShortsBar = { label: string; value: number; highlight?: boolean };
 export type ShortsCompareRow = { label: string; from: number; to: number; unit?: string; decimals?: number };
 
@@ -70,6 +71,9 @@ export type ShortsSceneItem = {
   bars?: ShortsBar[];
   // compare
   rows?: ShortsCompareRow[];
+  // flyover (3D 항공, three.js) — title 은 지명 라벨
+  time_of_day?: FlyoverTime;
+  seed?: number;
 };
 
 // Python 쪽이 만든 어절 토큰. text 는 새 어절이면 앞에 공백 하나를 붙여 보낸다(@remotion/captions 규약).
@@ -734,6 +738,16 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
             <TransitionSeries.Sequence key={`scene-${i}`} durationInFrames={t.hold}>
               {t.kind === "image" && t.src ? (
                 <SceneImage src={staticFile(t.src)} motion={t.motion} durationInFrames={t.hold} seed={i} />
+              ) : t.kind === "flyover" ? (
+                <FlyoverScene
+                  title={t.item.title}
+                  timeOfDay={t.item.time_of_day}
+                  seed={t.item.seed ?? i + 1}
+                  durationInFrames={t.hold}
+                  contentFrames={t.dur}
+                  fontFamily={fontFamily}
+                  labelTop={CONTENT_TOP}
+                />
               ) : (
                 <KindScene item={t.item} index={i} accent={accent} contentFrames={t.dur} />
               )}

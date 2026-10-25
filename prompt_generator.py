@@ -535,11 +535,12 @@ class PromptGenerator:
         if len(kinds) <= 1:
             return ""
         return (',\n      "kind": "' + "|".join(kinds) + '",\n'
-                '      "title": "text_card/stat_card/bar_chart/compare 제목 (≤18자, image 면 생략)",\n'
+                '      "title": "text_card/stat_card/bar_chart/compare 제목 (≤18자), flyover 는 지명 (≤12자, 선택), image 면 생략",\n'
                 '      "subtitle": "text_card 부제 (선택)",\n'
                 '      "value": 87, "unit": "%", "label": "stat_card 설명 (stat_card 일 때만)",\n'
                 '      "bars": [{"label": "A", "value": 87, "highlight": true}, {"label": "B", "value": 82}],\n'
-                '      "rows": [{"label": "성공률", "from": 56, "to": 75, "unit": "%"}]')
+                '      "rows": [{"label": "성공률", "from": 56, "to": 75, "unit": "%"}],\n'
+                '      "time_of_day": "sunrise|day|sunset (flyover 일 때만)"')
 
     @staticmethod
     def _shorts_fields(parsed: Dict[str, Any], shorts: Dict[str, Any], title: str) -> Dict[str, Any]:

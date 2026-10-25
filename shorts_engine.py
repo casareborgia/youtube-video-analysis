@@ -44,8 +44,9 @@ PLATFORM_PROFILES = {
 SAFE_ZONE = {"top": 120, "bottom": 300, "left": 90, "right": 96}
 
 # 씬 종류 — image 외에는 이미지 생성 비용 없이 Remotion 이 그린다 (작업계획서 비용 절감안 ①)
-SCENE_KINDS = ("image", "text_card", "stat_card", "bar_chart", "compare")
-SCENE_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows")
+SCENE_KINDS = ("image", "text_card", "stat_card", "bar_chart", "compare", "flyover")
+SCENE_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows", "time_of_day", "seed")
+FLYOVER_TIMES = ("sunrise", "day", "sunset")   # flyover(3D 항공) 씬의 하늘 시간대
 SCENE_TRANSITIONS = ("fade", "slide", "wipe", "none")   # 씬으로 들어오는 전환 (Remotion @remotion/transitions, ffmpeg 폴백은 무시)
 FALLBACK_PALETTE = ("0x1b2a4a", "0x3a1f4f", "0x0f3d3e", "0x4a2a1b", "0x1f3f2a", "0x2b1b4a")
 
@@ -656,6 +657,7 @@ def fill_kind_defaults(scene: dict, spec: Optional[dict] = None) -> dict:
     - text_card: title 없으면 나레이션 앞 18자
     - stat_card: value 가 숫자가 아니면 text_card 로
     - bar_chart: bars 2개 미만이면 text_card 로 / compare: rows 없으면 text_card 로
+    - flyover: 3D 항공 장면. time_of_day 는 sunrise|day|sunset(기본 sunset), seed 는 지형 모양(기본 씬 번호), title 은 지명 라벨(선택, ≤12자)
     """
     kinds, _fields = _kind_spec(spec)
     kind = str(scene.get("kind") or "image").strip().lower()
@@ -695,6 +697,16 @@ def fill_kind_defaults(scene: dict, spec: Optional[dict] = None) -> dict:
         scene["kind"] = kind
         if not (scene.get("title") or "").strip():
             scene["title"] = _clip_text(narration, 18)
+    elif kind == "flyover":
+        scene["kind"] = kind
+        if scene.get("time_of_day") not in FLYOVER_TIMES:
+            scene["time_of_day"] = "sunset"
+        try:
+            scene["seed"] = int(scene.get("seed"))
+        except (TypeError, ValueError):
+            scene["seed"] = int(scene.get("scene_num") or 1)
+        if (scene.get("title") or "").strip():
+            scene["title"] = _clip_text(scene["title"], 12)
     else:
         scene["kind"] = "image"
     return scene

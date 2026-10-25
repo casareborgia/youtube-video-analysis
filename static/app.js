@@ -2273,7 +2273,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const SHORTS_MOTIONS = [['zoom_in', '줌 인'], ['zoom_out', '줌 아웃'], ['pan_left', '팬 왼쪽'], ['pan_right', '팬 오른쪽']];
   // 씬 종류(작업계획서 7b): image 만 Gemini 비용, 나머지는 Remotion 이 그린다
   const SHORTS_KINDS = [['image', '🖼 이미지 (Gemini)'], ['text_card', '🅰 텍스트 카드 (0원)'], ['stat_card', '🔢 숫자 카드 (0원)'],
-                        ['bar_chart', '📊 막대 비교 (0원)'], ['compare', '↔ 전후 비교 (0원)']];
+                        ['bar_chart', '📊 막대 비교 (0원)'], ['compare', '↔ 전후 비교 (0원)'], ['flyover', '🛩 3D 항공 (0원)']];
 
   function setShortsBusy(btn, busy) {
     if (!btn) return;
