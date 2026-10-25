@@ -11,7 +11,7 @@ import { useThree } from "@react-three/fiber";
 
 export type FlyoverTime = "sunrise" | "day" | "sunset";
 
-type Look = {
+export type Look = {
   elevation: number; // 해 높이(도)
   turbidity: number;
   rayleigh: number;
@@ -23,20 +23,20 @@ type Look = {
   hue: number; // 지형 색상(HSL hue) 기준
 };
 
-const LOOKS: Record<FlyoverTime, Look> = {
+export const LOOKS: Record<FlyoverTime, Look> = {
   sunrise: { elevation: 6, turbidity: 7, rayleigh: 2.6, exposure: 0.75, fog: "#f1bf93", sun: "#ffcf9e", ground: "#5a5470", water: "#4f7fb8", hue: 0.24 },
   day: { elevation: 38, turbidity: 2.2, rayleigh: 1.8, exposure: 0.55, fog: "#c3daef", sun: "#fff6e6", ground: "#4f5f70", water: "#4f8fca", hue: 0.27 },
   sunset: { elevation: 7, turbidity: 6, rayleigh: 2.2, exposure: 0.75, fog: "#f0a46e", sun: "#ffb370", ground: "#544a5e", water: "#476fa6", hue: 0.22 },
 };
 
-const SIZE = 6000;
+export const SIZE = 6000;
 const SEG = 160;
 const RIVER_HALF = 150; // 강 반폭
 // 강 중심선(z)이 x 를 따라 굽이친다 — 지형 골짜기·강물·카메라가 모두 이 곡선을 따른다
-const riverZ = (x: number, seed: number) => 260 * Math.sin(x / 760 + seed) + 90 * Math.sin(x / 290 + seed * 2.1);
+export const riverZ = (x: number, seed: number) => 260 * Math.sin(x / 760 + seed) + 90 * Math.sin(x / 290 + seed * 2.1);
 
 // webgl_geometry_terrain 예제처럼 옥타브를 겹친 펄린 노이즈. seed 로 노이즈 단면을 바꿔 씬마다 다른 지형을 만든다.
-const makeTerrain = (seed: number, hue: number) => {
+export const makeTerrain = (seed: number, hue: number) => {
   // seed 는 노이즈 단면과 강 굽이를 함께 바꾼다
   const noise = new ImprovedNoise();
   const n = SEG + 1;
@@ -71,7 +71,7 @@ const makeTerrain = (seed: number, hue: number) => {
 };
 
 // 강물: 중심선을 따라가는 리본 메시
-const makeRiver = (seed: number) => {
+export const makeRiver = (seed: number) => {
   const steps = 240;
   const verts: number[] = [];
   const idx: number[] = [];
@@ -111,7 +111,7 @@ const Terrain: React.FC<{ seed: number; hue: number }> = ({ seed, hue }) => {
   );
 };
 
-const SkyDome: React.FC<{ look: Look; azimuth: number }> = ({ look, azimuth }) => {
+export const SkyDome: React.FC<{ look: Look; azimuth: number }> = ({ look, azimuth }) => {
   const sky = useMemo(() => {
     const s = new Sky();
     s.scale.setScalar(20000);

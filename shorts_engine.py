@@ -21,6 +21,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 import concept_packs
 import producer  # ffmpeg_path(drawtext 지원 바이너리 우선), audio_duration, find_font, generate_images, list_media
+import scene3d_spec
 import scene_store
 import tts_service
 
@@ -44,8 +45,9 @@ PLATFORM_PROFILES = {
 SAFE_ZONE = {"top": 120, "bottom": 300, "left": 90, "right": 96}
 
 # 씬 종류 — image 외에는 이미지 생성 비용 없이 Remotion 이 그린다 (작업계획서 비용 절감안 ①)
-SCENE_KINDS = ("image", "text_card", "stat_card", "bar_chart", "compare", "flyover")
-SCENE_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows", "time_of_day", "seed")
+SCENE_KINDS = ("image", "text_card", "stat_card", "bar_chart", "compare", "flyover", "scene3d")
+SCENE_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows", "time_of_day", "seed",
+                     "scene3d")
 FLYOVER_TIMES = ("sunrise", "day", "sunset")   # flyover(3D 항공) 씬의 하늘 시간대
 SCENE_TRANSITIONS = ("fade", "slide", "wipe", "none")   # 씬으로 들어오는 전환 (Remotion @remotion/transitions, ffmpeg 폴백은 무시)
 FALLBACK_PALETTE = ("0x1b2a4a", "0x3a1f4f", "0x0f3d3e", "0x4a2a1b", "0x1f3f2a", "0x2b1b4a")
@@ -190,6 +192,22 @@ def _ensure_in_job_dir(shorts_id: str, path: str, prefix: str) -> str:
     return f"{REMOTION_PUBLIC_PREFIX}/{shorts_id}/{os.path.basename(ap)}"
 
 
+def _scene3d_assets(shorts_id: str, spec: Optional[dict], index: int, job: dict) -> dict:
+    """scene3d 의 3D 모델 파일(model.src)을 잡 폴더로 들여와 public 경로로 바꾼다. 파일이 없으면 그 물체만 빼고 경고를 남긴다."""
+    spec = dict(spec or scene3d_spec.normalize_scene3d(None, index))
+    objects = []
+    for o in spec.get("objects") or []:
+        if o.get("type") == "model":
+            try:
+                o = dict(o, src=_ensure_in_job_dir(shorts_id, o.get("src"), f"scene_{index:02d}_model"))
+            except FileNotFoundError:
+                job.setdefault("warnings", []).append(f"씬 {index} 3D 모델 파일이 없어 뺐습니다: {o.get('src')}")
+                continue
+        objects.append(o)
+    spec["objects"] = objects
+    return spec
+
+
 def build_remotion_props(job: dict) -> dict:
     shorts_id = _safe_id(job["shorts_id"])
     sb = job.get("storyboard") or {}
@@ -218,6 +236,8 @@ def build_remotion_props(job: dict) -> dict:
             for k in SCENE_KIND_FIELDS:
                 if s.get(k) is not None:
                     item[k] = s[k]
+            if kind == "scene3d":
+                item["scene3d"] = _scene3d_assets(shorts_id, item.get("scene3d"), i, job)
         scenes.append(item)
     audio = job.get("audio") or {}
     narration = audio.get("narration")
@@ -658,6 +678,7 @@ def fill_kind_defaults(scene: dict, spec: Optional[dict] = None) -> dict:
     - stat_card: value 가 숫자가 아니면 text_card 로
     - bar_chart: bars 2개 미만이면 text_card 로 / compare: rows 없으면 text_card 로
     - flyover: 3D 항공 장면. time_of_day 는 sunrise|day|sunset(기본 sunset), seed 는 지형 모양(기본 씬 번호), title 은 지명 라벨(선택, ≤12자)
+    - scene3d: 범용 3D 장면. scene3d 설명(환경·바닥·카메라·물체)을 scene3d_spec 으로 정리한다(없어도 기본 장면)
     """
     kinds, _fields = _kind_spec(spec)
     kind = str(scene.get("kind") or "image").strip().lower()
@@ -697,6 +718,9 @@ def fill_kind_defaults(scene: dict, spec: Optional[dict] = None) -> dict:
         scene["kind"] = kind
         if not (scene.get("title") or "").strip():
             scene["title"] = _clip_text(narration, 18)
+    elif kind == "scene3d":
+        scene["kind"] = kind
+        scene["scene3d"] = scene3d_spec.normalize_scene3d(scene.get("scene3d"), int(scene.get("scene_num") or 1))
     elif kind == "flyover":
         scene["kind"] = kind
         if scene.get("time_of_day") not in FLYOVER_TIMES:
