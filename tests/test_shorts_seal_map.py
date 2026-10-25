@@ -66,6 +66,22 @@ class KindRegistryTests(unittest.TestCase):
 SHIJI_SPEC = concept_packs.shorts_spec("shorts_shiji")
 
 
+class PlanStoreTests(ShortsS2Base):
+    def test_plan_keeps_seal_and_map_fields_and_job_gets_them(self):
+        import scene_store
+        self.assertEqual(set(scene_store.SHORTS_KIND_FIELDS), set(shorts_engine.SCENE_KIND_FIELDS))
+        batch = {"topic": "Sun Tzu", "recommended_title": "Sun Tzu's Job Interview", "aspect_ratio": "9:16",
+                 "concept_key": "shorts_shiji",
+                 "scenes": [dict(MAP, scene_num=1, prompt_en="p", year="c. 260 BC"),
+                            dict(SEAL, scene_num=2, prompt_en="p")]}
+        plan = scene_store.build_plan(batch, scene_seconds=5.0)
+        scene_store.save_plan(plan)
+        job = shorts_engine.build_job_from_plan(plan["plan_id"])
+        mp, seal = job["storyboard"]["scenes"]
+        self.assertEqual((seal["kind"], seal["hanzi"], seal["source"]), ("seal", "此奇貨可居", "Shiji, ch. 85"))
+        self.assertEqual((mp["kind"], mp["states"], mp["arrows"]), ("map", ["qin", "zhao"], [{"from": "qin", "to": "zhao"}]))
+
+
 class FillDefaultsTests(unittest.TestCase):
     def test_generic_pack_turns_seal_into_image(self):
         self.assertEqual(shorts_engine.fill_kind_defaults(dict(SEAL))["kind"], "image")
