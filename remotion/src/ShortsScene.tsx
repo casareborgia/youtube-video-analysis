@@ -25,6 +25,8 @@ import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
 import { wipe } from "@remotion/transitions/wipe";
 import { FlyoverScene, FlyoverTime } from "./FlyoverScene";
+import { MapArrow, MapScene } from "./MapScene";
+import { SealScene } from "./SealScene";
 import { Scene3D } from "./three/Scene3D";
 import { Scene3DSpec } from "./three/types";
 import { colorFlood, dip, TRANSITION_SECONDS, whip, zoomThrough } from "./transitions";
@@ -49,7 +51,7 @@ export const SAFE_ZONE = { top: 120, bottom: 300, left: 90, right: 96 };
 export type ShortsMotion = "zoom_in" | "zoom_out" | "pan_left" | "pan_right" | "none";
 export type ShortsTransition = "fade" | "slide" | "wipe" | "zoom_through" | "color_flood" | "whip" | "dip" | "none";
 
-export type ShortsSceneKind = "image" | "text_card" | "stat_card" | "bar_chart" | "compare" | "flyover" | "scene3d";
+export type ShortsSceneKind = "image" | "text_card" | "stat_card" | "bar_chart" | "compare" | "flyover" | "scene3d" | "seal" | "map";
 export type ShortsBar = { label: string; value: number; highlight?: boolean };
 export type ShortsCompareRow = { label: string; from: number; to: number; unit?: string; decimals?: number };
 
@@ -79,6 +81,14 @@ export type ShortsSceneItem = {
   seed?: number;
   // scene3d (범용 3D, three.js) — 환경·바닥·카메라·물체 조합
   scene3d?: Scene3DSpec;
+  // seal (원문 인장) — 한자 원문·자체 번역·출전(Shiji, ch. 85)
+  hanzi?: string;
+  translation?: string;
+  source?: string;
+  // map (전국시대 개략도) — 강조 나라·진군 화살표·연도. title 은 지도 위 제목
+  states?: string[];
+  arrows?: MapArrow[];
+  year?: string;
 };
 
 // Python 쪽이 만든 어절 토큰. text 는 새 어절이면 앞에 공백 하나를 붙여 보낸다(@remotion/captions 규약).
@@ -836,6 +846,24 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
                 <SceneImage src={staticFile(t.src)} motion={t.motion} durationInFrames={t.hold} seed={i} />
               ) : t.kind === "scene3d" ? (
                 <Scene3D spec={t.item.scene3d} durationInFrames={t.hold} fontFamily={fontFamily} />
+              ) : t.kind === "seal" ? (
+                <SealScene
+                  hanzi={t.item.hanzi}
+                  translation={t.item.translation}
+                  source={t.item.source}
+                  contentFrames={t.dur}
+                  fontFamily={fontFamily}
+                  latinFont={FONT}
+                />
+              ) : t.kind === "map" ? (
+                <MapScene
+                  states={t.item.states}
+                  arrows={t.item.arrows}
+                  year={t.item.year}
+                  title={t.item.title}
+                  contentFrames={t.dur}
+                  fontFamily={fontFamily}
+                />
               ) : t.kind === "flyover" ? (
                 <FlyoverScene
                   title={t.item.title}
