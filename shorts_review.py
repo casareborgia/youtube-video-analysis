@@ -491,7 +491,14 @@ def review_render(job: dict, ff: Optional[str], out_dir: str, url_prefix: str, r
     video = (job.get("render") or {}).get("file")
     tl = review_timeline(job)
     total = tl["total"]
-    findings = _promise_findings(job) + _seal_findings((job.get("storyboard") or {}).get("scenes") or [])
+    scenes_all = (job.get("storyboard") or {}).get("scenes") or []
+    findings = _promise_findings(job) + _seal_findings(scenes_all)
+    # 로컬 AI 이미지(ComfyUI)는 가짜 한자·글자가 섞일 수 있다 — 원문을 내세우는 채널이라 사람이 시트에서 확인한다(발행은 막지 않음)
+    comfy = [int(s.get("scene_num") or i + 1) for i, s in enumerate(scenes_all)
+             if (s.get("kind") or "image") == "image" and s.get("image_source") == "comfyui"]
+    if comfy:
+        findings.append(_finding("P2", "image_text_check", f"AI 이미지 씬 {', '.join(map(str, comfy))} 에 가짜 글자·한자가 없는지 확인하세요.",
+                                 "글자가 보이면 그 씬 이미지를 다시 만드세요(씬 번호만 지우고 재빌드)."))
     sheets: Dict[str, Optional[str]] = {"scenes": None, "seams": None, "phone": None}
     times: Dict[str, List[float]] = {"scenes": [], "seams": [], "phone": []}
     if video and os.path.exists(video) and ff:

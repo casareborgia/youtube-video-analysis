@@ -312,6 +312,21 @@ def _shiji_pack() -> Dict[str, Any]:
     spec = pack["shorts"]
     spec["scene_kinds"] = spec["scene_kinds"] + ["seal", "map"]
     spec["scene_kind_fields"] = spec["scene_kind_fields"] + ["hanzi", "translation", "source", "states", "arrows", "year"]
+    # 수묵 시네마틱 톤(P-4): 로컬 ComfyUI 이미지(비용 0), 금색 강조, 영어 엔드 태그, 전환은 dip·zoom_through 위주
+    spec["image_backend"] = "comfyui"
+    spec["image_style"] = ("dark traditional Chinese ink wash painting, cinematic composition, ancient China in the Warring States period, "
+                           "muted black and charcoal tones with warm gold light and a faint crimson sky, misty atmosphere, "
+                           "no text, no letters, no calligraphy, no watermark")
+    spec["accent"] = "#d4af37"
+    spec["transitions"] = ["dip", "zoom_through", "fade", "wipe"]
+    spec["end_tag"] = {"text": "Follow for the next story", "subtext": "Shiji Files", "seconds": spec["end_tag"].get("seconds", 2.4)}
+    pack["render_style"] = "어두운 수묵 시네마틱 — 먹색 바탕, 금빛 조명, 옅은 붉은 하늘, 전국시대 중국. 글자 없음"
+    pack["image_aesthetic"] = {
+        "aesthetic": "dark traditional Chinese ink wash painting, cinematic, ancient China",
+        "palette": "muted black and charcoal with warm gold light and a faint crimson accent",
+        "framing": "vertical 9:16, subject in the central band so top hook text and bottom captions stay clear",
+        "overall_mood": "solemn, mysterious, historical",
+    }
     spec["kind_guide"].update({
         "seal": ("고전 원문 인장 카드. hanzi 원문(문장부호 빼고 ≤ 12자, 구절 DB 에서 그대로) · translation 자체 번역 · "
                  "source 출전(예: Shiji, ch. 85) — 출전 없으면 발행 잠금"),

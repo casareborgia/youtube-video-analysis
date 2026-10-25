@@ -1196,7 +1196,7 @@ async def build_shorts_job(shorts_id: str, req: ShortsBuildRequest, background_t
     if est["needed"] > 0:
         if not est["allowed"]:
             raise HTTPException(status_code=429 if "상한" in est["reason"] else 400, detail=est["reason"])
-        if not req.confirm:
+        if not req.confirm and est.get("backend") != "comfyui":   # 로컬 ComfyUI 는 비용 0 — 과금 확인이 필요 없다
             return {"status": "confirm_required", "shorts_id": sid, "estimate": est,
                     "message": f"Gemini 이미지 {est['needed']}장 (≈ ${est['usd']}) 생성을 승인하려면 confirm=true 로 다시 요청하세요."}
     options = {"confirm": bool(req.confirm), "renderer": req.renderer, "voice_id": req.voice_id}
