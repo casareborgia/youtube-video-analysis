@@ -2238,6 +2238,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const shortsEndTagText = document.getElementById('shortsEndTagText');
   const shortsEndTagSubtext = document.getElementById('shortsEndTagSubtext');
   const shortsWarnings = document.getElementById('shortsWarnings');
+  const shortsLint = document.getElementById('shortsLint');
   const btnShortsSaveStoryboard = document.getElementById('btnShortsSaveStoryboard');
   const shortsRendererSelect = document.getElementById('shortsRendererSelect');
   const btnShortsBuild = document.getElementById('btnShortsBuild');
@@ -2261,6 +2262,7 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentShortsJob = null;
   let shortsPollTimer = null;
   let shortsPendingBuild = null;   // 비용 확인 모달이 승인되면 실행할 빌드 옵션
+  let shortsLintConfirmed = false; // 린트 위험 fail 을 사용자가 확인하고 빌드를 진행하기로 했는지
 
   const SHORTS_STATUS_LABEL = {
     planned: '기획됨', assets: '자산 준비 중', rendered: '렌더됨', qc_passed: 'QC 통과',
@@ -2376,6 +2378,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       const d = await res.json();
       currentShortsJob = d.data;
+      if (!currentShortsJob.lint && !d.building) {
+        // U-1 이전에 만든 잡은 린트가 없다 — 열 때 한 번 돌려 채운다(비용 0)
+        try {
+          const lr = await fetch(`/api/shorts/jobs/${encodeURIComponent(shortsId)}/lint`);
+          if (lr.ok) currentShortsJob.lint = (await lr.json()).lint;
+        } catch (_) { /* 린트 실패는 잡 열기를 막지 않는다 */ }
+      }
       renderShortsStoryboard(currentShortsJob);
       renderShortsResult(currentShortsJob);
       loadShortsJobs();
@@ -2383,6 +2392,51 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (err) {
       showAlert('쇼츠 잡 열기 실패: ' + err.message, 'error');
     }
+  }
+
+  const SHORTS_LINT_COLOR = { P0: '#f87171', P1: '#fbbf24', P2: '#9ca3af' };
+  const SHORTS_RISK_LABEL = { strong: '좋음', acceptable: '괜찮음', revise: '손볼 것', fail: '슬라이드쇼 위험' };
+
+  // U-1 렌더 전 린트: 지적(P0/P1/P2)과 슬라이드쇼 위험 점수. 빌드를 막지 않고 보여 준다
+  function renderShortsLint(job) {
+    if (!shortsLint) return;
+    const lint = job && job.lint;
+    if (!lint) {
+      shortsLint.style.display = 'none';
+      shortsLint.innerHTML = '';
+      return;
+    }
+    const risk = lint.risk || {};
+    const c = lint.counts || {};
+    const riskColor = risk.verdict === 'fail' ? '#f87171' : risk.verdict === 'revise' ? '#fbbf24' : '#34d399';
+    const head = `<div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px;">
+        <strong>사전 검수</strong>
+        <span class="badge badge-subtle" style="color: ${riskColor}; border: 1px solid ${riskColor}40;" title="${escapeHtml(Object.entries(risk.axes || {}).map(([k, v]) => `${k} ${v.score} (${v.reason})`).join(' · '))}">위험 ${Number(risk.score || 0).toFixed(1)} · ${escapeHtml(SHORTS_RISK_LABEL[risk.verdict] || risk.verdict || '')}</span>
+        ${['P0', 'P1', 'P2'].map(lv => `<span class="badge badge-subtle" style="color: ${SHORTS_LINT_COLOR[lv]};">${lv} ${Number(c[lv] || 0)}</span>`).join('')}
+      </div>`;
+    const items = (lint.findings || []).map(f => `<div class="shorts-lint-item" data-scene="${f.scene == null ? '' : Number(f.scene)}" style="cursor: ${f.scene == null ? 'default' : 'pointer'}; margin: 2px 0;">
+        <span style="color: ${SHORTS_LINT_COLOR[f.level] || '#9ca3af'}; font-weight: 700;">${escapeHtml(f.level)}</span>
+        ${f.t == null ? '' : `<span style="color: var(--text-muted);">t=${Number(f.t).toFixed(1)}s</span>`}
+        ${escapeHtml(f.message)} <span style="color: var(--text-muted);">→ ${escapeHtml(f.fix)}</span>
+      </div>`).join('');
+    shortsLint.innerHTML = head + (items || '<div style="color: var(--text-muted);">지적 없음</div>');
+    shortsLint.style.display = 'block';
+    shortsLint.querySelectorAll('.shorts-lint-item[data-scene]').forEach(el => el.addEventListener('click', () => {
+      if (!el.dataset.scene) return;
+      const card = shortsSceneCards && shortsSceneCards.querySelector(`.shorts-scene-card[data-num="${el.dataset.scene}"]`);
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.style.outline = '2px solid #fbbf24';
+        setTimeout(() => { card.style.outline = ''; }, 1500);
+      }
+    }));
+  }
+
+  function shortsSceneLintBadge(job, num) {
+    const fs = ((job.lint || {}).findings || []).filter(f => Number(f.scene) === Number(num));
+    if (!fs.length) return '';
+    const top = fs.reduce((a, f) => (f.level < a ? f.level : a), 'P2');
+    return `<span class="badge badge-subtle" style="color: ${SHORTS_LINT_COLOR[top]}; border: 1px solid ${SHORTS_LINT_COLOR[top]}40; font-size: 0.68rem;" title="${escapeHtml(fs.map(f => `${f.level} ${f.message}`).join('\n'))}">${top} ${fs.length}</span>`;
   }
 
   function renderShortsStoryboard(job) {
@@ -2417,7 +2471,7 @@ document.addEventListener('DOMContentLoaded', () => {
         : kind === 'compare' ? (s.rows || []).map(r => `${escapeHtml(String(r.label))} ${escapeHtml(String(r.from))}→${escapeHtml(String(r.to))}${escapeHtml(String(r.unit || ''))}`).join(' · ') : '';
       return `<div class="shorts-scene-card" data-num="${Number(s.scene_num)}" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; font-size: 0.78rem;">
-            <strong>씬 ${Number(s.scene_num)}</strong>
+            <strong>씬 ${Number(s.scene_num)} ${shortsSceneLintBadge(job, s.scene_num)}</strong>
             ${state}
           </div>
           ${s.beat ? `<div style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px;">${escapeHtml(s.beat)}</div>` : ''}
@@ -2442,6 +2496,9 @@ document.addEventListener('DOMContentLoaded', () => {
       const box = sel.closest('.shorts-scene-card').querySelector('.shorts-kind-fields');
       if (box) box.style.display = sel.value === 'image' ? 'none' : 'flex';
     }));
+
+    renderShortsLint(job);
+    if (shortsLintConfirmed && !((job.lint || {}).needs_confirm)) shortsLintConfirmed = false;
 
     const warns = job.warnings || [];
     if (warns.length) {
@@ -2596,7 +2653,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const payload = {
       confirm: !!confirmed,
       renderer: shortsRendererSelect ? (shortsRendererSelect.value || null) : null,
-      voice_id: shortsVoiceSelect ? shortsVoiceSelect.value : null
+      voice_id: shortsVoiceSelect ? shortsVoiceSelect.value : null,
+      confirm_lint: shortsLintConfirmed
     };
     const res = await fetch(`/api/shorts/jobs/${encodeURIComponent(currentShortsJob.shorts_id)}/build`, {
       method: 'POST',
@@ -2672,7 +2730,19 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         const saved = await saveShortsStoryboard(true);
         if (!saved) throw new Error('스토리보드 저장에 실패해 빌드를 중단했습니다.');
-        const d = await requestShortsBuild(false);
+        let d = await requestShortsBuild(false);
+        if (d.status === 'lint_confirm_required') {
+          // 결정 ⑦: 위험 점수 4.0 이상은 막지 않고 한 번 더 묻는다
+          currentShortsJob.lint = d.lint;
+          renderShortsLint(currentShortsJob);
+          const risk = (d.lint || {}).risk || {};
+          if (!confirm(`사전 검수 위험 점수 ${Number(risk.score || 0).toFixed(1)} — 슬라이드쇼처럼 보일 위험이 큽니다.\n지적을 고치지 않고 그대로 빌드할까요?`)) {
+            setShortsBusy(btnShortsBuild, false);
+            return;
+          }
+          shortsLintConfirmed = true;
+          d = await requestShortsBuild(false);
+        }
         if (d.status === 'confirm_required') {
           // 과금 가드: 서버는 confirm=true 전까지 Gemini 를 호출하지 않는다
           shortsPendingBuild = { shortsId: currentShortsJob.shorts_id };

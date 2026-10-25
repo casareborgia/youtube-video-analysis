@@ -38,7 +38,7 @@
 
 | 원천 | 내용 | 우리 시스템에 주는 의미 |
 |---|---|---|
-| `lib/slideshow_risk.py` | 기획 단계에서 6개 축(반복·장식적 비주얼·목적 없는 모션·샷 의도 부족·**타이포 과의존**·근거 없는 시네마틱)을 0~5점으로 매겨 4.0 이상이면 합성 단계 진입 금지 | 우리 쇼츠는 카드형 씬이 대부분이다. 「Gemini 4 Argon」 사례(텍스트 2·막대 1·숫자 1·비교 2)는 **글자 카드 비율 100%** → 이 기준이면 "fail". 가장 먼저 잡아야 할 약점 |
+| `lib/slideshow_risk.py` | 기획 단계에서 6개 축(반복·장식적 비주얼·목적 없는 모션·샷 의도 부족·**타이포 과의존**·근거 없는 시네마틱)을 0~5점으로 매겨 4.0 이상이면 합성 단계 진입 금지 | 우리 쇼츠는 카드형 씬이 대부분이다. 「Gemini 4 Argon」 0원 버전(텍스트 2·막대 1·숫자 1·비교 2)은 **글자 카드 비율 100%**, 이미지 1장을 넣은 현재 v3 도 83% → 가장 먼저 잡아야 할 약점 |
 | `lib/variation_checker.py` | 씬 기획의 반복 패턴·뻔한 문구("혁신적", "놀라운" 류) 탐지 | 로컬 LLM 기획서의 상투어 필터 |
 | `lib/delivery_promise.py` | 제작 약속(모션 중심·데이터 설명 등)을 기획 시 잠그고, 합성 단계가 못 지키면 **조용히 낮추지 말고 멈춰서 묻기** | 지금 ffmpeg 폴백은 비이미지 씬을 단색으로 바꾸고 경고만 남긴다 → 차단 대상 |
 | `tools/analysis/audio_energy.py` | ebur128 순간 음량으로 곡의 "재미있어지는 지점"을 찾아 재생 오프셋 추천 | BGM이 조용한 인트로부터 시작하는 문제 해결 |
@@ -124,23 +124,24 @@ flowchart LR
 
 | 코드 | 판정 | 등급 | 근거 |
 |---|---|---|---|
-| `line_unread` | 화면 문구 노출 시간 < 0.5초 + 어절당 0.3초, 마지막 줄 < 2초 | P0 | HF story.md §6 |
+| `line_unread` | 화면 문구 노출 시간 < 0.5초 + 어절당 0.3초, 마지막 줄(엔드 태그)은 페이드인 0.33초를 뺀 뒤 < 2초 | P0 | HF story.md §6 |
 | `first_frame_empty` | 0초 프레임에 훅 문구도 비주얼도 없음 | P0 | HF review |
-| `text_below_floor` | 글자 크기 < 28px (1080의 2.6%) | P0 | HF check |
-| `dead_stretch` | 씬 안에서 등장 애니메이션이 끝난 뒤 3초 넘게 변화 없음 (종류별 애니메이션 길이 표로 추정) | P1 | HF check |
+| `text_overflow` | 훅 > 30자(배너 2줄), text_card 제목 > 42자(3줄) — 최소 글자 크기에서 넘침 | P1 | HF check `text_box_overflow` (구현 시 변경: ShortsScene 은 글자를 34px 아래로 줄이지 않아 28px 하한 규칙은 걸릴 수 없음) |
+| `dead_stretch` | 카드형 씬에서 등장 애니메이션·자막 페이지 변화 사이가 3초 넘게 빔. 빌드 전(자막 없음)에는 나레이션 없는 씬만 판정 | P1 | HF check |
 | `typography_overreliance` | 글자 중심 씬(text_card·stat_card·compare·bar_chart) 비율 > 60% P1, 100% P0 | P0/P1 | OM slideshow_risk |
 | `repetition` | 같은 kind 연속 3회, 같은 전환 연속 2회, 같은 팔레트 전 씬 | P1 | OM slideshow_risk·variation_checker |
 | `screen_repeats_voice` | 화면 문구가 나레이션 문장과 80% 이상 같음 | P1 | HF story.md §6 |
-| `generic_phrase` | 상투어 목록("혁신적", "놀라운", "게임체인저", "완벽한", "단 몇 초 만에" 등, 설정 파일로 관리) | P2 | OM variation_checker, HF banned words |
+| `generic_phrase` | 상투어 목록("혁신적", "놀라운", "게임체인저", "완벽한", "단 몇 초 만에" 등, `shorts_review.GENERIC_PHRASES`) | P2 | OM variation_checker, HF banned words |
 | `caption_at_zero` | 첫 자막이 0초에 시작 | P2 | HF captions |
 
 3. 슬라이드쇼 위험 점수: 반복·타이포 과의존·모션 목적(같은 `motion` 반복)·훅 강도 4축 0~5점 평균. 4.0 이상이면 빌드 버튼에 경고 + 확인 모달(차단은 아님, 결정 ⑦).
 4. `build_job` 시작 시 린트 실행 → `job["lint"]` 저장. `GET /api/shorts/jobs/{id}/lint`, 스토리보드 수정(`update_storyboard`) 후 자동 재실행.
 5. UI: 쇼츠 패널 스토리보드 카드 옆에 P0/P1/P2 배지, 지적 클릭 시 해당 씬으로 이동.
-6. 테스트 `tests/test_shorts_review.py`: 규칙별 경계값(0.5초+어절 수, 28px, 60%/100%), Argon 사례 6씬 → `typography_overreliance` P0, 반복 패턴, 상투어.
+6. 테스트 `tests/test_shorts_review.py`: 규칙별 경계값(0.5초+어절 수, 28px, 60%/100%), Argon v3 6씬 → `typography_overreliance` P1(83%)·글자 카드만이면 P0, 반복 패턴, 상투어.
 7. 수용 기준
-   - [ ] 기존 잡 `shorts_argon_ai_trend` 린트 결과가 위 표대로 나옴
-   - [ ] 린트가 기존 빌드 흐름을 막지 않음(경고만), 기존 테스트 회귀 0
+   - [x] 기존 잡 `shorts_argon_ai_trend` 린트: P0 1(엔드 태그) · P1 2(글자 카드 83%·전환 전부 fade) · P2 1(0초 자막), 위험 2.2 acceptable
+     (1차 계획서의 "6씬 모두 글자 카드"는 0원 버전 기준이었고, 현재 v3 는 3번 씬이 이미지라 100% → 83%, P0 아닌 P1)
+   - [x] 린트가 기존 빌드 흐름을 막지 않음(경고만, 위험 4.0 이상만 `confirm_lint` 확인)
 
 ### U-2. 오디오 2.0 (`feat/shorts-audio-v2`)
 
@@ -293,9 +294,9 @@ HF 레지스트리를 카탈로그로 삼아 Remotion TSX로 새로 작성(코�
 
 ---
 
-## 9. 사용자 결정 필요 사항
+## 9. 사용자 결정 사항 — 2026-10-25 권장안대로 확정
 
-| # | 결정 | 선택지 | 권장 |
+| # | 결정 | 선택지 | 확정 |
 |---|---|---|---|
 | ① | 착수 순서 | (a) U-1~U-3 먼저 → S-3 → U-4 → S-6 (b) S-3 먼저, 업그레이드는 그 뒤 | **(a)** 새 채널 첫 영상부터 품질 확보 |
 | ② | 렌더 후 비전 리뷰 | (a) 시트만(0원, 사람이 봄) (b) Gemini 비전 소액 (c) 로컬 비전 모델 | **(a)로 시작**, S-6 자동화 때 (b) 재검토 |
