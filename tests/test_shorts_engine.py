@@ -67,6 +67,10 @@ class ShortsS2Base(unittest.TestCase):
         p = patch.object(shorts_engine, "measure_loudness", lambda path: None)
         p.start()
         self.addCleanup(p.stop)
+        # U-3 강조어: 테스트에서는 LLM 을 부르지 않는다(숫자 어절 폴백만)
+        p = patch.object(shorts_engine, "_llm_emphasis", lambda narrations: [])
+        p.start()
+        self.addCleanup(p.stop)
 
     def save_plan(self, **kw):
         plan = _plan(**kw)
@@ -911,7 +915,9 @@ class UpdateStoryboardTests(ShortsS2Base):
         job = shorts_engine.update_storyboard(job, scenes=[{"scene_num": 2, "transition": "wipe"}, {"scene_num": 3, "transition": "spin"}])
         sb = job["storyboard"]
         self.assertEqual(sb["scenes"][1]["transition"], "wipe")
-        self.assertNotIn("transition", sb["scenes"][2])          # 잘못된 전환은 무시
+        self.assertNotIn("transition_auto", sb["scenes"][1])     # 사용자가 고른 전환
+        self.assertNotEqual(sb["scenes"][2]["transition"], "spin")  # 잘못된 전환은 무시되고
+        self.assertTrue(sb["scenes"][2]["transition_auto"])      # U-3 자동 배정이 채운다
 
 
 # ── 9. API 라우트 (TestClient) ───────────────────────────────────────────────

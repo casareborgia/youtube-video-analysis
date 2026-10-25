@@ -16,6 +16,8 @@ import time
 from difflib import SequenceMatcher
 from typing import Dict, List, Optional
 
+import shorts_captions
+
 # 글자 중심 씬(타이포 과의존 계산 대상)과 화면이 계속 움직이는 씬
 TEXT_KINDS = ("text_card", "stat_card", "bar_chart", "compare")
 MOVING_KINDS = ("image", "flyover", "scene3d")
@@ -28,7 +30,6 @@ DEAD_STRETCH_SECONDS = 3.0
 CAPTION_ZERO_MS = 100
 SCREEN_VOICE_RATIO = 0.8
 SCREEN_VOICE_MIN_CHARS = 8
-DEFAULT_PAGE_MS = 1200
 DEFAULT_TRANSITION = "fade"         # ShortsScene presentationFor 의 기본값
 
 # 등장 애니메이션이 끝나는 시각(초). ShortsScene.tsx 의 spring·countUp 프레임 수 / 30fps
@@ -103,28 +104,20 @@ def _scene_starts(scenes: List[dict]) -> List[float]:
     return starts
 
 
-def _caption_pages(captions: List[dict], page_ms: int) -> List[tuple]:
-    """createTikTokStyleCaptions 근사: 페이지 시작부터 page_ms 안의 토큰을 한 페이지로 묶는다. (start_ms, end_ms) 목록."""
-    pages: List[list] = []
-    for c in captions:
-        try:
-            s, e = int(c.get("startMs")), int(c.get("endMs"))
-        except (TypeError, ValueError):
-            continue
-        if pages and s < pages[-1][0] + page_ms:
-            pages[-1][1] = max(pages[-1][1], e)
-        else:
-            pages.append([s, e])
-    return [tuple(p) for p in pages]
+def _caption_pages(job: dict) -> List[tuple]:
+    """화면에 실제로 뜨는 자막 그룹 (start_ms, hide_ms) — 렌더러와 같은 shorts_captions 규칙(U-3)."""
+    groups = shorts_captions.caption_groups(job.get("captions") or [], job.get("caption_energy") or shorts_captions.DEFAULT_ENERGY)
+    return [(g["startMs"], g["hideMs"]) for g in groups]
 
 
-def _change_events(scene: dict, start: float, pages: List[tuple]) -> Optional[List[float]]:
-    """씬 구간 안에서 화면이 바뀌는 시각(초). 자막 페이지가 바뀌는 것도 변화로 친다.
+def _change_events(scene: dict, start: float, pages: List[tuple], word_starts: Optional[List[int]] = None) -> Optional[List[float]]:
+    """씬 구간 안에서 화면이 바뀌는 시각(초). 자막 그룹이 뜨고 지는 것, 강조 어절이 옮겨 가는 것도 변화로 친다.
 
     나레이션은 있는데 이 씬에 자막이 아직 없으면(빌드 전) None — 빌드가 씬 길이를 실제 발화 길이로 다시 맞추므로 판단하지 않는다.
     """
     end = start + float(scene.get("seconds") or 0)
     page_events = [x for ps, pe in pages for x in (ps / 1000.0, pe / 1000.0) if start <= x <= end]
+    page_events += [ms / 1000.0 for ms in (word_starts or []) if start <= ms / 1000.0 <= end]
     if not page_events and _norm(scene.get("narration")):
         return None
     events = [start, start + _anim_end_seconds(scene)] + page_events
@@ -138,7 +131,8 @@ def _lint_findings(job: dict) -> List[dict]:
     hook_seconds = float(sb.get("hook_seconds") or 3.0)
     end_tag = sb.get("end_tag") or {}
     captions = job.get("captions") or []
-    pages = _caption_pages(captions, int(job.get("caption_page_ms") or DEFAULT_PAGE_MS))
+    pages = _caption_pages(job)
+    word_starts = [int(c["startMs"]) for c in captions if isinstance(c.get("startMs"), (int, float))]
     starts = _scene_starts(scenes)
     out: List[dict] = []
 
@@ -185,7 +179,7 @@ def _lint_findings(job: dict) -> List[dict]:
             continue
         num = int(s.get("scene_num") or i + 1)
         end = starts[i] + float(s.get("seconds") or 0)
-        ev = _change_events(s, starts[i], pages)
+        ev = _change_events(s, starts[i], pages, word_starts)
         if ev is None:
             continue
         ev = ev + [end]
@@ -257,12 +251,9 @@ def _lint_findings(job: dict) -> List[dict]:
             out.append(_finding("P2", "generic_phrase", f"{where} 에 상투어: {', '.join(hits)}.",
                                 "구체적인 숫자·사실로 바꾸세요.", scene=num, t=t))
 
-    # caption_at_zero
-    if captions:
-        try:
-            first_ms = int(captions[0].get("startMs"))
-        except (TypeError, ValueError):
-            first_ms = None
+    # caption_at_zero — 렌더러가 첫 그룹을 CAPTION_MIN_START_MS 뒤로 미루므로 화면 기준으로 본다
+    if pages:
+        first_ms = pages[0][0]
         if first_ms is not None and first_ms < CAPTION_ZERO_MS:
             out.append(_finding("P2", "caption_at_zero", f"첫 자막이 {first_ms}ms 에 바로 뜹니다 (원래 있던 글자처럼 보임).",
                                 "첫 자막을 0.1~0.3초 뒤에 시작하세요 (U-3).", scene=1, t=first_ms / 1000.0))

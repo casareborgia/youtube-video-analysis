@@ -54,13 +54,14 @@ class ArgonCaseTests(unittest.TestCase):
     def test_argon_lint_and_risk(self):
         # 실제 잡처럼 발화 내내 어절 자막이 깔린다(첫 토큰 98ms — 실제 Argon 잡 값)
         total_ms = int(sum(s["seconds"] for s in ARGON_SCENES) * 1000)
-        caps = [{"text": "어절", "startMs": ms, "endMs": ms + 600} for ms in range(98, total_ms - 600, 700)]
+        caps = [{"text": " 어절", "startMs": ms, "endMs": ms + 600} for ms in range(98, total_ms - 600, 700)]   # 새 어절은 앞 공백
         argon_tag = {"text": "구독하고 다음 AI 동향 보기", "subtext": "어사이드 AI 브리핑 · 출처 GeekNews", "seconds": 2.0}
         res = shorts_review.lint_storyboard(_job(ARGON_SCENES, captions=caps, end_tag=argon_tag))
-        self.assertEqual(sorted(_codes(res)), ["caption_at_zero", "line_unread", "repetition", "typography_overreliance"])
+        # 첫 토큰 98ms 지만 렌더러가 첫 그룹을 150ms 뒤에 띄우므로(U-3) caption_at_zero 는 없다
+        self.assertEqual(sorted(_codes(res)), ["line_unread", "repetition", "typography_overreliance"])
         self.assertEqual(_codes(res, "P0"), ["line_unread"])               # 엔드 태그 2.0초 - 페이드인 0.33초 < 2초
         self.assertEqual(_codes(res, "P1"), ["typography_overreliance", "repetition"])
-        self.assertEqual(res["counts"], {"P0": 1, "P1": 2, "P2": 1})
+        self.assertEqual(res["counts"], {"P0": 1, "P1": 2, "P2": 0})
         risk = res["risk"]
         self.assertEqual(risk["axes"]["typography"]["score"], 4.0)      # 5/6 = 83% > 60%
         self.assertEqual(risk["axes"]["repetition"]["score"], 1.5)      # 전환 전부 fade
@@ -179,10 +180,12 @@ class RuleBoundaryTests(unittest.TestCase):
         self.assertEqual(f[0]["level"], "P2")
         self.assertIn("혁신적", f[0]["message"])
 
-    def test_caption_at_zero_boundary(self):
-        caps = lambda ms: [{"text": "가", "startMs": ms, "endMs": ms + 400}]
-        self.assertIn("caption_at_zero", _codes(shorts_review.lint_storyboard(_job(self._img(2), captions=caps(99)))))
-        self.assertNotIn("caption_at_zero", _codes(shorts_review.lint_storyboard(_job(self._img(2), captions=caps(100)))))
+    def test_caption_at_zero_judged_on_screen(self):
+        # 렌더러가 첫 그룹을 CAPTION_MIN_START_MS(150ms) 뒤에 띄우므로 0ms 토큰도 화면에서는 0초가 아니다 (U-3)
+        caps = [{"text": "가", "startMs": 0, "endMs": 400}]
+        self.assertNotIn("caption_at_zero", _codes(shorts_review.lint_storyboard(_job(self._img(2), captions=caps))))
+        with patch.object(shorts_review.shorts_captions, "CAPTION_MIN_START_MS", 0):
+            self.assertIn("caption_at_zero", _codes(shorts_review.lint_storyboard(_job(self._img(2), captions=caps))))
 
     def test_risk_fail_needs_confirm(self):
         cards = [{"kind": "text_card", "seconds": 6, "title": "제목", "palette": i, "narration": "나레이션."} for i in range(4)]

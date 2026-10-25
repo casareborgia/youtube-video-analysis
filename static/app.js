@@ -2485,6 +2485,7 @@ document.addEventListener('DOMContentLoaded', () => {
           </div>
           ${dataSummary ? `<div style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px;">데이터: ${dataSummary}</div>` : ''}
           <textarea class="form-control shorts-scene-narration" rows="3" maxlength="400" style="font-size: 0.82rem; margin-bottom: 6px;">${escapeHtml(s.narration || '')}</textarea>
+          <input type="text" class="form-control shorts-scene-emphasis" maxlength="20" data-orig="${escapeHtml(s.emphasis || '')}" value="${escapeHtml(s.emphasis || '')}" placeholder="강조어 (비우면 빌드 때 자동 선택)" title="자막에서 액센트 색으로 강조할 어절${s.emphasis_source ? ' · 출처 ' + escapeHtml(s.emphasis_source) : ''}" style="padding: 4px 6px; font-size: 0.78rem; margin-bottom: 6px;">
           <div style="display: flex; gap: 6px; align-items: center;">
             <input type="number" class="form-control shorts-scene-seconds" min="1" max="15" step="0.5" value="${Number(s.seconds || 0)}" style="width: 80px; padding: 4px 6px; font-size: 0.8rem;" title="씬 길이(초) — 빌드 시 실제 발화 길이로 다시 맞춰짐">
             <span style="font-size: 0.72rem; color: var(--text-muted);">초</span>
@@ -2518,7 +2519,12 @@ document.addEventListener('DOMContentLoaded', () => {
       motion: card.querySelector('.shorts-scene-motion').value,
       kind: card.querySelector('.shorts-scene-kind').value,
       title: card.querySelector('.shorts-scene-title').value,
-      subtitle: card.querySelector('.shorts-scene-subtitle').value
+      subtitle: card.querySelector('.shorts-scene-subtitle').value,
+      // 강조어는 바꿨을 때만 보낸다 — 빈 칸을 그대로 저장하면 빌드 때 자동 선택이 막힌다
+      ...(() => {
+        const el = card.querySelector('.shorts-scene-emphasis');
+        return el && el.value !== el.dataset.orig ? { emphasis: el.value } : {};
+      })()
     }));
     return {
       hook_text: shortsHookInput.value,

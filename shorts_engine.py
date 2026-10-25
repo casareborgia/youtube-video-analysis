@@ -23,6 +23,7 @@ import concept_packs
 import producer  # ffmpeg_path(drawtext 지원 바이너리 우선), audio_duration, find_font, generate_images, list_media
 import scene3d_spec
 import scene_store
+import shorts_captions
 import shorts_review
 import tts_service
 
@@ -50,7 +51,9 @@ SCENE_KINDS = ("image", "text_card", "stat_card", "bar_chart", "compare", "flyov
 SCENE_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows", "time_of_day", "seed",
                      "scene3d")
 FLYOVER_TIMES = ("sunrise", "day", "sunset")   # flyover(3D 항공) 씬의 하늘 시간대
-SCENE_TRANSITIONS = ("fade", "slide", "wipe", "none")   # 씬으로 들어오는 전환 (Remotion @remotion/transitions, ffmpeg 폴백은 무시)
+SCENE_TRANSITIONS = ("fade", "slide", "wipe", "zoom_through", "color_flood", "whip", "dip", "none")   # 씬으로 들어오는 전환 (Remotion, ffmpeg 폴백은 무시)
+# U-3 자동 배정 (HF motion.md: 원인 있는 전환 3~5종, 같은 전환 연속 금지, 하드컷은 이음새의 1/3 이하 — 자동 배정은 하드컷을 쓰지 않는다)
+AUTO_TRANSITION_ROTATION = ("slide", "whip", "wipe", "fade")
 FALLBACK_PALETTE = ("0x1b2a4a", "0x3a1f4f", "0x0f3d3e", "0x4a2a1b", "0x1f3f2a", "0x2b1b4a")
 
 DEFAULT_ACCENT = "#ffd166"
@@ -250,11 +253,16 @@ def build_remotion_props(job: dict) -> dict:
         "hookText": sb.get("hook_text") or "",
         "hookSeconds": float(sb.get("hook_seconds") or 3.0),
         "endTag": ({"text": tag.get("text", ""), "subtext": tag.get("subtext", ""), "seconds": float(tag.get("seconds") or 2.0)} if tag else None),
+        # U-3: 그룹 경계(문장 끝·쉼·어절 상한)에 pageBreakAfter, 씬 강조어 토큰에 emphasis
         "captions": [
-            {k: v for k, v in c.items() if k in ("text", "startMs", "endMs", "pageBreakAfter")}
-            for c in (job.get("captions") or [])
+            {k: v for k, v in c.items() if k in ("text", "startMs", "endMs", "pageBreakAfter", "emphasis")}
+            for c in shorts_captions.mark_emphasis(
+                shorts_captions.group_captions(job.get("captions") or [], job.get("caption_energy") or shorts_captions.DEFAULT_ENERGY),
+                scenes_in)
         ],
-        "captionPageMs": int(job.get("caption_page_ms") or 1200),
+        "captionPageMs": shorts_captions.GROUPED_PAGE_MS,
+        "captionHoldMs": shorts_captions.CAPTION_HOLD_MS,
+        "captionMinStartMs": shorts_captions.CAPTION_MIN_START_MS,
         "narrationAudio": _ensure_in_job_dir(shorts_id, narration, "narration") if narration else None,
         "bgmAudio": _ensure_in_job_dir(shorts_id, bgm, "bgm") if bgm else None,
         "bgmVolume": float(audio.get("bgm_volume") if audio.get("bgm_volume") is not None else DEFAULT_BGM_VOLUME),
@@ -855,6 +863,63 @@ def fit_to_max_seconds(job: dict, max_seconds: float = MAX_SECONDS, min_scene: f
     return warnings
 
 
+def assign_transitions(job: dict) -> List[str]:
+    """사용자가 정하지 않은 이음새에 전환을 자동 배정한다(transition_auto=True). 반환: 이음새별 전환.
+
+    - 같은 종류 씬이 이어지면 바뀐 것을 알리는 color_flood·dip
+    - 이미지·3D(움직이는) 씬으로 들어갈 때는 zoom_through
+    - 나머지는 slide → whip → wipe → fade 순환
+    - 바로 앞 이음새와 같은 전환은 피하고, 이음새가 3개 이상이면 3종 이상이 되게 한다
+    """
+    scenes = (job.get("storyboard") or {}).get("scenes") or []
+    seams: List[str] = []
+    rot = 0
+    for i in range(1, len(scenes)):
+        cur, prev = scenes[i], scenes[i - 1]
+        if cur.get("transition") in SCENE_TRANSITIONS and not cur.get("transition_auto"):
+            seams.append(cur["transition"])
+            continue
+        last = seams[-1] if seams else None
+        k_cur, k_prev = cur.get("kind") or "image", prev.get("kind") or "image"
+        if k_cur == k_prev:
+            prefs = ["color_flood", "dip"]
+        elif k_cur in ("image", "flyover", "scene3d"):
+            prefs = ["zoom_through", "whip"]
+        else:
+            prefs = []
+        prefs += [AUTO_TRANSITION_ROTATION[(rot + j) % len(AUTO_TRANSITION_ROTATION)] for j in range(len(AUTO_TRANSITION_ROTATION))]
+        recent = set(seams[-2:])
+        pick = next((t for t in prefs if t != last and t not in recent), None) or next(t for t in prefs if t != last)
+        if pick in AUTO_TRANSITION_ROTATION:
+            rot = AUTO_TRANSITION_ROTATION.index(pick) + 1
+        cur["transition"], cur["transition_auto"] = pick, True
+        seams.append(pick)
+    return seams
+
+
+def _llm_emphasis(narrations: List[str]) -> List[str]:
+    """로컬 LLM 에 씬별 강조어 1개를 묻는다(숫자·고유명사 우선, 대본에 있는 그대로). 실패하면 빈 목록."""
+    import llm_client
+    lines = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(narrations))
+    messages = [
+        {"role": "system", "content": "쇼츠 자막에서 강조할 핵심어를 고르는 편집자입니다. JSON 만 답합니다."},
+        {"role": "user", "content": (
+            "각 문장에서 시청자가 꼭 기억해야 할 단어를 하나씩 고르세요. 숫자(단위 포함)나 고유명사를 우선하고, "
+            "문장에 적힌 그대로 한 어절만 쓰세요. 마땅한 단어가 없으면 빈 문자열.\n"
+            f"{lines}\n\n형식: {{\"words\": [\"...\", ...]}} (문장 수 {len(narrations)}개와 같은 길이)")},
+    ]
+    data, _raw = llm_client.call_llm_json(messages, max_tokens=400, temperature=0.2, max_continues=0)
+    words = (data or {}).get("words") if isinstance(data, dict) else None
+    return [str(w or "") for w in words] if isinstance(words, list) else []
+
+
+def ensure_emphasis(job: dict, llm: Optional[Callable] = None) -> None:
+    """강조어가 없는 씬만 채운다(LLM → 숫자 어절 → 없음). 실패해도 빌드는 계속한다."""
+    scenes = (job.get("storyboard") or {}).get("scenes") or []
+    if any("emphasis" not in s for s in scenes):
+        shorts_captions.pick_emphasis_words(scenes, llm=llm if llm is not None else _llm_emphasis)
+
+
 def refresh_lint(job: dict) -> dict:
     """U-1 렌더 전 린트를 다시 돌려 job["lint"] 에 저장(저장은 호출부). 빌드를 막지 않는다."""
     job["lint"] = shorts_review.lint_storyboard(job)
@@ -951,6 +1016,7 @@ def build_job_from_plan(plan_id: str, platforms: Optional[List[str]] = None, voi
     }
     _resolve_scene_images(job, plan)
     fit_to_max_seconds(job)
+    assign_transitions(job)
     refresh_lint(job)
     save_job(job)
     return job
@@ -978,6 +1044,10 @@ def update_storyboard(job: dict, hook_text: Optional[str] = None, scenes: Option
                 cur["motion"] = edit["motion"]
             if edit.get("transition") in SCENE_TRANSITIONS:
                 cur["transition"] = edit["transition"]
+                cur.pop("transition_auto", None)   # 사용자가 고른 전환은 자동 배정이 덮지 않는다
+            if edit.get("emphasis") is not None:
+                cur["emphasis"] = str(edit["emphasis"]).strip()[:20]
+                cur["emphasis_source"] = "user" if cur["emphasis"] else "none"
             for k in ("title", "subtitle"):
                 if edit.get(k) is not None:
                     cur[k] = str(edit[k]).strip()[:40]
@@ -993,6 +1063,7 @@ def update_storyboard(job: dict, hook_text: Optional[str] = None, scenes: Option
         if end_tag.get("seconds") is not None:
             cur_tag["seconds"] = max(0.0, min(4.0, float(end_tag["seconds"])))
     fit_to_max_seconds(job)
+    assign_transitions(job)
     refresh_lint(job)
     save_job(job)
     return job
@@ -1560,6 +1631,8 @@ def build_job(job: dict, options: Optional[dict] = None, progress_cb: Optional[C
             generate_job_images(job, progress_cb=scaled("images"), generator=hooks.get("generator"))
         else:
             step("images", f"기존 이미지 {est['reused']}장 재사용 (생성 비용 없음)", 40)
+        ensure_emphasis(job, llm=hooks.get("emphasis_llm"))
+        assign_transitions(job)
         synthesize_job_audio(job, voice_id=opts.get("voice_id"), progress_cb=scaled("audio"),
                              synth=hooks.get("synth"), merger=hooks.get("merger"), bgm_picker=hooks.get("bgm_picker"),
                              lufs_probe=hooks.get("lufs_probe"))
