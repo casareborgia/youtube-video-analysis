@@ -258,6 +258,7 @@ def build_remotion_props(job: dict) -> dict:
         "narrationAudio": _ensure_in_job_dir(shorts_id, narration, "narration") if narration else None,
         "bgmAudio": _ensure_in_job_dir(shorts_id, bgm, "bgm") if bgm else None,
         "bgmVolume": float(audio.get("bgm_volume") if audio.get("bgm_volume") is not None else DEFAULT_BGM_VOLUME),
+        "bgmBoost": float(audio.get("bgm_duck_boost") or BGM_DUCK_BOOST),
         "accent": job.get("accent") or DEFAULT_ACCENT,
         "brand": job.get("brand") or "",
         "transitionSeconds": float(job.get("transition_seconds") or DEFAULT_TRANSITION),
@@ -426,6 +427,7 @@ def render_shorts_ffmpeg(job: dict, progress_cb: Optional[Callable] = None, runn
     narration = audio.get("narration")
     bgm = audio.get("bgm")
     bgm_vol = float(audio.get("bgm_volume") if audio.get("bgm_volume") is not None else DEFAULT_BGM_VOLUME)
+    bgm_boost = float(audio.get("bgm_duck_boost") or BGM_DUCK_BOOST)
     cmd = [ff, "-y", "-hide_banner", "-loglevel", "error"]
     for f_ in files:
         cmd += ["-i", f_]
@@ -472,13 +474,13 @@ def render_shorts_ffmpeg(job: dict, progress_cb: Optional[Callable] = None, runn
 
     if "nar" in a_idx and "bgm" in a_idx:
         parts.append(f"[{a_idx['nar']}:a]aformat=sample_rates=48000:channel_layouts=stereo,apad,asplit=2[nar][key]")
-        parts.append(f"[{a_idx['bgm']}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume={min(0.5, bgm_vol * 2.2):.3f}[bg]")
+        parts.append(f"[{a_idx['bgm']}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume={min(0.5, bgm_vol * bgm_boost):.3f}[bg]")
         parts.append("[bg][key]sidechaincompress=threshold=0.02:ratio=6:attack=60:release=600:makeup=1[ducked]")
         parts.append("[ducked][nar]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]")
     elif "nar" in a_idx:
         parts.append(f"[{a_idx['nar']}:a]aformat=sample_rates=48000:channel_layouts=stereo,apad[a]")
     elif "bgm" in a_idx:
-        parts.append(f"[{a_idx['bgm']}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume={min(0.5, bgm_vol * 2.2):.3f}[a]")
+        parts.append(f"[{a_idx['bgm']}:a]aformat=sample_rates=48000:channel_layouts=stereo,volume={min(0.5, bgm_vol * bgm_boost):.3f}[a]")
     else:
         cmd += ["-f", "lavfi", "-i", "anullsrc=r=48000:cl=stereo"]
         parts.append(f"[{len(files)}:a]anull[a]")
@@ -588,6 +590,12 @@ MIN_SCENE_SECONDS = 3.0            # 60초 컷 때 씬을 이보다 짧게 줄�
 SCENE_PAD_SECONDS = 0.35           # 씬 나레이션 뒤 숨 고르기(무음). 자막·씬 시각은 이 패드를 포함한 길이로 계산
 TRIM_SILENCE_DB = -40.0            # edge-tts 끝 무음 판정 기준
 TRIM_KEEP_SECONDS = 0.08           # 끝 무음을 자를 때 남겨 두는 꼬리(말끝이 뚝 끊기지 않게)
+# U-2 오디오 2.0 (작업계획서_영상생성_업그레이드 6장 U-2). 근거: HyperFrames sound.md·mixing.md, OpenMontage sound-design.md·audio_energy(규칙만)
+VOICE_EQ_FILTER = "highpass=f=80,equalizer=f=3000:t=q:w=1:g=2.5,alimiter=limit=0.891:level=0:latency=1"  # 웅웅거림 제거·명료도 +2.5dB·피크 -1dB
+BGM_CARVE_FILTER = "equalizer=f=3000:t=o:w=1:g=-3"   # BGM 에서 말소리 대역(2~4kHz)을 3dB 비워 대사가 묻히지 않게
+BGM_DUCK_BOOST = 2.2               # 발화 밖 BGM 배율(발화 중 bgm_volume 의 몇 배). 2026-10-25 사용자 결정 ④: A/B(1.6·2.2·3.0) 듣고 2.2
+BGM_ENTRY_DROP_LU = 6.0            # 곡의 상위 10% 단기 음량에서 이만큼 아래를 넘는 첫 지점을 "곡이 살아나는 곳"으로 본다
+BGM_ENTRY_MIN_SECONDS = 1.0        # 이보다 앞이면 처음부터 튼다
 DEFAULT_VOICE_ID = "edge_injoon"   # 2026-10-19 사용자 결정 ②: 기본 성우 edge-tts
 TARGET_LUFS = -18.0                # 2026-10-25 사용자 결정: 대사 위주라 듣기 편한 -18 (작업계획서 5.3 의 -14 에서 변경)
 TARGET_TRUE_PEAK = -1.0
@@ -1144,6 +1152,79 @@ def _pad_audio(ff: Optional[str], src: str, dst: str, pad: float) -> str:
     return src
 
 
+def voice_eq_enabled() -> bool:
+    """SHORTS_VOICE_EQ=0 이면 나레이션 EQ 를 끈다(기본 켬)."""
+    return os.environ.get("SHORTS_VOICE_EQ", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _filter_inplace(ff: Optional[str], path: str, af: str, runner=subprocess.run) -> bool:
+    """오디오 필터를 걸어 제자리에 덮어쓴다(mp3). 실패하면 원본을 그대로 두고 False."""
+    if not ff or not path or not os.path.exists(path):
+        return False
+    tmp = path + ".fx.mp3"
+    try:
+        res = runner([ff, "-y", "-hide_banner", "-loglevel", "error", "-i", path, "-af", af,
+                      "-c:a", "libmp3lame", "-q:a", "2", tmp], capture_output=True, text=True, timeout=180)
+        if res.returncode != 0 or not os.path.exists(tmp):
+            return False
+        os.replace(tmp, path)
+        return True
+    except Exception:
+        return False
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def short_term_loudness(path: str, runner=subprocess.run) -> List[tuple]:
+    """ffmpeg ebur128 의 0.1초 간격 단기(3초) 음량 [(t, S), ...]. 실패하면 빈 목록."""
+    ff = producer.ffmpeg_path()
+    if not ff or not path or not os.path.exists(path):
+        return []
+    try:
+        res = runner([ff, "-hide_banner", "-nostats", "-i", path, "-vn", "-af", "ebur128", "-f", "null", "-"],
+                     capture_output=True, text=True, timeout=180)
+    except Exception:
+        return []
+    return [(float(t), float(v)) for t, v in re.findall(r"t:\s*([\d.]+)\s+TARGET:.*?S:\s*(-?[\d.]+)", res.stderr or "")]
+
+
+def bgm_entry_offset(path: str, duration: float, samples: Optional[List[tuple]] = None) -> float:
+    """곡에서 영상 길이만큼 틀 시작 지점(초) — 조용한 인트로를 건너뛴다 (OM audio_energy 개념 재작성).
+
+    단기 음량이 곡의 상위 10% 값보다 BGM_ENTRY_DROP_LU 아래를 처음 넘는 곳을 찾고, 3초 창의 지연을 감안해 1.5초 당긴다.
+    곡이 영상보다 짧거나 측정이 안 되면 0. 끝에서 영상 길이가 남도록 뒤로는 넘기지 않는다.
+    """
+    pts = [(t, v) for t, v in (samples if samples is not None else short_term_loudness(path)) if v > -70]
+    if not pts:
+        return 0.0
+    length = max(t for t, _ in pts)
+    latest = length - duration - 0.5
+    if latest <= BGM_ENTRY_MIN_SECONDS:
+        return 0.0
+    vals = sorted(v for _, v in pts)
+    ref = vals[min(len(vals) - 1, int(len(vals) * 0.9))]
+    first = next((t for t, v in pts if v >= ref - BGM_ENTRY_DROP_LU), 0.0)
+    entry = min(max(0.0, first - 1.5), latest)
+    return round(entry, 2) if entry >= BGM_ENTRY_MIN_SECONDS else 0.0
+
+
+def prepare_bgm(ff: Optional[str], src: str, dst: str, offset: float, duration: float, carve: bool = True,
+                runner=subprocess.run) -> Optional[str]:
+    """루나 원곡(읽기 전용)에서 offset 부터 duration+1초를 잘라 잡 폴더에 BGM 을 만든다. 말소리 대역도 비운다. 실패하면 None."""
+    if not ff or not src or not os.path.exists(src):
+        return None
+    cmd = [ff, "-y", "-hide_banner", "-loglevel", "error", "-ss", f"{max(0.0, offset):.2f}", "-t", f"{duration + 1.0:.2f}", "-i", src]
+    if carve:
+        cmd += ["-af", BGM_CARVE_FILTER]
+    cmd += ["-c:a", "libmp3lame", "-q:a", "2", dst]
+    try:
+        res = runner(cmd, capture_output=True, text=True, timeout=180)
+        return dst if res.returncode == 0 and os.path.exists(dst) else None
+    except Exception:
+        return None
+
+
 def pick_bgm(track_id: Optional[str] = None) -> Optional[dict]:
     """루나 트랙 중 vocal_mode == 'instrumental' 인 음원을 고른다(최신순). 없으면 None → 무음."""
     try:
@@ -1228,6 +1309,8 @@ def synthesize_job_audio(job: dict, voice_id: Optional[str] = None, progress_cb:
     narration = os.path.join(d, "narration.mp3")
     if not merge(files, narration) or not os.path.exists(narration):
         raise RuntimeError("나레이션 병합에 실패했습니다 (ffmpeg 확인).")
+    # U-2: 나레이션 EQ (80Hz 아래 제거·3kHz +2.5dB·피크 -1dB). 시간축은 바뀌지 않아 자막 타이밍은 그대로다
+    voice_eq = voice_eq_enabled() and _filter_inplace(ff, narration, VOICE_EQ_FILTER)
 
     # 60초 상한: 발화가 길어 넘치면 엔드 태그를 먼저 줄이고, 그래도 넘으면 대본을 줄이라고 실패시킨다(음성 중간을 자르지 않는다)
     tag = sb.setdefault("end_tag", {"text": "", "subtext": "", "seconds": 2.0})
@@ -1242,17 +1325,27 @@ def synthesize_job_audio(job: dict, voice_id: Optional[str] = None, progress_cb:
     audio = job.setdefault("audio", {})
     audio.update({
         "narration": narration,
+        "voice_eq": bool(voice_eq),
         "bgm": bgm["file"] if bgm else None,
+        "bgm_source": bgm["file"] if bgm else None,
+        "bgm_offset": 0.0,
         "bgm_track_id": bgm["track_id"] if bgm else None,
         "bgm_title": bgm.get("title") if bgm else None,
         "bgm_volume": audio.get("bgm_volume", DEFAULT_BGM_VOLUME),
+        "bgm_duck_boost": float(audio.get("bgm_duck_boost") or BGM_DUCK_BOOST),
         "narration_seconds": round(cursor_ms / 1000.0, 3),
     })
     if bgm:
+        # U-2: 곡의 조용한 인트로를 건너뛰고(진입점), 말소리 대역을 비운 구간만 잡 폴더에 만든다. 실패하면 원곡 처음부터
+        offset = bgm_entry_offset(bgm["file"], total_seconds(job))
+        prepared = prepare_bgm(ff, bgm["file"], os.path.join(d, "bgm_prepared.mp3"), offset, total_seconds(job))
+        if prepared:
+            audio["bgm"] = prepared
+            audio["bgm_offset"] = offset
         # 곡마다 마스터링 음량이 달라 고정 배율 대신 "나레이션보다 N LU 아래"로 맞춘다. 루나 원곡은 읽기만 한다.
         probe = lufs_probe or integrated_lufs
         under = float(audio.get("bgm_under_lu") or BGM_UNDER_NARRATION_LU)
-        n_lufs, b_lufs = probe(narration), probe(bgm["file"], seconds=120)
+        n_lufs, b_lufs = probe(narration), probe(audio["bgm"], seconds=None if prepared else 120)
         audio["bgm_under_lu"] = under
         audio["bgm_lufs"] = b_lufs
         if n_lufs is not None and b_lufs is not None:
