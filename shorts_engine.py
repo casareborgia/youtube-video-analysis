@@ -279,8 +279,21 @@ def build_remotion_props(job: dict) -> dict:
         "brand": job.get("brand") or "",
         "transitionSeconds": float(job.get("transition_seconds") or DEFAULT_TRANSITION),
         "sfx": bool(job.get("sfx")),
+        "sourceLine": source_line(job),
     }
     return props
+
+
+def source_line(job: dict) -> Optional[str]:
+    """이미지·지도 장면 위에 작게 띄우는 출전 줄(Shiji 팩). job["source_line"] 이 있으면 그것, 없으면 첫 원문 인장의 출전."""
+    if job.get("source_line"):
+        return str(job["source_line"])[:60]
+    if job.get("concept_key") != "shorts_shiji":
+        return None
+    for s in (job.get("storyboard") or {}).get("scenes") or []:
+        if (s.get("kind") or "image") == "seal" and s.get("source"):
+            return f"From the {s['source']}"[:60]
+    return None
 
 
 def render_shorts_remotion(job: dict, progress_cb: Optional[Callable] = None, timeout: int = 900, runner=subprocess.run) -> dict:

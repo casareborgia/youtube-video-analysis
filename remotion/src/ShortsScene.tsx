@@ -124,6 +124,7 @@ export type ShortsSceneProps = {
   brand?: string;
   transitionSeconds?: number; // 씬 전환 길이. 기본 0.4 (0 이면 컷)
   sfx?: boolean; // 효과음 팔레트(전환 whoosh·whip 교대, 숫자 착지 switch). 기본 꺼짐
+  sourceLine?: string | null; // 이미지·지도 장면 위 작은 출전 줄(Shiji Files). 훅·원문 인장 장면에서는 숨긴다
 };
 
 export const totalSecondsOf = (p: {
@@ -562,6 +563,33 @@ const CaptionPage: React.FC<{ page: TikTokPage; accent: string; emphasisFrom: Se
   );
 };
 
+// ── 출전 줄 (상단 안전 영역 오른쪽, 작게) — 원문 인장은 자기 출전을 따로 보여 주므로 그 장면에서는 숨긴다 ──
+const SourceLine: React.FC<{ text: string; hidden: (frame: number) => boolean }> = ({ text, hidden }) => {
+  const frame = useCurrentFrame();
+  const off = hidden(frame);
+  const appear = interpolate(frame, [0, 10], [0, 1], { extrapolateRight: "clamp" });
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: SAFE_ZONE.top + 18,
+        right: SAFE_ZONE.right,
+        maxWidth: 620,
+        textAlign: "right",
+        fontFamily,
+        fontSize: 28,   // 폰 폭(390pt)에서 약 10pt — 배지처럼 작지만 읽힌다
+        fontWeight: 600,
+        letterSpacing: "0.06em",
+        color: "rgba(239,230,210,0.82)",
+        textShadow: "0 2px 10px rgba(0,0,0,0.85)",
+        opacity: off ? 0 : appear,
+      }}
+    >
+      {text}
+    </div>
+  );
+};
+
 // ── 훅 문구 (상단 안전 영역) ──────────────────────────────────────────────────
 const HookBanner: React.FC<{ text: string; accent: string; durationInFrames: number }> = ({
   text,
@@ -711,6 +739,7 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
   brand = "",
   transitionSeconds = 0.4,
   sfx = false,
+  sourceLine = null,
 }) => {
   const { fps, durationInFrames } = useVideoConfig();
   const fontOk = useFontReady();
@@ -911,6 +940,19 @@ export const ShortsScene: React.FC<ShortsSceneProps> = ({
       {hookText ? (
         <Sequence from={0} durationInFrames={hookFrames} layout="none">
           <HookBanner text={hookText} accent={accent} durationInFrames={hookFrames} />
+        </Sequence>
+      ) : null}
+
+      {/* 4b. 출전 줄 — 훅이 끝난 뒤, 원문 인장 장면 밖에서만 */}
+      {sourceLine ? (
+        <Sequence from={hookFrames} durationInFrames={Math.max(1, durationInFrames - hookFrames - endTagFrames)} layout="none">
+          <SourceLine
+            text={sourceLine}
+            hidden={(f) => {
+              const abs = f + hookFrames;
+              return timeline.some((t) => t.kind === "seal" && abs >= t.from - 6 && abs < t.from + t.dur + 6);
+            }}
+          />
         </Sequence>
       ) : null}
 
