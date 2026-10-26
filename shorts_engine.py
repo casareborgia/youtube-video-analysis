@@ -50,7 +50,7 @@ SAFE_ZONE = {"top": 120, "bottom": 300, "left": 90, "right": 96}
 # 씬 종류 — image 외에는 이미지 생성 비용 없이 Remotion 이 그린다 (작업계획서 비용 절감안 ①)
 SCENE_KINDS = ("image", "text_card", "stat_card", "bar_chart", "compare", "flyover", "scene3d", "seal", "map")
 SCENE_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows", "time_of_day", "seed",
-                     "scene3d", "hanzi", "translation", "source", "states", "arrows", "year")
+                     "scene3d", "hanzi", "translation", "source", "states", "arrows", "year", "grounding", "grounding_source")
 # seal(원문 인장): hanzi 원문 + translation 자체 번역 + source 출전 — 출전이 없으면 린트 P0(가짜 명언 금지, 파일럿 계획 P-3)
 SEAL_TRANSLATION_MAX = 120
 SEAL_SOURCE_MAX = 40
@@ -1048,6 +1048,7 @@ def build_job_from_plan(plan_id: str, platforms: Optional[List[str]] = None, voi
         "voice_id": voice_id or DEFAULT_VOICE_ID,
         **({"language": language} if language else {}),
         **({"accent": spec["accent"]} if spec.get("accent") else {}),
+        **({"format_version": spec["format_version"]} if spec.get("format_version") else {}),
         "concept_key": plan.get("concept_key") or "",
         "storyboard": {
             "hook_text": hook,
@@ -1112,6 +1113,10 @@ def update_storyboard(job: dict, hook_text: Optional[str] = None, scenes: Option
                 cur["translation"] = _clip_text(edit["translation"], SEAL_TRANSLATION_MAX)
             if edit.get("source") is not None:
                 cur["source"] = _clip_text(edit["source"], SEAL_SOURCE_MAX)
+            if edit.get("grounding") is not None:
+                cur["grounding"] = re.sub(r"\s+", "", str(edit["grounding"]))[:60]
+            if edit.get("grounding_source") is not None:
+                cur["grounding_source"] = _clip_text(edit["grounding_source"], SEAL_SOURCE_MAX)
             if edit.get("kind") in kinds and edit["kind"] != (cur.get("kind") or "image"):
                 cur["kind"] = edit["kind"]
                 cur.pop("kind_note", None)

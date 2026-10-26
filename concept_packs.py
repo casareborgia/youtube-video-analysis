@@ -311,7 +311,16 @@ def _shiji_pack() -> Dict[str, Any]:
     pack["description"] = "사기·전국책 고사를 영어로 — 콜드 오픈 → 배경(지도) → 결정적 한 수 → 원문 인장 → 결말·예고"
     spec = pack["shorts"]
     spec["scene_kinds"] = spec["scene_kinds"] + ["seal", "map"]
-    spec["scene_kind_fields"] = spec["scene_kind_fields"] + ["hanzi", "translation", "source", "states", "arrows", "year"]
+    spec["scene_kind_fields"] = spec["scene_kind_fields"] + ["hanzi", "translation", "source", "states", "arrows", "year",
+                                                           "grounding", "grounding_source"]
+    # v3 고정 틀(2026-10-27 사용자 지시 — 이후 시리즈도 바꾸지 않는다): 6씬 순서 고정, 5씬 통찰은 원문 근거 필수, 6씬은 질문.
+    # shorts_review._shiji_v3_findings 가 format_version 3 잡에 P0(발행 잠금)로 강제한다.
+    spec["format_version"] = 3
+    spec["min_scenes"] = spec["max_scenes"] = 6
+    spec["beats"] = ["Cold open — the most shocking fact", "Setup — who, and what is at stake", "The move — what happened, as recorded",
+                     "Original words — seal with source", "Why it worked — one insight grounded in an original line",
+                     "Question — hand it back to the viewer"]
+    pack["plot"] = "콜드 오픈(충격적 사실) -> 배경 -> 결정적 한 수 -> 원문 인장 -> 왜 통했나(원문 근거 통찰) -> 질문"
     # 수묵 시네마틱 톤(P-4): 로컬 ComfyUI 이미지(비용 0), 금색 강조, 영어 엔드 태그, 전환은 dip·zoom_through 위주
     spec["image_backend"] = "comfyui"
     spec["image_style"] = ("dark traditional Chinese ink wash painting, cinematic composition, ancient China in the Warring States period, "
