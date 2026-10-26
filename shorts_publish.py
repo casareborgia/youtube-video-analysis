@@ -5,6 +5,8 @@
 - 언제나 비공개로 먼저 올린다(예약이면 private + publishAt). 공개는 사람이 확인한 뒤 set_youtube_privacy 로.
 - AI 합성 표시(containsSyntheticMedia)를 켜고, 아동용이 아님으로 올린다.
 - 이번 범위 밖: 인스타 export 번들, LLM 메타데이터 — 제목은 사람이 정하고 설명은 템플릿.
+- 원문 댓글(원문 한 줄 + 직역 + 출전): 비공개 영상에는 댓글을 달 수 없어(403) 업로드 때는 잡에 대기로 두고 공개 전환 때 등록한다.
+  고정은 API 로 할 수 없다 — Studio 에서 한 번 누른다.
 """
 
 import os
@@ -65,6 +67,53 @@ def build_youtube_metadata(job: dict, title: Optional[str] = None, description: 
     }
 
 
+def original_text_comment(job: dict) -> str:
+    """원문 댓글 문구. 기획서에 적은 댓글이 있으면 그것, 없으면 원문 인장마다 '출전: 원문 / "직역"' + 칸리포 출처."""
+    custom = str(((job.get("metadata") or {}).get("youtube") or {}).get("pinned_comment") or "").strip()
+    if custom:
+        return custom[:9000]
+    lines, seen = [], set()
+    for s in (job.get("storyboard") or {}).get("scenes") or []:
+        if (s.get("kind") or "image") != "seal" or not s.get("hanzi") or s["hanzi"] in seen:
+            continue
+        seen.add(s["hanzi"])
+        head = f"Original text, {s['source']}: {s['hanzi']}" if s.get("source") else f"Original text: {s['hanzi']}"
+        lines.append(head + (f'\n"{s["translation"]}"' if s.get("translation") else ""))
+    if not lines:
+        return ""
+    return "\n\n".join(lines + [f"From the {kanripo_db.CREDIT.replace('Original text: ', '')}."])
+
+
+def _post_comment(job: dict, text: str) -> dict:
+    """원문 댓글 등록 — 실패해도 공개 상태는 되돌리지 않고 경고만 남긴다."""
+    pub = job["publish"]["youtube"]
+    try:
+        uploader.post_comment(pub["video_id"], text, channel_id=pub.get("channel_id"))
+        pub.update(comment_posted=True, comment_text=text, comment_pending=None,
+                   studio_comment_url=f"https://studio.youtube.com/video/{pub['video_id']}/comments")
+    except Exception as e:
+        pub["comment_posted"] = False
+        pub.setdefault("warnings", []).append(f"원문 댓글 등록 실패: {str(e)[:160]}")
+    return job
+
+
+def post_original_comment(job: dict) -> dict:
+    """이미 공개된 영상에 원문 댓글을 단다(이 기능 전에 공개한 편, 또는 공개 전환 때 실패한 편)."""
+    pub = (job.get("publish") or {}).get("youtube") or {}
+    if not pub.get("video_id"):
+        raise PublishRefused("아직 업로드하지 않은 잡입니다.")
+    if pub.get("privacy") != "public":
+        raise PublishRefused("공개 영상에만 댓글을 달 수 있습니다 — 먼저 공개로 바꾸세요.")
+    if pub.get("comment_posted"):
+        raise PublishRefused("원문 댓글을 이미 달았습니다.")
+    text = pub.get("comment_pending") or original_text_comment(job)
+    if not text:
+        raise PublishRefused("달 원문 댓글이 없습니다(원문 인장 씬이 없음).")
+    _post_comment(job, text)
+    shorts_engine.save_job(job)
+    return job
+
+
 def _guard_channel(channel_id: Optional[str]) -> str:
     cid = (channel_id or default_channel_id()).strip()
     if not cid:
@@ -95,7 +144,8 @@ def publish_youtube(job: dict, channel_id: Optional[str] = None, title: Optional
         default_language=meta["default_language"], audio_language=meta["audio_language"], contains_synthetic_media=True,
     )
     pub.update({"video_id": res.get("video_id"), "url": res.get("url"), "channel_id": cid, "privacy": "private",
-                "publish_at": publish_at, "title": meta["title"], "uploaded_at": time.time(), "warnings": res.get("warnings") or []})
+                "publish_at": publish_at, "title": meta["title"], "uploaded_at": time.time(), "warnings": res.get("warnings") or [],
+                "comment_pending": original_text_comment(job) or None, "comment_posted": False})
     shorts_engine.save_job(job)
     return job
 
@@ -111,5 +161,7 @@ def set_youtube_privacy(job: dict, privacy: str) -> dict:
     pub["privacy"] = res.get("privacy") or privacy
     if pub["privacy"] == "public":
         pub["publish_at"] = None
+        if pub.get("comment_pending") and not pub.get("comment_posted"):
+            _post_comment(job, pub["comment_pending"])
     shorts_engine.save_job(job)
     return job
