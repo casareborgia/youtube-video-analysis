@@ -50,7 +50,8 @@ SAFE_ZONE = {"top": 120, "bottom": 300, "left": 90, "right": 96}
 # 씬 종류 — image 외에는 이미지 생성 비용 없이 Remotion 이 그린다 (작업계획서 비용 절감안 ①)
 SCENE_KINDS = ("image", "text_card", "stat_card", "bar_chart", "compare", "flyover", "scene3d", "seal", "map")
 SCENE_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows", "time_of_day", "seed",
-                     "scene3d", "hanzi", "translation", "source", "states", "arrows", "year", "grounding", "grounding_source")
+                     "scene3d", "hanzi", "translation", "source", "states", "arrows", "year", "grounding", "grounding_source",
+                     "narration_ko")
 # seal(원문 인장): hanzi 원문 + translation 자체 번역 + source 출전 — 출전이 없으면 린트 P0(가짜 명언 금지, 파일럿 계획 P-3)
 SEAL_TRANSLATION_MAX = 120
 SEAL_SOURCE_MAX = 40
@@ -1063,7 +1064,9 @@ def build_job_from_plan(plan_id: str, platforms: Optional[List[str]] = None, voi
         "render": {},
         "qc": {},
         "metadata": {
-            "youtube": {"title": yt_title[:100], "description": description[:4900], "tags": ["Shorts"], "pinned_comment": plan.get("pinned_comment") or ""},
+            "youtube": {"title": yt_title[:100], "description": description[:4900], "tags": ["Shorts"], "pinned_comment": plan.get("pinned_comment") or "",
+                        **({"title_ko": plan["title_ko"]} if plan.get("title_ko") else {}),
+                        **({"description_ko": plan["description_ko"]} if plan.get("description_ko") else {})},
             "instagram": {"caption": f"{title}\n\n{description}"[:2200], "hashtags": []},
         },
         "publish": {"youtube": {"video_id": None, "publish_at": None}, "instagram": {"media_id": None, "permalink": None}},

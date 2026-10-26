@@ -26,7 +26,8 @@ PLAN_ID_RE = re.compile(r"^scenes_[0-9]+(?:_[\w가-힣-]+)?$")
 # 쇼츠 씬 종류별 필드 (shorts_engine.SCENE_KIND_FIELDS 와 동일)
 # shorts_engine.SCENE_KIND_FIELDS 와 같은 목록(이 모듈은 엔진을 import 하지 않는다 — tests/test_shorts_seal_map.py 가 일치 확인)
 SHORTS_KIND_FIELDS = ("palette", "title", "subtitle", "value", "unit", "prefix", "decimals", "label", "bars", "rows", "time_of_day", "seed",
-                      "scene3d", "hanzi", "translation", "source", "states", "arrows", "year", "grounding", "grounding_source")
+                      "scene3d", "hanzi", "translation", "source", "states", "arrows", "year", "grounding", "grounding_source",
+                      "narration_ko")
 
 
 def _slug(text: str, limit: int = 24) -> str:
@@ -125,6 +126,9 @@ def build_plan(batch: Dict[str, Any], scene_seconds: float = 8.0) -> Dict[str, A
         "title_candidates": batch.get("title_candidates", []),
         "engagement_question": batch.get("engagement_question", ""),
         "pinned_comment": batch.get("pinned_comment", ""),
+        # 다국어(한국어 자막·제목) — 한국어 자막 트랙은 씬별 narration_ko, 제목·설명은 유튜브 다국어 제목으로 올린다
+        "title_ko": batch.get("title_ko", ""),
+        "description_ko": batch.get("description_ko", ""),
         "thumbnail_redline": batch.get("thumbnail_redline"),
         "thumbnail_prompt": batch.get("thumbnail_redline"),  # producer 가 읽는 이름
         # 쇼츠(9:16) 기획서 전용 — shorts_engine.build_job_from_plan 이 훅·엔드 태그로 읽는다 (16:9 는 빈 값)
