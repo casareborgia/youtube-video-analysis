@@ -548,7 +548,8 @@ const CaptionPage: React.FC<{ page: TikTokPage; accent: string; emphasisFrom: Se
                 display: "inline-block",
                 whiteSpace: "pre",
                 color: active || strong ? accent : "white",
-                transform: strong ? "scale(1.12)" : undefined,
+                // 강조어는 글자 크기 자체를 키운다 — transform: scale 은 자리를 넓히지 않아 앞 띄어쓰기를 덮었다(영어에서 "womenexecuted")
+                fontSize: strong ? "1.12em" : undefined,
                 textShadow: strong ? `0 0 24px ${accent}88, 0 6px 18px rgba(0,0,0,0.6)` : undefined,
               }}
             >
