@@ -108,6 +108,35 @@ def _seal_findings(scenes: List[dict]) -> List[dict]:
     return out
 
 
+# Shiji Files v3 고정 틀(2026-10-27 사용자 지시 — 이후 시리즈도 바꾸지 않는다). format_version 3 잡에만 적용한다.
+V3_SCENES = 6
+V3_SEAL_INDEX = 3       # 4씬 = 원문 인장
+V3_INSIGHT_INDEX = 4    # 5씬 = 원문 근거가 있는 통찰
+_QUESTION_END = re.compile(r"\?[\s\"'”’)]*$")
+
+
+def _shiji_v3_findings(job: dict) -> List[dict]:
+    """v3 틀 위반은 모두 P0 — 렌더 전 린트와 렌더 후 리뷰가 함께 써서 발행을 잠근다."""
+    if job.get("format_version") != 3:
+        return []
+    scenes = (job.get("storyboard") or {}).get("scenes") or []
+    fix = "v3 틀: 콜드 오픈 · 배경 · 결정적 한 수 · 원문 인장 · 원문 근거 통찰 · 질문 (6씬, 순서 고정)"
+    out: List[dict] = []
+    if len(scenes) != V3_SCENES:
+        out.append(_finding("P0", "v3_scene_count", f"v3 틀은 6씬인데 {len(scenes)}씬입니다.", fix))
+        return out
+    if (scenes[V3_SEAL_INDEX].get("kind") or "image") != "seal":
+        out.append(_finding("P0", "v3_seal_position", "4번째 씬이 원문 인장(seal)이 아닙니다.", fix, scene=V3_SEAL_INDEX + 1))
+    ins = scenes[V3_INSIGHT_INDEX]
+    if not str(ins.get("grounding") or "").strip() or not str(ins.get("grounding_source") or "").strip():
+        out.append(_finding("P0", "v3_insight_grounding", "5번째 씬(통찰)에 원문 근거(grounding)와 출전(grounding_source)이 없습니다.",
+                            "통찰은 원문 한 줄에서 꺼낸다 — 근거 원문과 출전을 적으세요. 근거가 없으면 그 통찰은 쓰지 않습니다.",
+                            scene=V3_INSIGHT_INDEX + 1))
+    if not _QUESTION_END.search(str(scenes[-1].get("narration") or "").strip()):
+        out.append(_finding("P0", "v3_question", "마지막 씬이 시청자에게 묻는 질문(물음표)으로 끝나지 않습니다.", fix, scene=V3_SCENES))
+    return out
+
+
 # 넘치면 글자가 잘리는 길이(최소 글자 크기에서 한 줄에 들어가는 한글 수 × 줄 수, 폭 894px 기준 근사)
 # ShortsScene 은 글자를 34px 아래로 줄이지 않으므로(HF text_below_floor 28px 는 구조상 걸리지 않음) 넘침을 대신 본다
 END_TAG_ENTER_SECONDS = 10 / _FPS  # 엔드 태그 페이드인 10프레임 — 그동안은 읽을 수 없다 (HF check 가 Remotion 결과에서 잡은 것)
@@ -319,6 +348,7 @@ def _lint_findings(job: dict) -> List[dict]:
             out.append(_finding("P2", "caption_at_zero", f"첫 자막이 {first_ms}ms 에 바로 뜹니다 (원래 있던 글자처럼 보임).",
                                 "첫 자막을 0.1~0.3초 뒤에 시작하세요 (U-3).", scene=1, t=first_ms / 1000.0))
     out += _seal_findings(scenes)
+    out += _shiji_v3_findings(job)
     return out
 
 
@@ -492,7 +522,7 @@ def review_render(job: dict, ff: Optional[str], out_dir: str, url_prefix: str, r
     tl = review_timeline(job)
     total = tl["total"]
     scenes_all = (job.get("storyboard") or {}).get("scenes") or []
-    findings = _promise_findings(job) + _seal_findings(scenes_all)
+    findings = _promise_findings(job) + _seal_findings(scenes_all) + _shiji_v3_findings(job)
     # 로컬 AI 이미지(ComfyUI)는 가짜 한자·글자가 섞일 수 있다 — 원문을 내세우는 채널이라 사람이 시트에서 확인한다(발행은 막지 않음)
     comfy = [int(s.get("scene_num") or i + 1) for i, s in enumerate(scenes_all)
              if (s.get("kind") or "image") == "image" and s.get("image_source") == "comfyui"]
