@@ -568,6 +568,40 @@ def set_video_privacy(video_id, privacy, channel_id=None):
     return {"video_id": video_id, "privacy": (res.get("status") or {}).get("privacyStatus", privacy)}
 
 
+def upload_caption(video_id, srt_path, language, name="", channel_id=None):
+    """자막 트랙(SRT) 업로드 — 비공개 영상에도 올릴 수 있다. captions.insert 는 400 유닛."""
+    from googleapiclient.http import MediaFileUpload
+    creds = _creds(channel_id)
+    if not creds:
+        raise RuntimeError("유튜브 계정이 연결되어 있지 않습니다.")
+    youtube = _service(creds)
+    body = {"snippet": {"videoId": video_id, "language": language, "name": name, "isDraft": False}}
+    res = youtube.captions().insert(part="snippet", body=body,
+                                    media_body=MediaFileUpload(srt_path, mimetype="application/octet-stream")).execute()
+    return {"id": res.get("id"), "language": language}
+
+
+# videos.update(part=snippet) 도 보낸 값으로 통째로 바꾼다 — 쓸 수 있는 값만 읽어 다시 보낸다
+_WRITABLE_SNIPPET = ("title", "description", "tags", "categoryId", "defaultLanguage", "defaultAudioLanguage")
+
+
+def set_video_localizations(video_id, localizations, channel_id=None):
+    """다국어 제목·설명을 더한다(예: {"ko": {"title", "description"}}). 기존 언어와 기본 snippet 은 유지한다."""
+    creds = _creds(channel_id)
+    if not creds:
+        raise RuntimeError("유튜브 계정이 연결되어 있지 않습니다.")
+    youtube = _service(creds)
+    items = youtube.videos().list(part="snippet,localizations", id=video_id).execute().get("items") or []
+    if not items:
+        raise RuntimeError(f"영상을 찾을 수 없습니다: {video_id}")
+    snippet = {k: v for k, v in (items[0].get("snippet") or {}).items() if k in _WRITABLE_SNIPPET}
+    merged = dict(items[0].get("localizations") or {})
+    merged.update(localizations)
+    res = youtube.videos().update(part="snippet,localizations",
+                                  body={"id": video_id, "snippet": snippet, "localizations": merged}).execute()
+    return res.get("localizations") or {}
+
+
 def create_playlist(title, description="", privacy="public", channel_id=None):
     """새 재생목록 생성"""
     creds = _creds(channel_id)

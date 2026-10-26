@@ -15,6 +15,7 @@ from typing import Callable, Optional
 
 import kanripo_db
 import luna_engine
+import shorts_captions
 import shorts_engine
 import uploader
 
@@ -42,13 +43,10 @@ def _sources(job: dict) -> list:
     return out
 
 
-def build_youtube_metadata(job: dict, title: Optional[str] = None, description: Optional[str] = None) -> dict:
-    """업로드 메타데이터. Shiji 팩이면 설명 끝에 출전·칸리포 출처·번역 표기·해시태그를 붙인다."""
-    yt = (job.get("metadata") or {}).get("youtube") or {}
-    lang = LANG_CODE.get(job.get("narration_language") or job.get("language") or "korean", "ko")
+def _description_tail(job: dict) -> list:
+    """설명 끝에 붙는 출전·칸리포 출처·해시태그(언어와 관계없이 같다)."""
     shiji = job.get("concept_key") == SHIJI_PACK
-    lead = (description if description is not None else yt.get("description") or (job.get("storyboard") or {}).get("hook_text") or "").strip()
-    parts = [lead] if lead else []
+    parts = []
     srcs = _sources(job)
     if srcs:
         parts.append("\n".join(f"📜 Source: {s}" for s in srcs))
@@ -56,6 +54,16 @@ def build_youtube_metadata(job: dict, title: Optional[str] = None, description: 
         parts.append(f"{kanripo_db.CREDIT}\nTranslation: Shiji Files")
     if shiji:
         parts.append(SHIJI_HASHTAGS)
+    return parts
+
+
+def build_youtube_metadata(job: dict, title: Optional[str] = None, description: Optional[str] = None) -> dict:
+    """업로드 메타데이터. Shiji 팩이면 설명 끝에 출전·칸리포 출처·번역 표기·해시태그를 붙인다."""
+    yt = (job.get("metadata") or {}).get("youtube") or {}
+    lang = LANG_CODE.get(job.get("narration_language") or job.get("language") or "korean", "ko")
+    shiji = job.get("concept_key") == SHIJI_PACK
+    lead = (description if description is not None else yt.get("description") or (job.get("storyboard") or {}).get("hook_text") or "").strip()
+    parts = ([lead] if lead else []) + _description_tail(job)
     tags = list(dict.fromkeys((yt.get("tags") or []) + (SHIJI_TAGS if shiji else [])))
     return {
         "title": (title or yt.get("title") or job.get("topic") or "Shorts").strip()[:100],
@@ -65,6 +73,82 @@ def build_youtube_metadata(job: dict, title: Optional[str] = None, description: 
         "default_language": lang,
         "audio_language": lang,
     }
+
+
+# ── 다국어: 영어·한국어 자막 트랙 + 한국어 제목·설명 (2026-10-27 사용자 결정 — 한국어 음성판은 보류) ──
+
+def build_srt_en(job: dict, path: str) -> str:
+    """화면 자막과 같은 그룹(문장 끝·쉼·어절 상한)으로 영어 자막 트랙을 만든다."""
+    grouped = shorts_captions.group_captions(job.get("captions") or [], job.get("caption_energy") or shorts_captions.DEFAULT_ENERGY)
+    return shorts_engine.captions_to_srt(grouped, path, page_ms=shorts_captions.GROUPED_PAGE_MS)
+
+
+def build_srt_ko(job: dict, path: str) -> int:
+    """씬마다 한국어 번역(narration_ko)을 그 씬이 나오는 동안 띄운다. 반환: 자막 수(0 이면 파일을 만들지 않는다)."""
+    cues, t = [], 0.0
+    for s in (job.get("storyboard") or {}).get("scenes") or []:
+        sec = float(s.get("seconds") or 0)
+        if str(s.get("narration_ko") or "").strip():
+            cues.append((int(t * 1000), int((t + sec) * 1000), s["narration_ko"].strip()))
+        t += sec
+    if not cues:
+        return 0
+    lines = []
+    for i, (a, b, text) in enumerate(cues, 1):
+        lines += [str(i), f"{shorts_engine._srt_time(a)} --> {shorts_engine._srt_time(b)}", text, ""]
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    return len(cues)
+
+
+def korean_localization(job: dict) -> Optional[dict]:
+    """유튜브 한국어 제목·설명. 기획서에 한국어 제목이 없으면 None."""
+    yt = (job.get("metadata") or {}).get("youtube") or {}
+    title = str(yt.get("title_ko") or "").strip()
+    if not title:
+        return None
+    if "#shorts" not in title.lower():
+        title = f"{title} #Shorts"
+    lead = str(yt.get("description_ko") or "").strip()
+    return {"title": title[:100], "description": "\n\n".join(([lead] if lead else []) + _description_tail(job))[:5000]}
+
+
+def _upload_languages(job: dict) -> dict:
+    """아직 없는 자막 트랙(en·ko)과 한국어 제목을 올린다. 실패해도 업로드는 그대로 두고 경고만 남긴다."""
+    pub = job["publish"]["youtube"]
+    vid, cid = pub["video_id"], pub.get("channel_id")
+    done = pub.setdefault("captions", [])
+    d = shorts_engine.job_dir(shorts_engine._safe_id(job["shorts_id"]), create=True)
+    tracks = []
+    if "en" not in done and job.get("captions"):
+        tracks.append(("en", "English", build_srt_en(job, os.path.join(d, "captions_en.srt"))))
+    ko_path = os.path.join(d, "captions_ko.srt")
+    if "ko" not in done and build_srt_ko(job, ko_path):
+        tracks.append(("ko", "한국어", ko_path))
+    for lang, name, path in tracks:
+        try:
+            uploader.upload_caption(vid, path, language=lang, name=name, channel_id=cid)
+            done.append(lang)
+        except Exception as e:
+            pub.setdefault("warnings", []).append(f"{lang} 자막 업로드 실패: {str(e)[:160]}")
+    loc = korean_localization(job)
+    if loc and not (pub.get("localizations") or {}).get("ko"):
+        try:
+            uploader.set_video_localizations(vid, {"ko": loc}, channel_id=cid)
+            pub.setdefault("localizations", {})["ko"] = True
+        except Exception as e:
+            pub.setdefault("warnings", []).append(f"한국어 제목·설명 등록 실패: {str(e)[:160]}")
+    return job
+
+
+def add_languages(job: dict) -> dict:
+    """이미 올린 편에 자막 트랙·한국어 제목을 나중에 붙인다(빠진 것만)."""
+    pub = (job.get("publish") or {}).get("youtube") or {}
+    if not pub.get("video_id"):
+        raise PublishRefused("아직 업로드하지 않은 잡입니다.")
+    _upload_languages(job)
+    shorts_engine.save_job(job)
+    return job
 
 
 def original_text_comment(job: dict) -> str:
@@ -146,6 +230,7 @@ def publish_youtube(job: dict, channel_id: Optional[str] = None, title: Optional
     pub.update({"video_id": res.get("video_id"), "url": res.get("url"), "channel_id": cid, "privacy": "private",
                 "publish_at": publish_at, "title": meta["title"], "uploaded_at": time.time(), "warnings": res.get("warnings") or [],
                 "comment_pending": original_text_comment(job) or None, "comment_posted": False})
+    _upload_languages(job)
     shorts_engine.save_job(job)
     return job
 

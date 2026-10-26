@@ -312,7 +312,7 @@ def _shiji_pack() -> Dict[str, Any]:
     spec = pack["shorts"]
     spec["scene_kinds"] = spec["scene_kinds"] + ["seal", "map"]
     spec["scene_kind_fields"] = spec["scene_kind_fields"] + ["hanzi", "translation", "source", "states", "arrows", "year",
-                                                           "grounding", "grounding_source"]
+                                                           "grounding", "grounding_source", "narration_ko"]
     # v3 고정 틀(2026-10-27 사용자 지시 — 이후 시리즈도 바꾸지 않는다): 6씬 순서 고정, 5씬 통찰은 원문 근거 필수, 6씬은 질문.
     # shorts_review._shiji_v3_findings 가 format_version 3 잡에 P0(발행 잠금)로 강제한다.
     spec["format_version"] = 3
