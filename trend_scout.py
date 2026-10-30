@@ -14,8 +14,10 @@ from pathlib import Path
 from typing import Dict, Any, List, Optional
 
 import random
+from datetime import datetime, timezone, timedelta
 import llm_client
 import concept_packs
+import luna_policy
 import uploader
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -496,28 +498,30 @@ def active_luna_genres() -> List[str]:
     return active or list(CORE_LUNA_GENRES)
 
 
+def balanced_genre_weights(stats: Optional[Dict[str, int]] = None) -> Dict[str, float]:
+    """활성 장르별 가중치 — 기본 가중치에 최근 제작 빈도의 역가중치를 곱한다 (pick_balanced_genres 가 쓰는 값)."""
+    if stats is None:
+        stats = get_production_genre_stats(limit=30)
+    weights = {}
+    # 가중치가 0보다 큰 활성 후보만 추출
+    for g in active_luna_genres():
+        base = GENRE_BASE_WEIGHTS.get(g, 1.0)
+        recent_cnt = stats.get(g, 0)
+        # 출현 빈도가 높을수록 감점 (1 / (1 + n * 1.5))
+        w = base / (1.0 + recent_cnt * 1.5)
+        weights[g] = max(w, 0.001)
+    return weights
+
+
 def pick_balanced_genres(count: int = 2, stats: Optional[Dict[str, int]] = None) -> List[str]:
     """
     채널 7개 장르 고정(대표 BGA 룸이 있는 장르)에 따라,
     가중치가 유효한 후보 중에서 최근 제작 빈도의 역가중치를 적용하여 선별합니다.
     """
-    if stats is None:
-        stats = get_production_genre_stats(limit=30)
-
-    # 가중치가 0보다 큰 활성 후보만 추출
-    candidates = active_luna_genres()
-
-    weights = []
-    for g in candidates:
-        base = GENRE_BASE_WEIGHTS.get(g, 1.0)
-        recent_cnt = stats.get(g, 0)
-        # 출현 빈도가 높을수록 감점 (1 / (1 + n * 1.5))
-        w = base / (1.0 + recent_cnt * 1.5)
-        weights.append(max(w, 0.001))
-
+    weight_map = balanced_genre_weights(stats)
     selected = []
-    cand_pool = list(candidates)
-    weight_pool = list(weights)
+    cand_pool = list(weight_map)
+    weight_pool = list(weight_map.values())
 
     for _ in range(count):
         if not cand_pool:
@@ -535,6 +539,129 @@ def pick_balanced_moods(count: int = 2, exclude: Optional[List[str]] = None) -> 
     """무드 다양성을 위해 무작위 2개 무드를 선별합니다 (중복 없음)."""
     cand = [m for m in LUNA_MOODS.keys() if m not in (exclude or [])]
     return random.sample(cand, min(count, len(cand)))
+
+
+# ── 정책 파일 기반 선택 (강화학습 시뮬레이터 → data/luna_policy.json) ──────────────
+
+KST = timezone(timedelta(hours=9))
+_WEEKDAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+
+def policy_arm_constraints():
+    """(차원별 허용 선택지, 반드시 포함할 선택지). 장르는 채널 고정 장르를 모두 담아야 한다."""
+    genres = active_luna_genres()
+    allowed = {
+        "format": list(luna_policy.FORMATS),
+        "genre": genres,
+        "mood": list(LUNA_MOODS.keys()),
+        "vocal_mode": list(luna_policy.VOCAL_MODES),
+    }
+    return allowed, {"genre": genres}
+
+
+def build_policy_context(stats: Dict[str, int], now: Optional[datetime] = None) -> Dict[str, Any]:
+    """선택 시점에 알 수 있던 값만 담는다 (미래 조회수 등은 넣지 않는다)."""
+    now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    kst = now_utc.astimezone(KST)
+    return {
+        "date_kst": kst.date().isoformat(),
+        "weekday_kst": _WEEKDAYS[kst.weekday()],
+        "hour_kst": kst.hour,
+        "recent_genre_counts_30": {g: int(stats.get(g, 0)) for g in active_luna_genres()},
+        "recent_track_count": int(sum(stats.values())),
+    }
+
+
+def _normalize(weights: Dict[str, float]) -> Dict[str, float]:
+    total = sum(weights.values())
+    return {k: v / total for k, v in weights.items()}
+
+
+def pick_policy_assignments(count: int = 2, stats: Optional[Dict[str, int]] = None,
+                            eligible_formats: Optional[List[str]] = ("single",),
+                            policy_path: Optional[Path] = None, now: Optional[datetime] = None,
+                            rng: Optional[random.Random] = None) -> Dict[str, Any]:
+    """다음 곡들의 형식·장르·무드·보컬 모드와 실제 선택 확률을 돌려준다.
+
+    정책 파일이 유효하면 그 확률로, 아니면 pick_balanced_genres 와 같은 가중치(무드는 균등)로 뽑는다.
+    한 번에 여러 곡을 뽑을 때 장르·무드는 비복원 추출이므로, 두 번째부터는 남은 후보끼리의 조건부 확률을 기록한다.
+    eligible_formats 는 이 경로가 만들 수 있는 형식 (일일 루틴은 단일 곡만).
+    """
+    if stats is None:
+        stats = get_production_genre_stats(limit=30)
+    now_utc = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    allowed, coverage = policy_arm_constraints()
+    policy, reason = luna_policy.load_policy(allowed, policy_path, coverage, now_utc)
+
+    def tables(pol):
+        if pol:
+            arms = pol["arms"]
+            return {
+                "format": arms["format"],
+                "genre": arms["genre"],
+                "mood": arms.get("mood") or _normalize({m: 1.0 for m in LUNA_MOODS}),
+                "vocal_mode": arms.get("vocal_mode") or {"auto": 1.0},
+            }
+        return {
+            "format": {"single": 1.0},
+            "genre": _normalize(balanced_genre_weights(stats)),
+            "mood": _normalize({m: 1.0 for m in LUNA_MOODS}),
+            "vocal_mode": {"auto": 1.0},
+        }
+
+    def draw_slots(probs):
+        slots, used = [], {"genre": [], "mood": []}
+        for i in range(count):
+            chosen, p, eligible = {}, {}, {}
+            for dim in ("format", "genre", "mood", "vocal_mode"):
+                c, prob, pool = luna_policy.draw(
+                    probs[dim], exclude=used.get(dim, ()),
+                    eligible=eligible_formats if dim == "format" else None, rng=rng)
+                chosen[dim], p[dim], eligible[dim] = c, prob, pool
+                if dim in used:
+                    used[dim].append(c)
+            joint = 1.0
+            for v in p.values():
+                joint *= v
+            slots.append({"draw_index": i + 1, "chosen": chosen, "probabilities": p,
+                          "action_probability": joint, "eligible_actions": eligible})
+        return slots
+
+    source, version = luna_policy.SOURCE_FALLBACK, None
+    if policy:
+        try:
+            slots = draw_slots(tables(policy))
+            source, version = luna_policy.SOURCE_POLICY, policy["policy_version"]
+        except ValueError as e:  # 예: 정책에 이 경로가 만들 수 있는 형식이 없음
+            policy, reason = None, f"정책으로 뽑을 수 없음: {e}"
+    if not policy:
+        print(f"[TrendScout] 정책 파일 미사용 → 균형 가중치로 선택 ({reason})")
+        slots = draw_slots(tables(None))
+
+    return {
+        "source": source,
+        "policy_version": version,
+        "fallback_reason": None if source == luna_policy.SOURCE_POLICY else reason,
+        "context_as_of": now_utc.isoformat().replace("+00:00", "Z"),
+        "context": build_policy_context(stats, now_utc),
+        "slots": slots,
+    }
+
+
+def policy_decision_for_slot(assignment: Dict[str, Any], slot_index: int) -> Dict[str, Any]:
+    """브리프에 붙일 정책 선택 정보 — 곡 생성 시 luna_decisions.record_track_decision 이 그대로 기록한다."""
+    slot = assignment["slots"][slot_index]
+    return {
+        "source": assignment["source"],
+        "policy_version": assignment["policy_version"],
+        "context_as_of": assignment["context_as_of"],
+        "context": assignment["context"],
+        "draw_index": slot["draw_index"],
+        "eligible_actions": slot["eligible_actions"],
+        "chosen": slot["chosen"],
+        "probabilities": slot["probabilities"],
+        "action_probability": slot["action_probability"],
+    }
 
 
 def analyze_music_trends_for_luna(region_code: str = "KR", force_refresh: bool = False,
@@ -582,11 +709,10 @@ def analyze_music_trends_for_luna(region_code: str = "KR", force_refresh: bool =
 {history_list}
 """
 
-    # 3. 코드 레벨 장르 & 무드 배정 (가중 랜덤 회전)
-    assigned_genres = pick_balanced_genres(count=2)
-    assigned_moods = pick_balanced_moods(count=2)
-    g1, g2 = assigned_genres[0], assigned_genres[1]
-    m1, m2 = assigned_moods[0], assigned_moods[1]
+    # 3. 코드 레벨 장르 & 무드 배정 — 정책 파일(data/luna_policy.json)의 확률, 없거나 만료면 균형 가중치
+    assignment = pick_policy_assignments(count=2)
+    g1, g2 = (slot["chosen"]["genre"] for slot in assignment["slots"])
+    m1, m2 = (slot["chosen"]["mood"] for slot in assignment["slots"])
     g1_name, g2_name = LUNA_GENRES[g1], LUNA_GENRES[g2]
     m1_name, m2_name = LUNA_MOODS[m1], LUNA_MOODS[m2]
 
@@ -776,6 +902,22 @@ def analyze_music_trends_for_luna(region_code: str = "KR", force_refresh: bool =
         else:
             briefs[2]["mood"] = b3_m
             briefs[2]["mood_name"] = LUNA_MOODS[b3_m]
+
+    # 결정 기록용: 1·2번은 정책 추천과 실제 선택 확률, 3번은 LLM 자율 선택이라 확률 없음
+    for i, b in enumerate(briefs[:2]):
+        if isinstance(b, dict):
+            b["policy_decision"] = policy_decision_for_slot(assignment, i)
+    if len(briefs) >= 3 and isinstance(briefs[2], dict):
+        briefs[2]["policy_decision"] = {
+            "source": "llm_brief",
+            "policy_version": assignment["policy_version"],
+            "context_as_of": assignment["context_as_of"],
+            "context": assignment["context"],
+            "eligible_actions": {},
+            "chosen": {"format": "single", "genre": briefs[2]["genre"], "mood": briefs[2]["mood"], "vocal_mode": "auto"},
+            "probabilities": {},
+            "action_probability": None,
+        }
 
     # 신규 브리프 타이틀 히스토리 누적 저장
     saved_brief_titles = []

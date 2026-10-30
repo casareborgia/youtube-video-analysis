@@ -13,6 +13,7 @@ import urllib.error
 from typing import Optional
 
 import llm_client
+import luna_decisions
 import producer
 import uploader
 import vega_engine
@@ -2006,6 +2007,49 @@ def build_luna_metadata(track_data):
 
 # ── 6. 이력 저장 및 관리 ────────────────────────────────────────────────
 
+def decisions_log_path():
+    """결정 기록 파일 — 트랙 폴더와 같은 곳(data/luna_music/decisions.jsonl)에 둔다."""
+    return os.path.join(LUNA_DIR, "decisions.jsonl")
+
+
+def attach_track_decision(track, leo_brief=None, genre=None, mood=None):
+    """곡 생성 시 결정 기록(data/luna_music/decisions.jsonl)을 남기고 decision_id·applied_action 을 트랙에 넣는다.
+    applied_action 은 실제 생성에 쓴 값(사람이 브리프 추천을 바꿨으면 바꾼 값)이며 업로드 때 applied 이벤트로 다시 기록한다.
+    기록 실패는 곡 생성을 막지 않는다."""
+    applied = {
+        "format": "single",
+        "genre": genre,
+        "mood": mood,
+        "vocal_mode": track.get("vocal_mode") or "auto",
+    }
+    track["applied_action"] = applied
+    try:
+        rec = luna_decisions.record_track_decision(track, leo_brief, applied, path=decisions_log_path())
+        track["decision_id"] = rec["decision_id"]
+    except Exception as e:
+        print(f"[LunaEngine] 결정 기록 실패 (곡 생성은 계속): {e}")
+    return track
+
+
+def _record_upload_outcome(track):
+    """업로드 후 같은 decision_id 로 video_id·publish_at·실제 적용 값을 덧붙인다. 실패해도 업로드 결과는 그대로."""
+    decision_id = track.get("decision_id")
+    if not decision_id or not track.get("uploaded_video_id"):
+        return
+    try:
+        luna_decisions.record_applied(
+            decision_id,
+            applied=track.get("applied_action") or {"format": "single", "genre": None, "mood": track.get("mood"),
+                                                    "vocal_mode": track.get("vocal_mode")},
+            video_id=track.get("uploaded_video_id"),
+            publish_at=track.get("publish_at"),
+            track_id=track.get("track_id"),
+            path=decisions_log_path(),
+        )
+    except Exception as e:
+        print(f"[LunaEngine] 업로드 결과 기록 실패: {e}")
+
+
 def save_track(data):
     tid = data.get("track_id")
     if not tid:
@@ -2287,6 +2331,7 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, 
     track["playlist_id"] = playlist_id
     track["playlist_added"] = result.get("playlist_added", False)
     save_track(track)
+    _record_upload_outcome(track)
 
     vid = result.get("video_id")
     warnings = list(result.get("warnings", []))
