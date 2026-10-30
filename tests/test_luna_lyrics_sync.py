@@ -126,6 +126,24 @@ class LyriaInputTests(unittest.TestCase):
         self.assertTrue(inp.startswith("deep night deep bass tone pad"))      # 지시문은 순화
         self.assertIn("In the dark I hear the drone of the city", inp)         # 가사는 원문 유지
 
+    def test_length_hint_added_when_direction_has_no_length(self):
+        track = {"lyria_prompt": "Felt piano, no vocals", "has_lyrics": False}
+        inp = luna_engine.build_lyria_input(track, 180)
+        self.assertEqual(inp, "Felt piano, no vocals. Full-length song, about 3 minutes long.")
+        self.assertIn("about 2 minutes 30 seconds", luna_engine.build_lyria_input(track, 150))
+
+    def test_length_hint_skipped_when_direction_already_has_length(self):
+        for p in ("R&B, approx 3 minutes full-length", "lofi, 2-minute song", "ambient, 150 seconds", "jazz [0:00 - 0:10] intro"):
+            inp = luna_engine.build_lyria_input({"lyria_prompt": p, "has_lyrics": False}, 180)
+            self.assertNotIn("Full-length song, about", inp, p)
+
+    def test_length_hint_precedes_lyrics(self):
+        track = {"lyria_prompt": "Felt piano ballad, Korean female vocals", "has_lyrics": True,
+                 "lyrics": LYRICS_KO, "vocal_language": "ko"}
+        inp = luna_engine.build_lyria_input(track, 180)
+        self.assertLess(inp.index("about 3 minutes"), inp.index("[Verse 1]"))
+        self.assertIn(LYRICS_KO, inp)
+
     def test_lyria_generate_sends_lyrics_in_input_and_returns_output_text(self):
         sent = {}
 
