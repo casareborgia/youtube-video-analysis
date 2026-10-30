@@ -726,8 +726,26 @@ def _ensure_audio_duration(audio_path: str, target_seconds: int = 180) -> float:
 
 _LYRIA_LANG_NAMES = {"ko": "Korean", "en": "English", "ja": "Japanese"}
 
+# Lyria 3.5 는 곡 길이를 프롬프트 문장으로 조절한다 (공식 가이드: "controllable using prompt").
+# 기획 지시문에 이미 길이 표현이 있으면 중복으로 붙이지 않는다.
+_LYRIA_LENGTH_RE = re.compile(r"\b\d+(\.\d+)?[\s-]*(minutes?|mins?|seconds?|secs?)\b|\b\d+:\d{2}\b", re.IGNORECASE)
 
-def build_lyria_input(track_data) -> str:
+
+def _lyria_length_hint(duration_seconds) -> str:
+    """목표 길이를 Lyria 가 읽는 영문 지시로 만든다. 예: 180 -> 'about 3 minutes', 150 -> 'about 2 minutes 30 seconds'."""
+    total = max(int(duration_seconds or 0), 0)
+    if not total:
+        return ""
+    m, s = divmod(total, 60)
+    parts = []
+    if m:
+        parts.append(f"{m} minute{'s' if m != 1 else ''}")
+    if s:
+        parts.append(f"{s} seconds")
+    return f"Full-length song, about {' '.join(parts)} long."
+
+
+def build_lyria_input(track_data, duration_seconds=None) -> str:
     """Lyria Interactions API 에 보낼 최종 입력 텍스트를 만든다.
 
     Lyria 3 는 가사를 별도 필드가 아니라 입력 텍스트 안에서 받는다 (음악 지시문 아래에 [Verse]/[Chorus] 태그 가사).
@@ -737,6 +755,9 @@ def build_lyria_input(track_data) -> str:
     """
     raw_prompt = (track_data.get("lyria_prompt") or "").strip() or "Cozy melodic lofi ambient music, purely instrumental, 8k"
     direction = _sanitize_lyria_prompt(raw_prompt)
+    hint = _lyria_length_hint(duration_seconds)
+    if hint and not _LYRIA_LENGTH_RE.search(direction):
+        direction = f"{direction.rstrip().rstrip('.')}. {hint}"
     lyrics = (track_data.get("lyrics") or "").strip()
     has_lyrics = bool(track_data.get("has_lyrics")) and bool(lyrics)
     if not has_lyrics:
@@ -768,7 +789,7 @@ def generate_luna_audio(track_data, duration_seconds=180, progress_cb=None, mast
     audio_path = os.path.join(t_dir, "audio.mp3")
 
     # 지시문 + (보컬 곡이면) 가사 전문. 실제로 무엇을 보냈는지 추적할 수 있게 트랙에 남긴다.
-    safe_lyria_prompt = build_lyria_input(track_data)
+    safe_lyria_prompt = build_lyria_input(track_data, duration_seconds)
     track_data["lyria_input"] = safe_lyria_prompt
     wants_vocals = bool(track_data.get("has_lyrics")) and bool((track_data.get("lyrics") or "").strip())
     key = producer.gemini_key()
