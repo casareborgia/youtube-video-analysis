@@ -42,6 +42,23 @@ def load_plan(genre: str, comp_dir: Path = COMPILATIONS_DIR) -> dict:
     return meta
 
 
+def upload_kwargs(meta: dict, privacy: str, publish_at: str = None, playlist_id: str = None) -> dict:
+    """uploader.upload_video 에 넘길 인자. Luna 컴필레이션은 AI 생성물이라 메타데이터에 키가 없어도 합성 표시를 켠다."""
+    return dict(
+        video_path=str(meta["video_file"]),
+        title=meta["youtube_title"],
+        description=meta["youtube_description"],
+        tags=meta["youtube_tags"],
+        privacy=privacy,
+        publish_at=publish_at,
+        thumbnail_path=meta.get("thumbnail_file"),
+        category_id="10",
+        channel_id=CHANNEL_ID,
+        playlist_id=playlist_id,
+        contains_synthetic_media=bool(meta.get("contains_synthetic_media", True)),
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description="루나 장르별 컴필레이션 업로드")
     parser.add_argument("--genre", required=True, help="data/luna_compilations/<genre> (예: piano, ambient)")
@@ -72,6 +89,7 @@ def main():
     print(f"- 영상: {video} ({video.stat().st_size / 1024 ** 3:.2f} GB, {meta['duration_seconds'] / 60:.1f}분)")
     print(f"- 룸 / 썸네일: {meta['room_name']} / {meta.get('thumbnail_file')}")
     print(f"- 공개: {privacy}" + (f" (예약 {args.publish_at})" if args.publish_at else ""))
+    print(f"- 재생목록: {args.playlist_id or '없음'} / AI 합성 표시: {'켬' if meta.get('contains_synthetic_media', True) else '끔'}")
     print(f"- 제목: {meta['youtube_title']}")
     print(f"- 태그: {', '.join(meta['youtube_tags'])}")
     print("-" * 65)
@@ -86,23 +104,13 @@ def main():
     def progress_cb(step, msg, pct):
         print(f"[{pct}%] {msg}")
 
-    res = uploader.upload_video(
-        video_path=str(video),
-        title=meta["youtube_title"],
-        description=meta["youtube_description"],
-        tags=meta["youtube_tags"],
-        privacy=privacy,
-        publish_at=args.publish_at,
-        thumbnail_path=meta.get("thumbnail_file"),
-        category_id="10",
-        channel_id=CHANNEL_ID,
-        playlist_id=args.playlist_id,
-        progress=progress_cb,
-    )
+    kw = upload_kwargs(meta, privacy=privacy, publish_at=args.publish_at, playlist_id=args.playlist_id)
+    res = uploader.upload_video(progress=progress_cb, **kw)
     result_file.write_text(json.dumps({
         "video_id": res.get("video_id"), "url": res.get("url"), "publish_at": args.publish_at, "privacy": privacy,
         "video_file": str(video), "title": meta["youtube_title"], "thumbnail_set": res.get("thumbnail_set"),
-        "playlist_added": res.get("playlist_added"),
+        "playlist_added": res.get("playlist_added"), "playlist_id": args.playlist_id,
+        "contains_synthetic_media": kw["contains_synthetic_media"],
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n[✔] 업로드 완료: {res.get('url')} (썸네일 {res.get('thumbnail_set')})")
     for w in res.get("warnings") or []:
