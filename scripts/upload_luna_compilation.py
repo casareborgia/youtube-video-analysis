@@ -11,10 +11,12 @@ scripts/create_luna_compilation.py 가 만든 data/luna_compilations/<장르>/yo
 import sys
 import json
 import argparse
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
+sys.path.insert(0, str(BASE_DIR / "scripts"))
 
 COMPILATIONS_DIR = BASE_DIR / "data" / "luna_compilations"
 CHANNEL_ID = "UCowTfbpKpXDBF3Mc50H4iGQ"
@@ -39,7 +41,38 @@ def load_plan(genre: str, comp_dir: Path = COMPILATIONS_DIR) -> dict:
     if len(meta["youtube_title"]) > 100:
         raise ValueError(f"제목이 100자를 넘습니다 ({len(meta['youtube_title'])}자)")
     meta["_result_file"] = str(out_dir / "upload_result.json")
+    decision = out_dir / "decision.json"
+    meta["_decision"] = json.loads(decision.read_text(encoding="utf-8")) if decision.exists() else None
     return meta
+
+
+MIN_LEAD = timedelta(minutes=30)  # 예약 공개는 업로드(수 GB)가 끝난 뒤여야 한다
+
+
+def check_publish_at(publish_at: str, now: datetime = None) -> None:
+    """예약 시각이 지금 + 30분 이후인지. 지났거나 너무 가까우면 ValueError."""
+    when = datetime.fromisoformat(publish_at)
+    if when.tzinfo is None:
+        raise ValueError(f"예약 시각에 시간대가 없습니다: {publish_at}")
+    now = now or datetime.now(timezone.utc)
+    if when <= now + MIN_LEAD:
+        raise ValueError(f"예약 시각 {publish_at} 이 지났거나 30분 안입니다. --publish-at 으로 새 시각을 주세요.")
+
+
+def record_decision_applied(out_dir: Path) -> bool:
+    """주간 컴필레이션(decision.json 이 있는 폴더)이면 업로드한 video_id 를 결정 기록에 덧붙인다.
+    실패하면 False (업로드는 이미 끝났으므로 다시 올리지 말고 record-applied 로 기록만 다시 한다)."""
+    if not (out_dir / "decision.json").exists():
+        return True
+    try:
+        from luna_weekly_compilation import record_applied_for
+        res = record_applied_for(out_dir)
+        print(f"[✔] 결정 기록에 업로드 반영: {res}")
+        return True
+    except Exception as e:
+        print(f"[!] 결정 기록 반영 실패({e}). 업로드는 됐습니다. 기록만 다시: "
+              f"python scripts/luna_weekly_compilation.py record-applied --dir {out_dir.name}")
+        return False
 
 
 def upload_kwargs(meta: dict, privacy: str, publish_at: str = None, playlist_id: str = None) -> dict:
@@ -70,7 +103,7 @@ def main():
     args = parser.parse_args()
 
     try:
-        meta = load_plan(args.genre)
+        meta = load_plan(args.genre, COMPILATIONS_DIR)
     except ValueError as e:
         print(f"[Error] {e}")
         sys.exit(1)
@@ -80,6 +113,18 @@ def main():
         prev = json.loads(result_file.read_text(encoding="utf-8"))
         print(f"[=] 이미 업로드된 컴필레이션입니다: {prev.get('url')} (publish_at {prev.get('publish_at')})")
         sys.exit(0)
+    decision = meta.get("_decision")
+    if decision and not args.publish_at and decision.get("publish_at"):
+        args.publish_at = decision["publish_at"]  # 주간 컴필레이션: 확정 요청에 적힌 공개 시각
+    if args.publish_at:
+        try:
+            check_publish_at(args.publish_at)
+        except ValueError as e:
+            print(f"[Error] {e}")
+            sys.exit(1)
+    if decision and decision.get("status") not in ("awaiting_approval", "uploaded"):
+        print(f"[Error] 주간 컴필레이션 렌더가 끝나지 않았습니다 (status={decision.get('status')}).")
+        sys.exit(1)
 
     privacy = "private" if args.publish_at else args.privacy
     video = Path(meta["video_file"])
@@ -113,6 +158,8 @@ def main():
         "contains_synthetic_media": kw["contains_synthetic_media"],
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n[✔] 업로드 완료: {res.get('url')} (썸네일 {res.get('thumbnail_set')})")
+    if not record_decision_applied(result_file.parent):
+        sys.exit(2)
     for w in res.get("warnings") or []:
         print(f"[!] {w}")
 

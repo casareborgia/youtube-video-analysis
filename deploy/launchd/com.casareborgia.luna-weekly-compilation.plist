@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- 루나 주간 컴필레이션 준비: 매주 목요일 20:00 KST, 이틀 뒤 토요일 22:00 공개분.
+       테마 추첨 → 결정 기록 → 렌더 → macOS 알림(approval_request.md). 업로드는 하지 않는다(사람이 확정 후 upload_luna_compilation.py).
+       같은 공개일로 다시 돌아도 새로 뽑지 않고, 렌더가 덜 됐으면 이어서 한다.
+       설치: cp deploy/launchd/com.casareborgia.luna-weekly-compilation.plist ~/Library/LaunchAgents/
+             launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.casareborgia.luna-weekly-compilation.plist
+       즉시 실행: launchctl kickstart gui/$(id -u)/com.casareborgia.luna-weekly-compilation
+       로그: logs/luna_weekly_compilation.log -->
+  <key>Label</key>
+  <string>com.casareborgia.luna-weekly-compilation</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/leeseungjun/coding/유튜브 영상분석실습/.venv/bin/python</string>
+    <string>scripts/luna_weekly_compilation.py</string>
+    <string>prepare</string>
+    <string>--publish-date</string>
+    <string>next</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/leeseungjun/coding/유튜브 영상분석실습</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>4</integer>
+    <key>Hour</key>
+    <integer>20</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/leeseungjun/coding/유튜브 영상분석실습/logs/luna_weekly_compilation.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/leeseungjun/coding/유튜브 영상분석실습/logs/luna_weekly_compilation.log</string>
+</dict>
+</plist>
