@@ -114,6 +114,17 @@ class UploadPlanTests(unittest.TestCase):
         plan = upload.load_plan("piano", comp_dir=self.tmp)
         self.assertEqual(plan["_result_file"], str(self.tmp / "piano" / "upload_result.json"))
 
+    def test_upload_kwargs_declare_synthetic_media_and_playlist(self):
+        self.write()
+        plan = upload.load_plan("piano", comp_dir=self.tmp)
+        kw = upload.upload_kwargs(plan, privacy="private", publish_at="2026-11-01T22:00:00+09:00", playlist_id="PL9")
+        self.assertIs(kw["contains_synthetic_media"], True)  # 키가 없어도 Luna 컴필레이션은 AI 생성
+        self.assertEqual(kw["playlist_id"], "PL9")
+        self.assertEqual(kw["publish_at"], "2026-11-01T22:00:00+09:00")
+        self.write(contains_synthetic_media=False)
+        plan = upload.load_plan("piano", comp_dir=self.tmp)
+        self.assertIs(upload.upload_kwargs(plan, privacy="private")["contains_synthetic_media"], False)
+
     def test_rejects_persona_credit_and_missing_video(self):
         self.write(youtube_description="기획 & 큐레이션: 에이전트 레오 (Agent Leo)")
         with self.assertRaises(ValueError):

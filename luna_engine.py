@@ -2276,6 +2276,7 @@ def upload_luna_to_youtube(track_id, privacy_status="public", progress_cb=None, 
         thumbnail_path=thumb_path,
         pinned_comment=meta.get("pinned_comment"),
         playlist_id=playlist_id,
+        contains_synthetic_media=True,  # Luna 음원·영상은 모두 AI 생성 (YouTube '변경되거나 합성된 콘텐츠')
         progress=lambda stage, msg, pct: step(20 + int(pct * 0.7), msg)
     )
 
@@ -2365,6 +2366,7 @@ def _upload_luna_shorts(track, longform_meta, longform_video_id, privacy_status,
         thumbnail_path=None,  # 세로 영상엔 16:9 커버 썸네일이 맞지 않아 유튜브 자동 썸네일 사용
         pinned_comment=pinned,
         playlist_id=playlist_id,
+        contains_synthetic_media=True,
     )
     shorts["youtube"] = {
         "video_id": res.get("video_id"), "url": res.get("url"),

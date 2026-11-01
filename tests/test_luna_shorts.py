@@ -176,6 +176,18 @@ class UploadWithShortsTests(unittest.TestCase):
         saved = luna_engine.load_track("luna_u")
         self.assertEqual(saved["shorts"]["youtube"]["longform_video_id"], "VID1")
 
+    def test_longform_and_shorts_declare_synthetic_media(self):
+        # Luna 음원·영상은 모두 AI 생성 → YouTube '변경되거나 합성된 콘텐츠' 표시를 켠다
+        with patch.object(uploader, "upload_video", side_effect=self._fake_upload()):
+            luna_engine.upload_luna_to_youtube("luna_u", with_shorts=True)
+        self.assertEqual(len(self.calls), 2)
+        self.assertTrue(all(c.get("contains_synthetic_media") is True for c in self.calls))
+
+    def test_standalone_shorts_declares_synthetic_media(self):
+        with patch.object(uploader, "upload_video", side_effect=self._fake_upload()):
+            luna_engine.upload_luna_shorts_standalone("luna_u")
+        self.assertIs(self.calls[0].get("contains_synthetic_media"), True)
+
     def test_default_without_shorts_is_single_upload(self):
         with patch.object(uploader, "upload_video", side_effect=self._fake_upload()):
             res = luna_engine.upload_luna_to_youtube("luna_u")
