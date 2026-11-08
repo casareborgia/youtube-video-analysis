@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Shiji Files 주간 준비: 매주 일요일 14:07 KST. 채널 스냅샷 + 렌더 안 된 Shiji 잡을 ComfyUI 로 빌드. 업로드는 하지 않는다(사람이 검수·허락).
+       설치: cp deploy/launchd/com.casareborgia.shiji-weekly-prep.plist ~/Library/LaunchAgents/
+             launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.casareborgia.shiji-weekly-prep.plist
+       즉시 실행: launchctl kickstart gui/$(id -u)/com.casareborgia.shiji-weekly-prep
+       로그: logs/shiji_routine.log -->
+  <key>Label</key>
+  <string>com.casareborgia.shiji-weekly-prep</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/leeseungjun/coding/유튜브 영상분석실습/.venv/bin/python</string>
+    <string>scripts/shiji_routine.py</string>
+    <string>prep</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>/Users/leeseungjun/coding/유튜브 영상분석실습</string>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>0</integer>
+    <key>Hour</key>
+    <integer>14</integer>
+    <key>Minute</key>
+    <integer>7</integer>
+  </dict>
+  <key>RunAtLoad</key>
+  <false/>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>LANG</key>
+    <string>en_US.UTF-8</string>
+    <key>PYTHONUNBUFFERED</key>
+    <string>1</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/leeseungjun/coding/유튜브 영상분석실습/logs/shiji_routine.launchd.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/leeseungjun/coding/유튜브 영상분석실습/logs/shiji_routine.launchd.log</string>
+</dict>
+</plist>
