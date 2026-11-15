@@ -602,6 +602,25 @@ def set_video_localizations(video_id, localizations, channel_id=None):
     return res.get("localizations") or {}
 
 
+def remove_video_localization(video_id, language, channel_id=None):
+    """다국어 제목·설명 가운데 한 언어를 뺀다. 기본 snippet 과 다른 언어는 유지한다. 남은 언어들을 돌려준다."""
+    creds = _creds(channel_id)
+    if not creds:
+        raise RuntimeError("유튜브 계정이 연결되어 있지 않습니다.")
+    youtube = _service(creds)
+    items = youtube.videos().list(part="snippet,localizations", id=video_id).execute().get("items") or []
+    if not items:
+        raise RuntimeError(f"영상을 찾을 수 없습니다: {video_id}")
+    current = dict(items[0].get("localizations") or {})
+    if language not in current:
+        return current
+    current.pop(language)
+    snippet = {k: v for k, v in (items[0].get("snippet") or {}).items() if k in _WRITABLE_SNIPPET}
+    res = youtube.videos().update(part="snippet,localizations",
+                                  body={"id": video_id, "snippet": snippet, "localizations": current}).execute()
+    return res.get("localizations") or {}
+
+
 def create_playlist(title, description="", privacy="public", channel_id=None):
     """새 재생목록 생성"""
     creds = _creds(channel_id)

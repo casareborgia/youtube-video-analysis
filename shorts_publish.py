@@ -25,6 +25,16 @@ SHIJI_TAGS = ["Shorts", "ancient china", "chinese history", "shiji", "history st
 LANG_CODE = {"english": "en", "korean": "ko"}
 
 
+def ko_localization_enabled() -> bool:
+    """한국어 제목·설명 번역을 붙일지. 2026-11-15부터 기본은 붙이지 않는다(시험).
+
+    영어 채널인데 시청자의 40.8%가 한국이었다. 한국어 번역이 한국 노출을 끌어오는지 보려고,
+    새 편은 번역 없이 올려 시청자 지역과 '계속 시청함' 비율을 앞선 편과 비교한다.
+    한국어 자막 트랙은 그대로 올린다(한 번에 하나만 바꾼다). 되돌리려면 .env 에 SHORTS_KO_LOCALIZATION=1.
+    """
+    return os.environ.get("SHORTS_KO_LOCALIZATION", "0").strip() == "1"
+
+
 class PublishRefused(RuntimeError):
     """발행 조건을 만족하지 않아 업로드하지 않았을 때(채널 가드·발행 잠금·중복 업로드)."""
 
@@ -131,7 +141,7 @@ def _upload_languages(job: dict) -> dict:
             done.append(lang)
         except Exception as e:
             pub.setdefault("warnings", []).append(f"{lang} 자막 업로드 실패: {str(e)[:160]}")
-    loc = korean_localization(job)
+    loc = korean_localization(job) if ko_localization_enabled() else None
     if loc and not (pub.get("localizations") or {}).get("ko"):
         try:
             uploader.set_video_localizations(vid, {"ko": loc}, channel_id=cid)
@@ -139,6 +149,18 @@ def _upload_languages(job: dict) -> dict:
         except Exception as e:
             pub.setdefault("warnings", []).append(f"한국어 제목·설명 등록 실패: {str(e)[:160]}")
     return job
+
+
+def remove_korean_localization(job: dict) -> dict:
+    """이미 올린 편에서 한국어 제목·설명 번역을 뺀다(자막 트랙은 그대로). 번역 제외 시험용."""
+    pub = (job.get("publish") or {}).get("youtube") or {}
+    if not pub.get("video_id"):
+        raise PublishRefused("아직 업로드하지 않은 잡입니다.")
+    left = uploader.remove_video_localization(pub["video_id"], "ko", channel_id=pub.get("channel_id"))
+    pub.setdefault("localizations", {})["ko"] = False
+    pub["ko_localization_removed_at"] = time.time()
+    shorts_engine.save_job(job)
+    return {"video_id": pub["video_id"], "localizations_left": sorted(left)}
 
 
 def add_languages(job: dict) -> dict:
