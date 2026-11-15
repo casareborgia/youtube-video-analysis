@@ -66,6 +66,34 @@ class SrtTests(PublishBase):
 
 
 class PublishLanguagesTests(PublishBase):
+    def setUp(self):
+        super().setUp()
+        env = patch.dict(os.environ, {"SHORTS_KO_LOCALIZATION": "1"})   # 이 묶음은 번역을 붙이는 설정에서의 동작을 본다
+        env.start()
+        self.addCleanup(env.stop)
+
+    def test_korean_title_is_not_added_by_default(self):
+        self.fake_upload()
+        with patch.dict(os.environ, {"SHORTS_KO_LOCALIZATION": "0"}), \
+             patch.object(uploader, "upload_caption", return_value={"id": "cap"}) as cap, \
+             patch.object(uploader, "set_video_localizations", return_value={}) as loc:
+            job = shorts_publish.publish_youtube(with_timing(self.make_job()), channel_id=SHIJI)
+        loc.assert_not_called()                                               # 번역 제외 시험: 제목·설명 번역은 붙이지 않는다
+        self.assertEqual(sorted(c.kwargs["language"] for c in cap.call_args_list), ["en", "ko"])   # 자막은 그대로
+        self.assertFalse((job["publish"]["youtube"].get("localizations") or {}).get("ko"))
+
+    def test_remove_korean_localization_keeps_captions(self):
+        self.fake_upload()
+        with patch.object(uploader, "upload_caption", return_value={"id": "cap"}), \
+             patch.object(uploader, "set_video_localizations", return_value={"ko": {}}):
+            job = shorts_publish.publish_youtube(with_timing(self.make_job()), channel_id=SHIJI)
+        with patch.object(uploader, "remove_video_localization", return_value={}) as rm:
+            out = shorts_publish.remove_korean_localization(job)
+        self.assertEqual((rm.call_args.args[0], rm.call_args.args[1], rm.call_args.kwargs["channel_id"]), ("vid123", "ko", SHIJI))
+        self.assertEqual(out, {"video_id": "vid123", "localizations_left": []})
+        self.assertFalse(job["publish"]["youtube"]["localizations"]["ko"])
+        self.assertEqual(sorted(job["publish"]["youtube"]["captions"]), ["en", "ko"])
+
     def test_publish_uploads_both_tracks_and_korean_title(self):
         self.fake_upload()
         with patch.object(uploader, "upload_caption", return_value={"id": "cap"}) as cap, \
