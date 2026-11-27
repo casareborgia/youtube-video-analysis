@@ -1,6 +1,9 @@
 import unittest
+import uuid
 from fastapi.testclient import TestClient
 from app import app
+from api import autonomous_routes
+from domain.models import StructuredDraft
 
 
 class TestAutonomousRoutes(unittest.TestCase):
@@ -98,13 +101,22 @@ class TestAutonomousRoutes(unittest.TestCase):
         self.assertIn("https://maumjigi.com", draft["first_reply"])
 
     def test_outbox_jobs_api_and_approval(self):
-        # 1. 아웃박스 목록 조회
+        # 0. 이 테스트가 쓸 작업을 직접 만든다.
+        #    전에는 "발행함에 작업이 이미 하나는 있다"고 가정해서, 다른 테스트가 남긴 작업이 없는 새 DB 에서는 실패했다.
+        draft = StructuredDraft(
+            headline="발행함 API 테스트",
+            body="링크 없는 본문 내용입니다.",
+            first_reply="📌 원문 링크: https://example.com/routes-test",
+            topic_key=f"TEST_ROUTES_{uuid.uuid4().hex[:8]}",
+        )
+        job_id = autonomous_routes.orchestrator.create_chain_job(routine_id=1, draft=draft, platforms=["threads", "x"])
+
+        # 1. 아웃박스 목록 조회 (방금 만든 작업이 보여야 한다)
         list_res = self.client.get("/api/outbox/jobs")
         self.assertEqual(list_res.status_code, 200)
         jobs = list_res.json()
-        self.assertGreaterEqual(len(jobs), 1)
+        self.assertIn(job_id, [j["id"] for j in jobs])
 
-        job_id = jobs[0]["id"]
         # 2. 특정 작업 상세 조회
         detail_res = self.client.get(f"/api/outbox/jobs/{job_id}")
         self.assertEqual(detail_res.status_code, 200)
