@@ -1,6 +1,8 @@
 import unittest
 import asyncio
-from services.source_validator import is_ip_allowed, validate_hostname, test_source_url
+from services.source_validator import is_ip_allowed, validate_hostname
+# 이름이 test_ 로 시작해 pytest 가 이 함수를 테스트로 주워 가므로("fixture 'url' not found") 다른 이름으로 들여온다
+from services.source_validator import test_source_url as check_source_url
 
 
 class TestSourceValidator(unittest.TestCase):
@@ -25,14 +27,14 @@ class TestSourceValidator(unittest.TestCase):
 
     def test_ssrf_url_blocking(self):
         async def run_checks():
-            res1 = await test_source_url("http://127.0.0.1:8765/api/test")
+            res1 = await check_source_url("http://127.0.0.1:8765/api/test")
             self.assertFalse(res1.success)
             self.assertTrue("SSRF" in (res1.error or "") or "차단" in (res1.error or ""))
 
-            res2 = await test_source_url("http://169.254.169.254/latest/meta-data/")
+            res2 = await check_source_url("http://169.254.169.254/latest/meta-data/")
             self.assertFalse(res2.success)
 
-            res3 = await test_source_url("ftp://example.com/feed.xml")
+            res3 = await check_source_url("ftp://example.com/feed.xml")
             self.assertFalse(res3.success)
             self.assertIn("지원하지 않는 프로토콜", res3.error)
 
