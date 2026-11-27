@@ -440,6 +440,12 @@ def review_timeline(job: dict) -> dict:
     return {"starts": starts, "ends": ends, "seams": seams, "end_tag": (ends[-1], total) if (ends and tag > 0) else None, "total": total}
 
 
+# 고른 프레임을 그대로 내보낸다(복제·버림 없음). 예전 이름인 -vsync 0 은 ffmpeg 8 부터 없어져서
+# "Unrecognized option 'vsync'" 로 명령 전체가 실패한다(시트도 검은 화면·전환 튐 검사도 조용히 빠진다).
+# -fps_mode 는 ffmpeg 5.1 부터 있다(번들 7.1, Homebrew 9 모두 지원).
+PASSTHROUGH = ("-fps_mode", "passthrough")
+
+
 def _frame_index(t: float, total: float) -> int:
     return max(0, min(int(round(t * REVIEW_FPS)), int(total * REVIEW_FPS) - 1))
 
@@ -454,7 +460,7 @@ def make_contact_sheet(ff: str, video: str, times: List[float], out: str, tile_w
     expr = "+".join(f"eq(n\\,{i})" for i in idx)
     vf = f"select='{expr}',scale={tile_width}:-2,tile={cols}x{rows}:padding=4:color=0x111111"
     try:
-        res = runner([ff, "-y", "-v", "error", "-i", video, "-vf", vf, "-frames:v", "1", "-vsync", "0", "-q:v", "4", out],
+        res = runner([ff, "-y", "-v", "error", "-i", video, "-vf", vf, "-frames:v", "1", *PASSTHROUGH, "-q:v", "4", out],
                      capture_output=True, text=True, timeout=180)
         return out if getattr(res, "returncode", 1) == 0 and os.path.exists(out) else None
     except Exception:
@@ -468,7 +474,7 @@ def frame_levels(ff: str, video: str, frames: List[int], runner=subprocess.run) 
         return {}
     expr = "+".join(f"eq(n\\,{i})" for i in frames)
     try:
-        res = runner([ff, "-v", "error", "-i", video, "-vf", f"select='{expr}',scale=54:96,format=gray", "-vsync", "0",
+        res = runner([ff, "-v", "error", "-i", video, "-vf", f"select='{expr}',scale=54:96,format=gray", *PASSTHROUGH,
                       "-f", "rawvideo", "-"], capture_output=True, timeout=180)
     except Exception:
         return {}
@@ -489,7 +495,7 @@ def frame_diffs(ff: str, video: str, start_frame: int, count: int, runner=subpro
     try:
         res = runner([ff, "-v", "error", "-i", video, "-vf",
                       f"select='between(n\\,{start_frame}\\,{start_frame + count - 1})',scale=54:96,format=gray",
-                      "-vsync", "0", "-f", "rawvideo", "-"], capture_output=True, timeout=180)
+                      *PASSTHROUGH, "-f", "rawvideo", "-"], capture_output=True, timeout=180)
     except Exception:
         return []
     data = getattr(res, "stdout", b"") or b""
