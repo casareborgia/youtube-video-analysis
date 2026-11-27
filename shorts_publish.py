@@ -22,7 +22,15 @@ import uploader
 SHIJI_PACK = "shorts_shiji"
 SHIJI_HASHTAGS = "#history #ancientchina #shorts"
 SHIJI_TAGS = ["Shorts", "ancient china", "chinese history", "shiji", "history stories"]
+SHIJI_HASHTAGS_KO = "#역사 #고사성어 #shorts"
+SHIJI_TAGS_KO = ["Shorts", "역사", "중국사", "사기", "고사성어"]
 LANG_CODE = {"english": "en", "korean": "ko"}
+CAPTION_NAME = {"en": "English", "ko": "한국어"}
+
+
+def is_korean(job: dict) -> bool:
+    """내레이션이 한국어라고 잡에 적혀 있을 때만 True. 적혀 있지 않으면 지금까지처럼 영어 문구를 쓴다."""
+    return (job.get("narration_language") or job.get("language")) == "korean"
 
 
 def ko_localization_enabled() -> bool:
@@ -54,16 +62,18 @@ def _sources(job: dict) -> list:
 
 
 def _description_tail(job: dict) -> list:
-    """설명 끝에 붙는 출전·칸리포 출처·해시태그(언어와 관계없이 같다)."""
+    """설명 끝에 붙는 출전·칸리포 출처·해시태그. 한국어 내레이션 편은 한국어로 적는다(칸리포 출처 표시는 그대로 남긴다)."""
     shiji = job.get("concept_key") == SHIJI_PACK
+    ko = is_korean(job)
     parts = []
     srcs = _sources(job)
     if srcs:
-        parts.append("\n".join(f"📜 Source: {s}" for s in srcs))
+        parts.append("\n".join(f"📜 {'출전' if ko else 'Source'}: {s}" for s in srcs))
     if shiji or srcs:
-        parts.append(f"{kanripo_db.CREDIT}\nTranslation: Shiji Files")
+        credit = kanripo_db.CREDIT.replace("Original text: ", "원문: ") if ko else kanripo_db.CREDIT
+        parts.append(f"{credit}\n{'번역' if ko else 'Translation'}: Shiji Files")
     if shiji:
-        parts.append(SHIJI_HASHTAGS)
+        parts.append(SHIJI_HASHTAGS_KO if ko else SHIJI_HASHTAGS)
     return parts
 
 
@@ -74,7 +84,7 @@ def build_youtube_metadata(job: dict, title: Optional[str] = None, description: 
     shiji = job.get("concept_key") == SHIJI_PACK
     lead = (description if description is not None else yt.get("description") or (job.get("storyboard") or {}).get("hook_text") or "").strip()
     parts = ([lead] if lead else []) + _description_tail(job)
-    tags = list(dict.fromkeys((yt.get("tags") or []) + (SHIJI_TAGS if shiji else [])))
+    tags = list(dict.fromkeys((yt.get("tags") or []) + ((SHIJI_TAGS_KO if is_korean(job) else SHIJI_TAGS) if shiji else [])))
     return {
         "title": (title or yt.get("title") or job.get("topic") or "Shorts").strip()[:100],
         "description": "\n\n".join(parts)[:5000],
@@ -88,7 +98,7 @@ def build_youtube_metadata(job: dict, title: Optional[str] = None, description: 
 # ── 다국어: 영어·한국어 자막 트랙 + 한국어 제목·설명 (2026-10-27 사용자 결정 — 한국어 음성판은 보류) ──
 
 def build_srt_en(job: dict, path: str) -> str:
-    """화면 자막과 같은 그룹(문장 끝·쉼·어절 상한)으로 영어 자막 트랙을 만든다."""
+    """화면 자막과 같은 그룹(문장 끝·쉼·어절 상한)으로 말한 그대로의 자막 트랙을 만든다(영어 편은 영어, 한국어 편은 한국어)."""
     grouped = shorts_captions.group_captions(job.get("captions") or [], job.get("caption_energy") or shorts_captions.DEFAULT_ENERGY)
     return shorts_engine.captions_to_srt(grouped, path, page_ms=shorts_captions.GROUPED_PAGE_MS)
 
@@ -124,16 +134,21 @@ def korean_localization(job: dict) -> Optional[dict]:
 
 
 def _upload_languages(job: dict) -> dict:
-    """아직 없는 자막 트랙(en·ko)과 한국어 제목을 올린다. 실패해도 업로드는 그대로 두고 경고만 남긴다."""
+    """아직 없는 자막 트랙과 한국어 제목을 올린다. 실패해도 업로드는 그대로 두고 경고만 남긴다.
+
+    말한 그대로의 자막은 내레이션 언어로 올린다. 영어 편은 여기에 한국어 번역(narration_ko) 트랙을 더하고,
+    한국어 편은 한국어 한 트랙만 올린다(같은 언어를 두 번 올리지 않는다).
+    """
     pub = job["publish"]["youtube"]
     vid, cid = pub["video_id"], pub.get("channel_id")
     done = pub.setdefault("captions", [])
     d = shorts_engine.job_dir(shorts_engine._safe_id(job["shorts_id"]), create=True)
     tracks = []
-    if "en" not in done and job.get("captions"):
-        tracks.append(("en", "English", build_srt_en(job, os.path.join(d, "captions_en.srt"))))
+    spoken = "ko" if is_korean(job) else "en"
+    if spoken not in done and job.get("captions"):
+        tracks.append((spoken, CAPTION_NAME[spoken], build_srt_en(job, os.path.join(d, f"captions_{spoken}.srt"))))
     ko_path = os.path.join(d, "captions_ko.srt")
-    if "ko" not in done and build_srt_ko(job, ko_path):
+    if spoken != "ko" and "ko" not in done and build_srt_ko(job, ko_path):
         tracks.append(("ko", "한국어", ko_path))
     for lang, name, path in tracks:
         try:
@@ -179,15 +194,18 @@ def original_text_comment(job: dict) -> str:
     if custom:
         return custom[:9000]
     lines, seen = [], set()
+    ko = is_korean(job)
+    label = "원문" if ko else "Original text"
     for s in (job.get("storyboard") or {}).get("scenes") or []:
         if (s.get("kind") or "image") != "seal" or not s.get("hanzi") or s["hanzi"] in seen:
             continue
         seen.add(s["hanzi"])
-        head = f"Original text, {s['source']}: {s['hanzi']}" if s.get("source") else f"Original text: {s['hanzi']}"
+        head = f"{label}, {s['source']}: {s['hanzi']}" if s.get("source") else f"{label}: {s['hanzi']}"
         lines.append(head + (f'\n"{s["translation"]}"' if s.get("translation") else ""))
     if not lines:
         return ""
-    return "\n\n".join(lines + [f"From the {kanripo_db.CREDIT.replace('Original text: ', '')}."])
+    credit = kanripo_db.CREDIT.replace("Original text: ", "")
+    return "\n\n".join(lines + [f"원문 출처: {credit}" if ko else f"From the {credit}."])
 
 
 def _post_comment(job: dict, text: str) -> dict:

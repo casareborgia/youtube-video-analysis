@@ -286,14 +286,18 @@ def build_remotion_props(job: dict) -> dict:
 
 
 def source_line(job: dict) -> Optional[str]:
-    """이미지·지도 장면 위에 작게 띄우는 출전 줄(Shiji 팩). job["source_line"] 이 있으면 그것, 없으면 첫 원문 인장의 출전."""
+    """이미지·지도 장면 위에 작게 띄우는 출전 줄(Shiji 팩). job["source_line"] 이 있으면 그것, 없으면 첫 원문 인장의 출전.
+
+    한국어 내레이션이라고 적힌 잡은 "출전: …", 그 밖에는 지금까지처럼 "From the …".
+    """
     if job.get("source_line"):
         return str(job["source_line"])[:60]
     if job.get("concept_key") != "shorts_shiji":
         return None
     for s in (job.get("storyboard") or {}).get("scenes") or []:
         if (s.get("kind") or "image") == "seal" and s.get("source"):
-            return f"From the {s['source']}"[:60]
+            korean = (job.get("narration_language") or job.get("language")) == "korean"
+            return (f"출전: {s['source']}" if korean else f"From the {s['source']}")[:60]
     return None
 
 
