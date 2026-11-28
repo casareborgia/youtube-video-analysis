@@ -1,21 +1,19 @@
 import os
+import tempfile
 import unittest
 from repositories.routine_repository import RoutineRepository
 from domain.models import RoutineUpdate, SourceCreate, SourceUpdate, ScheduleItem
 from domain.enums import RoutineMode, SourceType
 
-TEST_DB_PATH = "data/test_autonomous_operator.db"
-
 
 class TestRoutineRepository(unittest.TestCase):
     def setUp(self):
-        if os.path.exists(TEST_DB_PATH):
-            os.remove(TEST_DB_PATH)
-        self.repo = RoutineRepository(db_path=TEST_DB_PATH)
+        # 실행한 폴더의 data/ 가 아니라 테스트마다 새 임시 폴더를 쓴다
+        self._tmpdir = tempfile.TemporaryDirectory(prefix="autonomous_repository_test_")
+        self.repo = RoutineRepository(db_path=os.path.join(self._tmpdir.name, "test_autonomous_operator.db"))
 
     def tearDown(self):
-        if os.path.exists(TEST_DB_PATH):
-            os.remove(TEST_DB_PATH)
+        self._tmpdir.cleanup()
 
     def test_default_routines_seeded(self):
         routines = self.repo.get_routines()

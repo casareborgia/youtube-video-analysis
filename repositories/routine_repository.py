@@ -23,8 +23,10 @@ DEFAULT_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data
 
 
 class RoutineRepository:
-    def __init__(self, db_path: str = DEFAULT_DB_PATH):
-        self.db_path = db_path
+    def __init__(self, db_path: Optional[str] = None):
+        # 기본 경로는 호출할 때 읽는다. 함수 기본값으로 묶어 두면 테스트가 DEFAULT_DB_PATH 를
+        # 임시 폴더로 바꿔도 운영 DB 가 열린다 (tests/conftest.py 참고).
+        self.db_path = db_path or DEFAULT_DB_PATH
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self._init_db()
 
